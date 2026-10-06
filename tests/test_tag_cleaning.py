@@ -2,7 +2,7 @@ from argparse import Namespace
 
 from lora_data_maker.cli import command_clean_tags, command_init
 from lora_data_maker.dataset import DatasetProject
-from lora_data_maker.models import ImageRecord
+from lora_data_maker.models import ImageRecord, ProjectManifest
 from lora_data_maker.paths import ProjectPaths
 from lora_data_maker.taggers.filters import clean_tags, normalize_tag, normalize_tags
 from lora_data_maker.taggers.clean_stage import clean_tag_manifest
