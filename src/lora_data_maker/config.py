@@ -28,6 +28,14 @@ delay = 1.0
 min_width = 512
 min_height = 512
 
+[validation]
+min_width = 1
+min_height = 1
+max_width = 0
+max_height = 0
+min_file_size = 1
+max_file_size = 0
+
 [processing]
 target_size = 512
 face_crop = false
