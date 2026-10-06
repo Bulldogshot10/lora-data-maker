@@ -74,9 +74,10 @@ class ChromiumImagesScraper:
                 ("bing", self.BING_URL),
             )
 
+            seen: set[str] = set()
+            ordered_candidates: list[str] = []
+
             for provider, base_url in providers:
-                seen: set[str] = set()
-                ordered_candidates: list[str] = []
                 last_candidate_count = 0
                 stagnant_rounds = 0
 
@@ -146,25 +147,28 @@ class ChromiumImagesScraper:
                     if provider == "google":
                         self._check_page(driver)
 
-                if ordered_candidates:
-                    for rank, image_url in enumerate(ordered_candidates, start=1):
-                        yield ImageResult(
-                            image_url=image_url,
-                            query=query,
-                            page_url=base_url,
-                            rank=rank,
-                            metadata={"provider": provider},
-                        )
-                        if rank >= limit:
-                            break
-                    return
+                if len(ordered_candidates) >= limit:
+                    break
 
                 if provider == "google":
                     print(
-                        "scrape: google returned no image candidates; "
-                        "falling back to Bing Images",
+                        f"scrape: google yielded {len(ordered_candidates)} candidates; "
+                        "continuing with Bing Images",
                         flush=True,
                     )
+
+            if ordered_candidates:
+                for rank, image_url in enumerate(ordered_candidates, start=1):
+                    yield ImageResult(
+                        image_url=image_url,
+                        query=query,
+                        page_url=self.GOOGLE_URL if rank <= limit else None,
+                        rank=rank,
+                        metadata={"provider": "chromium"},
+                    )
+                    if rank >= limit:
+                        break
+                return
 
             raise ScraperError(
                 "Chromium image search returned no parseable image URLs "
