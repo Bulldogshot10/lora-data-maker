@@ -210,3 +210,40 @@ def test_downloader_prefers_ipv4_in_termux(monkeypatch):
         assert urllib3_connection.HAS_IPV6 is False
     finally:
         urllib3_connection.HAS_IPV6 = original
+
+
+def test_duckduckgo_extracts_image_results():
+    from lora_data_maker.scrapers.duckduckgo import DuckDuckGoImagesScraper
+
+    class FakeSession:
+        def __init__(self):
+            self.headers = {}
+
+        def get(self, url, **kwargs):
+            if url == DuckDuckGoImagesScraper.SITE_URL:
+                return _FakeTextResponse("<html>vqd='12345'</html>")
+            return _FakeTextResponse(
+                '{"results": ['
+                '{"image":"https://cdn.example.com/a.jpg","title":"A"},'
+                '{"image":"https://cdn.example.com/b.webp","title":"B"}'
+                ']}'
+            )
+
+    class _FakeTextResponse:
+        def __init__(self, text):
+            self.text = text
+
+        def raise_for_status(self):
+            return None
+
+    scraper = DuckDuckGoImagesScraper(
+        timeout=5,
+        retries=0,
+        delay=0,
+        session=FakeSession(),
+    )
+    results = list(scraper.search("julia", limit=2))
+    assert [item.image_url for item in results] == [
+        "https://cdn.example.com/a.jpg",
+        "https://cdn.example.com/b.webp",
+    ]
