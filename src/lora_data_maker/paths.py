@@ -41,7 +41,7 @@ class ProjectPaths:
 
 
         for name, path in paths.items():
-            if _paths_overlap(root_path, path):
+            if path == root_path or path in root_path.parents:
                 raise ValueError(
                     f"configured path overlaps project root: "
                     f"{name}={path} and root={root_path}"
