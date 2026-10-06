@@ -358,10 +358,7 @@ def test_chromium_does_not_force_custom_user_data_dir(monkeypatch, tmp_path):
         service_module,
     )
 
-    scraper = ChromiumImagesScraper(
-        timeout=7,
-        profile_root=tmp_path / "chromium-profiles",
-    )
+    scraper = ChromiumImagesScraper(timeout=7)
     monkeypatch.setattr(
         scraper,
         "_resolve_executable",
@@ -378,7 +375,6 @@ def test_chromium_does_not_force_custom_user_data_dir(monkeypatch, tmp_path):
         argument.startswith("--user-data-dir=")
         for argument in captured["options"].arguments
     )
-    assert not (tmp_path / "chromium-profiles").exists()
 
 
 def test_chromium_preserves_candidate_order(monkeypatch):
