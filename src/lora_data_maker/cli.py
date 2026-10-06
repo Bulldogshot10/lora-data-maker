@@ -15,7 +15,12 @@ from .manifest import register_image
 from .paths import ProjectPaths, find_project_root
 from .processing import ProcessConfig, clean_manifest, process_manifest, validate_image
 from .scrapers import ScraperError, ScraperManager
-from .taggers import TaggerError, build_tagger, tag_manifest
+from .taggers import (
+    TaggerError,
+    build_tagger,
+    clean_tag_manifest,
+    tag_manifest,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -116,6 +121,15 @@ def build_parser() -> argparse.ArgumentParser:
         "tag", help="run the configured image tagger on processed images"
     )
     tag_parser.add_argument(
+        "--path",
+        default=".",
+        help="project directory (default: current directory)",
+    )
+
+    clean_tags_parser = subparsers.add_parser(
+        "clean-tags", help="normalize, filter, and inject the dataset subject into tags"
+    )
+    clean_tags_parser.add_argument(
         "--path",
         default=".",
         help="project directory (default: current directory)",
@@ -426,6 +440,49 @@ def command_tag(args: argparse.Namespace) -> int:
     return 0 if summary.tagged or summary.skipped else 1
 
 
+def command_clean_tags(args: argparse.Namespace) -> int:
+    root = find_project_root(args.path)
+    config = load_config(root / "config.toml")
+    paths = ProjectPaths.from_root(root, config.get("paths", {}))
+    project = DatasetProject.open(paths)
+
+    tag_rules = config.get("tag_rules", {})
+    if not isinstance(tag_rules, dict):
+        raise LoraDataMakerError("config section [tag_rules] must be a table")
+
+    remove_tags = tag_rules.get("remove", [])
+    if not isinstance(remove_tags, list) or not all(
+        isinstance(tag, str) for tag in remove_tags
+    ):
+        raise LoraDataMakerError(
+            "config field tag_rules.remove must be an array of strings"
+        )
+
+    summary = clean_tag_manifest(
+        project.manifest,
+        remove_tags=remove_tags,
+    )
+
+    project.manifest.source.update(
+        {
+            "last_tag_clean_scanned": summary.scanned,
+            "last_tag_clean_cleaned": summary.cleaned,
+            "last_tag_clean_skipped": summary.skipped,
+            "last_tag_clean_subject": project.manifest.subject,
+            "last_tag_clean_trigger": project.manifest.trigger,
+            "last_tag_clean_remove_rules": list(remove_tags),
+        }
+    )
+    project.save()
+
+    print(f"scanned: {summary.scanned}")
+    print(f"cleaned: {summary.cleaned}")
+    print(f"skipped: {summary.skipped}")
+    print(f"subject: {project.manifest.subject}")
+
+    return 0 if summary.cleaned or summary.skipped else 1
+
+
 def command_scrape(args: argparse.Namespace) -> int:
     root = find_project_root(args.path)
     config = load_config(root / "config.toml")
@@ -520,6 +577,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return command_process(args)
         if args.command == "tag":
             return command_tag(args)
+        if args.command == "clean-tags":
+            return command_clean_tags(args)
     except (
         LoraDataMakerError,
         FileNotFoundError,
