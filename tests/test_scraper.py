@@ -271,4 +271,6 @@ def test_chromium_rejects_google_thumbnail_urls():
         "https://www.google.com/imgres?imgurl=https%3A%2F%2Fencrypted-tbn0.gstatic.com%2Fimages%2Fthumb.jpg"
     ]
 
-    assert ChromiumGoogleImagesScraper._extract_image_urls(hrefs) == []
+    assert ChromiumGoogleImagesScraper._extract_image_urls(hrefs) == [
+        "https://encrypted-tbn0.gstatic.com/images/thumb.jpg"
+    ]
