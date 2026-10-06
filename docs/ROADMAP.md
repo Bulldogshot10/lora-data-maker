@@ -63,10 +63,10 @@ Phase 11 — export and packaging ✓ implemented
 - Kohya-style repeat/subject directory output.
 - ZIP packaging containing the exported dataset and `manifest.json`.
 
-Phase 12 — incremental processing
-- Add-only scrape runs.
-- Skip already processed/tagged images.
-- Reconcile manifest state safely.
+Phase 12 — incremental processing ✓ implemented
+- Add-only scrape runs with manifest-aware source URL filtering.
+- State-gated processing skips records already advanced to later stages.
+- Safe raw/manifest reconciliation with missing-file audit metadata.
 
 Phase 13 — tests
 - Unit and integration coverage.
