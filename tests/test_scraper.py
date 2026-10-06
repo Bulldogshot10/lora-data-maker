@@ -713,3 +713,43 @@ def test_google_scraper_validates_parameters():
         GoogleImagesScraper(retries=-1)
     with pytest.raises(ValueError, match="delay"):
         GoogleImagesScraper(delay=-1)
+
+
+def test_downloader_rolls_back_file_when_archive_update_fails(tmp_path):
+    from PIL import Image
+    from lora_data_maker.scrapers.archive import DownloadArchive
+    from lora_data_maker.scrapers.downloader import ImageDownloader
+
+    fixture = tmp_path / "fixture.jpg"
+    Image.new("RGB", (32, 32), (20, 30, 40)).save(fixture, format="JPEG")
+
+    session = _FakeSession()
+    session.responses = [
+        _FakeResponse("", content=fixture.read_bytes(), content_type="image/jpeg")
+    ]
+
+    archive = DownloadArchive(tmp_path / "downloads.txt")
+
+    def fail_add(_url):
+        raise OSError("archive is read-only")
+
+    archive.add = fail_add
+
+    downloader = ImageDownloader(
+        timeout=5,
+        retries=0,
+        delay=0,
+        user_agent="test",
+        session=session,
+    )
+
+    import pytest
+    with pytest.raises(Exception, match="download failed"):
+        downloader.download(
+            "https://cdn.example.com/a.jpg",
+            tmp_path / "raw",
+            index=1,
+            archive=archive,
+        )
+
+    assert not (tmp_path / "raw" / "000001.jpg").exists()
