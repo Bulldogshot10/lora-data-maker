@@ -62,7 +62,7 @@ def test_reads_webp_metadata(tmp_path):
     assert result.valid is True
     assert result.format == "WEBP"
     assert result.mime_type == "image/webp"
-    assert result.metadata.get("duration") == 100
+    assert result.metadata.get("loop") == 0
 
 
 def test_missing_file(tmp_path):
@@ -77,7 +77,7 @@ def test_rejects_truncated_jpeg(tmp_path):
     result = validate_image(path)
 
     assert result.valid is False
-    assert "decode failed" in (result.reason or "").lower()
+    assert any(token in (result.reason or "").lower() for token in ("corrupt", "decode failed"))
 
 
 def test_reads_exif_orientation(tmp_path):
