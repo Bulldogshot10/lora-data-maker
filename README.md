@@ -97,6 +97,12 @@ For tagging support:
 python -m pip install ".[tagger]"
 ~~~
 
+For face cropping on regular Linux/Python environments:
+
+~~~bash
+python -m pip install ".[face]"
+~~~
+
 Initialize a dataset project:
 
 ~~~bash
@@ -123,6 +129,18 @@ lora-data-maker caption
 lora-data-maker export
 lora-data-maker pack
 ~~~
+
+## Face cropping
+
+Set `processing.face_crop = true` to enable the built-in YuNet face detector during processing. The small YuNet 2023mar ONNX model is downloaded once into the project's configured `cache/face/` directory and checksum-verified before use.
+
+On Termux, install native OpenCV with:
+
+~~~bash
+pkg install x11-repo opencv-python
+~~~
+
+On regular Linux/Python environments, install the optional face extra with `python -m pip install ".[face]"`.
 
 ## Pipeline
 
