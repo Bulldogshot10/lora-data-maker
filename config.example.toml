@@ -34,8 +34,12 @@ blur_threshold = 0.0
 max_aspect_ratio = 0.0
 
 [processing]
-target_size = 512
+target_width = 512
+target_height = 512
+resize_mode = "cover"
+jpeg_quality = 95
 face_crop = false
+face_padding = 1.75
 
 [dedup]
 exact = true
