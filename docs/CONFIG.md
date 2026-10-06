@@ -101,9 +101,7 @@ perceptual_distance controls the maximum Hamming distance for near duplicates.
 ~~~toml
 [tagger]
 backend = "wd14"
-model = "SmilingWolf/wd-eva02-large-tagger-v3"
-revision = "b25b82a03f7282e41aa2f257a52c7583b710bd1c"
-model_sha256 = "9e768793060c7939b277ccb382783e8670e8a042d29d77aa736be0c8cc898bfc"
+preset = "sweetspot"
 threshold = 0.35
 character_threshold = 0.85
 use_mcut = false
@@ -111,11 +109,10 @@ batch_size = 1
 download_timeout = 60
 ~~~
 
-The generated default config pins the model revision and SHA-256.
+Built-in presets pin the model repository, revision, filenames, and model SHA-256. Use sweetspot for the default WD ViT tagger or potato for the smallest mobile SwinV2 tagger.
 
 For chromium, the optional Selenium dependency is required. The backend expects
-chromium-browser and chromedriver on PATH by default and uses a temporary browser
-profile under cache/chromium-profiles/.
+chromium-browser and chromedriver on PATH by default. Selenium manages the temporary browser profile.
 
 ## tag_rules
 
