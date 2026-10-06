@@ -87,8 +87,8 @@ def test_yunet_returns_empty_sequence_when_runtime_has_no_faces():
     assert detector.detect(Image.new("RGB", (320, 240), "white")) == ()
 
 
-@pytest.mark.face_smoke
 def test_yunet_real_model_smoke(tmp_path):
+    pytest.importorskip("cv2")
     detector = YuNetFaceDetector(cache_dir=tmp_path / "face-cache")
     assert detector.detect(Image.new("RGB", (320, 240), "white")) == ()
 
