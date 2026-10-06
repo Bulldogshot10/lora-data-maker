@@ -36,7 +36,7 @@ count = 300
 timeout = 20
 retries = 3
 delay = 1.0
-fallbacks = ["duckduckgo", "google"]
+fallbacks = ["duckduckgo"]
 ~~~
 
 Built-in backends are google, duckduckgo, chromium, and direct. `fallbacks` is an ordered list of image-search backends. A fallback runs only when the requested count has not been reached. `direct` cannot be used as a fallback.
