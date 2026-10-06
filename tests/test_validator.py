@@ -93,3 +93,20 @@ def test_reads_exif_orientation(tmp_path):
     assert result.exif_orientation == 6
     assert result.has_exif is True
     assert result.metadata["exif_orientation"] == 6
+
+
+def test_reads_jpeg_dpi_as_json_safe_value(tmp_path):
+    import json
+
+    path = tmp_path / "dpi.jpg"
+    Image.new("RGB", (640, 480), (10, 20, 30)).save(
+        path,
+        format="JPEG",
+        dpi=(300, 300),
+    )
+
+    result = validate_image(path)
+
+    assert result.valid is True
+    assert result.metadata["dpi"]
+    json.dumps(result.metadata)
