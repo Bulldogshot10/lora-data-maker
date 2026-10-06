@@ -70,3 +70,26 @@ def test_manifest_rejects_non_string_tags():
 
     with pytest.raises(ValueError, match="tags must be a list of strings"):
         ProjectManifest.from_dict(manifest)
+
+
+def test_manifest_rejects_mismatched_image_key():
+    import pytest
+
+    manifest = {
+        "schema_version": 1,
+        "project_name": "julia",
+        "subject": "julia",
+        "trigger": "julia",
+        "images": {
+            "dictionary-key": {
+                "image_id": "record-id",
+                "path": "raw/a.jpg",
+                "status": "discovered",
+                "tags": [],
+                "metadata": {},
+            }
+        },
+    }
+
+    with pytest.raises(ValueError, match="does not match"):
+        ProjectManifest.from_dict(manifest)
