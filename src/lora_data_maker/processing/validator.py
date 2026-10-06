@@ -88,6 +88,11 @@ def validate_image(
         )
 
     try:
+        # verify() must be called immediately after open(). Some Pillow
+        # plugins invalidate their internal file pointer after metadata access.
+        with Image.open(image_path) as image:
+            image.verify()
+
         with Image.open(image_path) as image:
             image_format = (image.format or "").upper() or None
             width, height = image.size
@@ -102,16 +107,15 @@ def validate_image(
                 or mimetypes.guess_type(image_path.name)[0]
             )
 
-            # verify() validates the underlying encoded image. Re-opening and
-            # loading it afterwards catches corrupt pixel data that verify()
-            # alone may not expose.
-            image.verify()
+            # Fully decode the pixel data. This catches corruption that a
+            # container/header verification may not expose.
+            image.load()
 
-        with Image.open(image_path) as loaded:
-            loaded.load()
-            loaded_format = (loaded.format or image_format or "").upper() or None
-            if loaded_format != image_format:
-                image_format = loaded_format
+            metadata = _metadata(image_path, image_format, info)
+            metadata["mode"] = image.mode
+            metadata["has_exif"] = has_exif
+            if orientation is not None:
+                metadata["exif_orientation"] = orientation
 
         if width < min_width or height < min_height:
             return ImageValidationResult(
@@ -124,7 +128,7 @@ def validate_image(
                 mime_type=mime_type,
                 exif_orientation=orientation,
                 has_exif=has_exif,
-                metadata=_metadata(image_path, image_format, info),
+                metadata=metadata,
                 reason=(
                     f"dimensions too small: {width}x{height} "
                     f"< {min_width}x{min_height}"
@@ -142,10 +146,8 @@ def validate_image(
                 mime_type=mime_type,
                 exif_orientation=orientation,
                 has_exif=has_exif,
-                metadata=_metadata(image_path, image_format, info),
-                reason=(
-                    f"width too large: {width} > {max_width}"
-                ),
+                metadata=metadata,
+                reason=f"width too large: {width} > {max_width}",
             )
 
         if max_height is not None and height > max_height:
@@ -159,10 +161,8 @@ def validate_image(
                 mime_type=mime_type,
                 exif_orientation=orientation,
                 has_exif=has_exif,
-                metadata=_metadata(image_path, image_format, info),
-                reason=(
-                    f"height too large: {height} > {max_height}"
-                ),
+                metadata=metadata,
+                reason=f"height too large: {height} > {max_height}",
             )
 
         return ImageValidationResult(
@@ -175,7 +175,7 @@ def validate_image(
             mime_type=mime_type,
             exif_orientation=orientation,
             has_exif=has_exif,
-            metadata=_metadata(image_path, image_format, info),
+            metadata=metadata,
         )
 
     except UnidentifiedImageError:
@@ -183,9 +183,9 @@ def validate_image(
             path=image_path,
             valid=False,
             file_size=file_size,
-            reason="unidentified image format",
+            reason="unidentified or corrupt image",
         )
-    except (OSError, ValueError, SyntaxError) as exc:
+    except (OSError, ValueError, SyntaxError, RuntimeError) as exc:
         return ImageValidationResult(
             path=image_path,
             valid=False,
@@ -205,9 +205,12 @@ def _metadata(
     }
 
     for key in ("dpi", "duration", "loop", "background", "transparency"):
-        if key in info:
-            value = info[key]
-            if isinstance(value, (str, int, float, bool, list, tuple)):
-                metadata[key] = value if isinstance(value, (str, int, float, bool)) else list(value)
+        if key not in info:
+            continue
+        value = info[key]
+        if isinstance(value, (str, int, float, bool)):
+            metadata[key] = value
+        elif isinstance(value, (list, tuple)):
+            metadata[key] = list(value)
 
     return metadata
