@@ -100,8 +100,8 @@ python -m pip install ".[tagger]"
 Initialize a dataset project:
 
 ~~~bash
-lora-data-maker init ~/datasets/julia --name julia --subject julia
-cd ~/datasets/julia
+lora-data-maker init ~/datasets/[name] --name [name] --subject [name]
+cd ~/datasets/[name]
 ~~~
 
 Run the full preparation pipeline:
