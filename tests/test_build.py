@@ -65,6 +65,8 @@ def test_run_build_runs_stages_in_order_and_records_summary(tmp_path, monkeypatc
         "process",
         "clean-tags",
         "caption",
+        "export",
+        "pack",
     ]
     assert [name for name, _ in calls] == [
         "validate",
@@ -84,7 +86,7 @@ def test_run_build_runs_stages_in_order_and_records_summary(tmp_path, monkeypatc
         "caption",
     ]
     assert project.manifest.source["last_build_skipped_stages"] == ["scrape", "tag"]
-    assert len(project.manifest.source["last_build_stages"]) == 5
+    assert len(project.manifest.source["last_build_stages"]) == 7
     assert all(
         stage["status"] == "completed"
         for stage in project.manifest.source["last_build_stages"]
