@@ -120,7 +120,7 @@ Caption files are stored under work/captions/.
 
 ## build
 
-Run the preparation stages from scrape through caption.
+Run the full preparation pipeline from scrape through pack.
 
 ~~~bash
 lora-data-maker build [--path PATH] [--from-stage STAGE] [--to-stage STAGE] [--skip STAGE]
@@ -135,7 +135,7 @@ lora-data-maker build --from-stage tag --to-stage caption
 lora-data-maker build --skip scrape --skip tag
 ~~~
 
-The skip option may be repeated. Build stops on the first failed stage and records its summary in the manifest.
+The skip option may be repeated. Build stops on the first failed stage and records its summary and error details in the manifest.
 
 ## export
 
