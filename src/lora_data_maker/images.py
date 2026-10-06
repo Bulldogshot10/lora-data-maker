@@ -16,6 +16,7 @@ IMAGE_EXTENSIONS = {
     ".tif",
     ".tiff",
     ".avif",
+    ".img",
 }
 
 
