@@ -110,3 +110,29 @@ def test_pack_rejects_archive_inside_dataset(tmp_path):
             dataset_dir=dataset,
             archive_path=dataset / "bundle.zip",
         )
+
+
+def test_pack_external_dataset_uses_safe_archive_prefix(tmp_path):
+    root = tmp_path / "project"
+    dataset = tmp_path / "external-output" / "10_julia"
+    dataset.mkdir(parents=True)
+    (dataset / "abc.jpg").write_bytes(b"image")
+    (dataset / "abc.txt").write_text("julia
+", encoding="utf-8")
+    (root / "manifest.json").parent.mkdir(parents=True)
+    (root / "manifest.json").write_text("{"project_name": "julia"}
+", encoding="utf-8")
+
+    archive = tmp_path / "bundle.zip"
+    pack_dataset(
+        root=root,
+        dataset_dir=dataset,
+        archive_path=archive,
+    )
+
+    with ZipFile(archive) as bundle:
+        names = set(bundle.namelist())
+
+    assert "10_julia/abc.jpg" in names
+    assert "10_julia/abc.txt" in names
+    assert "manifest.json" in names
