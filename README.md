@@ -12,7 +12,7 @@ Model training and image generation are intentionally outside this project.
 
 ## Current state
 
-Phase 15 is implemented. The CLI supports the full dataset-preparation pipeline through export and packaging, incremental processing, and a complete project documentation set for Termux installation, CLI usage, configuration, dataset layout, and troubleshooting.
+Phase 16 / v1.0.0 is released. The CLI supports the full dataset-preparation pipeline through export and packaging, incremental processing, and a complete project documentation set for Termux installation, CLI usage, configuration, dataset layout, troubleshooting, licensing, and responsible use.
 
 ## Design goals
 
@@ -141,6 +141,10 @@ lora-data-maker export
 lora-data-maker pack
 lora-data-maker info
 ```
+
+## License and responsible use
+
+lora-data-maker is licensed under the Apache License 2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE) for licensing and third-party attribution information. Responsible-use guidance is in [docs/RESPONSIBLE_USE.md](docs/RESPONSIBLE_USE.md). The project is intended for educational and research-oriented dataset preparation. Users are responsible for respecting consent, identity, privacy, copyright, source-site rules, and applicable law.
 
 ## Documentation
 
