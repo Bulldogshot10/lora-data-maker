@@ -45,6 +45,9 @@ jobs:
       - name: Caption help
         run: lora-data-maker caption --help
 
+      - name: Build help
+        run: lora-data-maker build --help
+
       - name: Init and inspect project
         run: |
           rm -rf .smoke-project
