@@ -394,6 +394,7 @@ def test_chromium_preserves_candidate_order(monkeypatch):
     common = types.ModuleType("selenium.common")
     exceptions = types.ModuleType("selenium.common.exceptions")
     exceptions.TimeoutException = TimeoutException
+    exceptions.WebDriverException = WebDriverException
     common.exceptions = exceptions
 
     monkeypatch.setitem(sys.modules, "selenium", selenium)
@@ -445,6 +446,8 @@ def test_chromium_page_timeout_retries_and_falls_back_to_bing(monkeypatch):
 
     class TimeoutException(Exception):
         pass
+
+    WebDriverException = type("WebDriverException", (Exception,), {})
 
     common = types.ModuleType("selenium.common")
     exceptions = types.ModuleType("selenium.common.exceptions")
