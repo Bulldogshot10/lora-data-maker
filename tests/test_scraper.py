@@ -373,7 +373,7 @@ def test_chromium_does_not_force_custom_user_data_dir(monkeypatch, tmp_path):
     assert driver.timeout == 7
     assert captured["service"].executable_path == "/fake/chromedriver"
     assert captured["options"].binary_location == "/fake/chromium-browser"
-    assert captured["options"].page_load_strategy == "eager"
+    assert captured["options"].page_load_strategy == "none"
     assert not any(
         argument.startswith("--user-data-dir=")
         for argument in captured["options"].arguments
