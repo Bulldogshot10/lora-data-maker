@@ -137,8 +137,7 @@ def test_export_command_returns_failure_when_candidate_fails(tmp_path):
 
     image_id = "good"
     Image.new("RGB", (32, 32), (20, 30, 40)).save(processed / f"{image_id}.jpg")
-    (captions / f"{image_id}.txt").write_text("julia
-", encoding="utf-8")
+    (captions / f"{image_id}.txt").write_text("julia\\n", encoding="utf-8")
     project.manifest.add_image(
         ImageRecord(
             image_id=image_id,
