@@ -377,3 +377,94 @@ def test_chromium_does_not_force_custom_user_data_dir(monkeypatch, tmp_path):
         for argument in captured["options"].arguments
     )
     assert not (tmp_path / "chromium-profiles").exists()
+
+
+def test_chromium_preserves_candidate_order(monkeypatch):
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
+
+    class FakeDriver:
+        title = "Google Images"
+
+        def __init__(self):
+            self.quit_called = False
+
+        def get(self, _url):
+            return None
+
+        def execute_script(self, script):
+            if "document.body" in script:
+                return "normal results"
+            if "querySelectorAll" in script:
+                return [
+                    "https://www.google.com/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Ffirst.jpg",
+                    "https://www.google.com/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Fsecond.jpg",
+                ]
+            return None
+
+        def quit(self):
+            self.quit_called = True
+
+    driver = FakeDriver()
+    scraper = ChromiumImagesScraper(delay=0)
+    monkeypatch.setattr(scraper, "_start_driver", lambda: driver)
+
+    results = list(scraper.search("julia", limit=2))
+
+    assert [item.image_url for item in results] == [
+        "https://cdn.example.com/first.jpg",
+        "https://cdn.example.com/second.jpg",
+    ]
+    assert driver.quit_called is True
+
+
+def test_chromium_page_timeout_retries_and_falls_back_to_bing(monkeypatch):
+    import sys
+    import types
+
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
+
+    class TimeoutException(Exception):
+        pass
+
+    selenium = sys.modules.get("selenium")
+    common = types.ModuleType("selenium.common")
+    exceptions = types.ModuleType("selenium.common.exceptions")
+    exceptions.TimeoutException = TimeoutException
+    common.exceptions = exceptions
+
+    monkeypatch.setitem(
+        sys.modules,
+        "selenium.common",
+        common,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "selenium.common.exceptions",
+        exceptions,
+    )
+
+    class FakeDriver:
+        def __init__(self):
+            self.get_calls = 0
+            self.stop_calls = 0
+
+        def get(self, _url):
+            self.get_calls += 1
+            raise TimeoutException("timed out")
+
+        def execute_script(self, script):
+            if "window.stop" in script:
+                self.stop_calls += 1
+            return None
+
+    driver = FakeDriver()
+    scraper = ChromiumImagesScraper(retries=1, delay=0)
+
+    assert scraper._load_page(
+        driver,
+        "https://www.google.com/search?tbm=isch&q=julia",
+        provider="google",
+    ) is False
+    assert driver.get_calls == 2
+    assert driver.stop_calls == 2
+    assert selenium is not None or "selenium" not in sys.modules
