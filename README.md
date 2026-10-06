@@ -12,7 +12,7 @@ Model training and image generation are intentionally outside this project.
 
 ## Current state
 
-Phase 6 is implemented. The CLI can initialize projects, inspect manifests, scrape/download images, validate image files, deduplicate exact and near-duplicate images, apply quality filters, and process validated images into standardized work outputs.
+Phase 7 is implemented. The CLI can initialize projects, inspect manifests, scrape/download images, validate, deduplicate, quality-filter, process images, and run the configured WD14-compatible ONNX tagger with cached model files.
 
 ## Design goals
 
@@ -62,7 +62,15 @@ Process the cleaned images into train-ready work files:
 lora-data-maker process
 ```
 
-Downloaded images stay in `raw/`. The clean and process stages never delete or rewrite them. Processed outputs are written under `work/processed/` as RGB JPEGs, with orientation, resize, crop, and output metadata recorded in `manifest.json`.
+Run the configured WD14 tagger on processed images:
+
+```bash
+lora-data-maker tag
+```
+
+The first tag run downloads the pinned WD14 model into `~/.cache/lora-data-maker/taggers/wd14/`. The core package does not import ONNX Runtime until the tagger is actually used.
+
+Downloaded images stay in `raw/`. The clean and process stages never delete or rewrite them. Processed outputs are written under `work/processed/` as RGB JPEGs, and tags plus tagger scores are recorded in `manifest.json`.
 
 Inspect project state:
 
@@ -89,4 +97,4 @@ lora-data-maker pack
 lora-data-maker info
 ```
 
-Upcoming stages build on the Phase 6 processing stage.
+Upcoming stages build on the Phase 7 tagging stage.
