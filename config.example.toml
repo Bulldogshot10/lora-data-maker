@@ -1,7 +1,7 @@
 [project]
-name = "julia"
-subject = "julia"
-trigger = "julia"
+name = "my-dataset"
+subject = "my-dataset"
+trigger = "my-dataset"
 
 [paths]
 raw = "raw"
@@ -11,7 +11,7 @@ cache = "cache"
 
 [scraper]
 backend = "google"
-query = "julia"
+query = "my-dataset"
 count = 300
 timeout = 20
 retries = 3
