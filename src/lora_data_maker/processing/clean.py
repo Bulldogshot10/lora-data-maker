@@ -140,7 +140,14 @@ def clean_manifest(
 def _exact_deduplicate(candidates, root: Path, *, enabled: bool) -> int:
     if not enabled:
         for image in candidates:
-            image.sha256 = sha256_file(root / image.path)
+            try:
+                image.sha256 = sha256_file(root / image.path)
+            except (OSError, ValueError):
+                image.set_status(
+                    "rejected",
+                    reason="could not compute sha256",
+                )
+                image.metadata["dedup_stage"] = "rejected"
         return 0
 
     seen: dict[str, object] = {}
@@ -148,7 +155,15 @@ def _exact_deduplicate(candidates, root: Path, *, enabled: bool) -> int:
 
     for image in candidates:
         path = root / image.path
-        image.sha256 = sha256_file(path)
+        try:
+            image.sha256 = sha256_file(path)
+        except (OSError, ValueError):
+            image.set_status(
+                "rejected",
+                reason="could not compute sha256",
+            )
+            image.metadata["dedup_stage"] = "rejected"
+            continue
 
         previous = seen.get(image.sha256)
         if previous is None:
