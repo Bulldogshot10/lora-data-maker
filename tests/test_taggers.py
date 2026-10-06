@@ -182,4 +182,4 @@ def test_wd14_fake_inference_runs_preprocess_and_decode(tmp_path):
 
     assert len(results) == 2
     assert results[0].tags == ["blue eyes", "julia", "smile"]
-    assert results[0].ratings["safe"] == 0.99
+    assert abs(results[0].ratings["safe"] - 0.99) < 1e-6
