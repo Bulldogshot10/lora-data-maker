@@ -74,6 +74,8 @@ def test_run_build_runs_stages_in_order_and_records_summary(tmp_path, monkeypatc
         "process",
         "clean-tags",
         "caption",
+        "export",
+        "pack",
     ]
 
     project = DatasetProject.open(ProjectPaths.from_root(root))
