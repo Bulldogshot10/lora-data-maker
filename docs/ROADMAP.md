@@ -47,10 +47,10 @@ Phase 8 — tag cleaning and subject injection ✓ implemented
 - Inject canonical `subject` exactly once at the front of each tagged image's tag list.
 - Persist tag-cleaning metadata and expose standalone `clean-tags` stage.
 
-Phase 9 — caption and trigger system
-- Deterministic caption writer.
-- Derive trigger from subject by default.
-- Idempotent trigger injection.
+Phase 9 — caption and trigger system ✓ implemented
+- Deterministic UTF-8 caption writer under `work/captions/`.
+- Derive trigger from subject by default, with explicit trigger support.
+- Idempotent trigger injection and resumable captioned state.
 
 Phase 10 — build orchestration
 - End-to-end build command.
