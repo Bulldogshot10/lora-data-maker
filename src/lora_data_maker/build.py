@@ -145,10 +145,10 @@ def run_build(
         raise ValueError("config section [scraper] must be a table")
 
     backend = str(scraper_config.get("backend", "google"))
-    if backend not in {"google", "direct"}:
+    if backend not in {"google", "duckduckgo", "chromium", "direct"}:
         raise ValueError(
             f"unsupported scraper backend {backend!r}; "
-            "expected 'google' or 'direct'"
+            "expected 'google', 'duckduckgo', 'chromium', or 'direct'"
         )
 
     project = DatasetProject.open(paths)
