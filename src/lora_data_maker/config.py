@@ -78,6 +78,10 @@ remove = [
 separator = ", "
 subject_position = "first"
 trigger_from_subject = true
+
+[export]
+repeats = 1
+folder_name = ""
 """
 
 
