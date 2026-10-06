@@ -14,8 +14,6 @@ The default installation must be small enough for Termux.
 
 tagger: ONNX Runtime for local WD14-compatible tagging.
 
-gallery: gallery-dl integration for future/supported external sources.
-
 dev: pytest and future development tooling.
 
 ## Rules
