@@ -147,31 +147,42 @@ class MobileWD14Tagger:
                 "install the 'tagger' extra"
             ) from exc
 
-        files = self.model_cache.ensure(model_sha256=self.model_sha256)
-        session = session_factory(str(files.model_path))
-        inputs = session.get_inputs()
-        if not inputs:
-            raise TaggerError("mobile WD14 ONNX model has no inputs")
-
-        shape = inputs[0].shape
-        if len(shape) != 4:
-            raise TaggerError(
-                f"unexpected mobile WD14 input shape: {shape}"
+        try:
+            files = self.model_cache.ensure(
+                model_sha256=self.model_sha256,
             )
+            session = session_factory(str(files.model_path))
+            inputs = session.get_inputs()
+            if not inputs:
+                raise TaggerError("mobile WD14 ONNX model has no inputs")
 
-        if shape[3] not in (3, "3", None):
-            raise TaggerError(
-                f"unexpected mobile WD14 channel count: {shape[3]}"
-            )
+            shape = inputs[0].shape
+            if len(shape) != 4:
+                raise TaggerError(
+                    f"unexpected mobile WD14 input shape: {shape}"
+                )
 
-        input_type = str(getattr(inputs[0], "type", "")).lower()
-        if input_type and "uint8" not in input_type:
+            if shape[3] not in (3, "3", None):
+                raise TaggerError(
+                    f"unexpected mobile WD14 channel count: {shape[3]}"
+                )
+
+            input_type = str(getattr(inputs[0], "type", "")).lower()
+            if input_type and "uint8" not in input_type:
+                raise TaggerError(
+                    f"unexpected mobile WD14 input type: {input_type}"
+                )
+
+            labels = MobileWD14Labels.load(files.labels_path)
+        except TaggerError:
+            raise
+        except Exception as exc:
             raise TaggerError(
-                f"unexpected mobile WD14 input type: {input_type}"
-            )
+                f"could not load mobile WD14 tagger model: {exc}"
+            ) from exc
 
         self._session = session
-        self._labels = MobileWD14Labels.load(files.labels_path)
+        self._labels = labels
 
     def tag_image(self, path: Path | str) -> TagResult:
         return self.tag_images([path])[0]
