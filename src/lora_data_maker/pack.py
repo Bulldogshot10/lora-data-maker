@@ -48,6 +48,15 @@ def pack_dataset(
     if not manifest.is_file():
         raise FileNotFoundError(f"manifest file not found: {manifest}")
 
+    try:
+        archive.relative_to(dataset_root)
+    except ValueError:
+        pass
+    else:
+        raise ValueError(
+            "archive path must be outside the exported dataset directory"
+        )
+
     files = sorted(
         path
         for path in dataset_root.rglob("*")
