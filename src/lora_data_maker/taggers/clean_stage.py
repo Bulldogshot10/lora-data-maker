@@ -1,10 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .filters import clean_tags
+from .filters import clean_tags, normalize_tag
 
 if TYPE_CHECKING:
     from ..models import ProjectManifest
@@ -32,9 +31,19 @@ def clean_tag_manifest(
         key=lambda image: image.path,
     )
 
-    cleaned = 0
+    blacklist = {
+        normalize_tag(tag)
+        for tag in remove_tags
+        if normalize_tag(tag)
+    }
+
     for image in candidates:
         before = list(image.tags)
+        normalized_before = [
+            normalize_tag(tag)
+            for tag in before
+            if normalize_tag(tag)
+        ]
         image.tags = clean_tags(
             before,
             remove=remove_tags,
@@ -42,21 +51,25 @@ def clean_tag_manifest(
         )
 
         image.metadata["tag_clean_stage"] = "cleaned"
-        image.metadata["tag_clean_removed"] = [
-            tag for tag in before
-            if tag not in image.tags
-        ]
+        image.metadata["tag_clean_input_count"] = len(before)
+        image.metadata["tag_clean_output_count"] = len(image.tags)
+        image.metadata["tag_clean_blacklist"] = sorted(blacklist)
         image.metadata["tag_clean_subject"] = manifest.subject
         image.metadata["tag_clean_trigger"] = manifest.trigger
+        image.metadata["tag_clean_duplicates_removed"] = max(
+            0,
+            len(set(normalized_before)) - len(
+                [tag for tag in normalized_before if tag not in blacklist]
+            ),
+        )
 
         # Phase 8 mutates only tags/metadata. The image remains tagged;
         # phase 9 owns caption-file generation and trigger injection.
         image.set_status("tagged")
-        cleaned += 1
 
     return TagCleanSummary(
         scanned=len(candidates),
-        cleaned=cleaned,
+        cleaned=len(candidates),
         skipped=sum(
             1
             for image in manifest.images.values()
