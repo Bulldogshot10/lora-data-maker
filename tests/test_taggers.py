@@ -307,6 +307,7 @@ def test_wd14_model_load_failure_becomes_tagger_error(tmp_path):
 
     tagger = WD14Tagger(
         model_cache=BrokenCache(),
+        session_factory=lambda _path: None,
     )
 
     import pytest
@@ -323,6 +324,7 @@ def test_mobile_model_load_failure_becomes_tagger_error(tmp_path):
 
     tagger = MobileWD14Tagger(
         model_cache=BrokenCache(),
+        session_factory=lambda _path: None,
     )
 
     import pytest
