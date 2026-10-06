@@ -13,7 +13,7 @@ from .logging import configure_logging
 from .images import iter_image_files
 from .manifest import register_image
 from .paths import ProjectPaths, find_project_root
-from .processing import validate_image
+from .processing import clean_manifest, validate_image
 from .scrapers import ScraperError, ScraperManager
 
 
@@ -88,6 +88,15 @@ def build_parser() -> argparse.ArgumentParser:
         "validate", help="validate image files in the project's raw directory"
     )
     validate_parser.add_argument(
+        "--path",
+        default=".",
+        help="project directory (default: current directory)",
+    )
+
+    clean_parser = subparsers.add_parser(
+        "clean", help="deduplicate and quality-filter validated images"
+    )
+    clean_parser.add_argument(
         "--path",
         default=".",
         help="project directory (default: current directory)",
@@ -238,6 +247,60 @@ def command_validate(args: argparse.Namespace) -> int:
     return 0 if scanned else 1
 
 
+def command_clean(args: argparse.Namespace) -> int:
+    root = find_project_root(args.path)
+    config = load_config(root / "config.toml")
+    paths = ProjectPaths.from_root(root, config.get("paths", {}))
+    project = DatasetProject.open(paths)
+
+    dedup_config = config.get("dedup", {})
+    quality_config = config.get("quality", {})
+    processing_config = config.get("processing", {})
+
+    if not isinstance(dedup_config, dict):
+        raise LoraDataMakerError("config section [dedup] must be a table")
+    if not isinstance(quality_config, dict):
+        raise LoraDataMakerError("config section [quality] must be a table")
+    if not isinstance(processing_config, dict):
+        raise LoraDataMakerError("config section [processing] must be a table")
+
+    summary = clean_manifest(
+        project.manifest,
+        root=root,
+        exact=bool(dedup_config.get("exact", True)),
+        perceptual=bool(dedup_config.get("perceptual", True)),
+        perceptual_distance=int(dedup_config.get("perceptual_distance", 6)),
+        min_width=int(quality_config.get("min_width", 512)),
+        min_height=int(quality_config.get("min_height", 512)),
+        blur_threshold=float(
+            quality_config.get(
+                "blur_threshold",
+                processing_config.get("blur_threshold", 0.0),
+            )
+        ),
+        max_aspect_ratio=float(quality_config.get("max_aspect_ratio", 0.0)),
+    )
+
+    project.manifest.source.update(
+        {
+            "last_clean_scanned": summary.scanned,
+            "last_clean_exact_duplicates": summary.exact_duplicates,
+            "last_clean_perceptual_duplicates": summary.perceptual_duplicates,
+            "last_clean_quality_rejected": summary.quality_rejected,
+            "last_clean_kept": summary.kept,
+        }
+    )
+    project.save()
+
+    print(f"scanned: {summary.scanned}")
+    print(f"exact duplicates: {summary.exact_duplicates}")
+    print(f"perceptual duplicates: {summary.perceptual_duplicates}")
+    print(f"quality rejected: {summary.quality_rejected}")
+    print(f"kept: {summary.kept}")
+
+    return 0 if summary.scanned else 1
+
+
 def command_scrape(args: argparse.Namespace) -> int:
     root = find_project_root(args.path)
     config = load_config(root / "config.toml")
@@ -326,6 +389,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return command_scrape(args)
         if args.command == "validate":
             return command_validate(args)
+        if args.command == "clean":
+            return command_clean(args)
     except (
         LoraDataMakerError,
         FileNotFoundError,
