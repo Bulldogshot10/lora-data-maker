@@ -93,3 +93,18 @@ def test_manifest_rejects_mismatched_image_key():
 
     with pytest.raises(ValueError, match="does not match"):
         ProjectManifest.from_dict(manifest)
+
+
+def test_image_record_rejects_unsafe_image_id():
+    import pytest
+
+    for value in ("../evil", "sub/evil", r"sub\evil", "C:\\evil"):
+        with pytest.raises(ValueError, match="invalid image id"):
+            ImageRecord(image_id=value, path="raw/a.jpg")
+
+
+def test_image_record_rejects_non_string_id():
+    import pytest
+
+    with pytest.raises(ValueError, match="image id must be a string"):
+        ImageRecord(image_id=123, path="raw/a.jpg")
