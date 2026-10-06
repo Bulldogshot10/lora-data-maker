@@ -131,6 +131,7 @@ class WD14Tagger:
         self,
         *,
         model_cache: HuggingFaceModelCache,
+        model_sha256: str | None = None,
         threshold: float = 0.35,
         character_threshold: float = 0.85,
         use_mcut: bool = False,
@@ -148,6 +149,7 @@ class WD14Tagger:
             raise ValueError("batch_size must be greater than zero")
 
         self.model_cache = model_cache
+        self.model_sha256 = model_sha256
         self.threshold = threshold
         self.character_threshold = character_threshold
         self.use_mcut = use_mcut
@@ -183,7 +185,7 @@ class WD14Tagger:
                 "install the 'tagger' extra"
             ) from exc
 
-        files = self.model_cache.ensure()
+        files = self.model_cache.ensure(model_sha256=self.model_sha256)
         session = session_factory(str(files.model_path))
         inputs = session.get_inputs()
         if not inputs:
