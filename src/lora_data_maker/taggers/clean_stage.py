@@ -56,11 +56,11 @@ def clean_tag_manifest(
         image.metadata["tag_clean_blacklist"] = sorted(blacklist)
         image.metadata["tag_clean_subject"] = manifest.subject
         image.metadata["tag_clean_trigger"] = manifest.trigger
-        image.metadata["tag_clean_duplicates_removed"] = max(
-            0,
-            len(set(normalized_before)) - len(
-                [tag for tag in normalized_before if tag not in blacklist]
-            ),
+        image.metadata["tag_clean_blacklist_removed"] = sum(
+            tag in blacklist for tag in normalized_before
+        )
+        image.metadata["tag_clean_duplicates_removed"] = (
+            len(normalized_before) - len(set(normalized_before))
         )
 
         # Phase 8 mutates only tags/metadata. The image remains tagged;
