@@ -150,7 +150,7 @@ def run_build(
     if not isinstance(scraper_config, dict):
         raise ValueError("config section [scraper] must be a table")
 
-    backend = str(scraper_config.get("backend", "google"))
+    backend = str(scraper_config.get("backend", "duckduckgo"))
     if backend not in {"google", "duckduckgo", "chromium", "direct"}:
         raise ValueError(
             f"unsupported scraper backend {backend!r}; "
