@@ -19,8 +19,9 @@ Phase 3 — scraper engine ✓ implemented
 - Google Images backend, direct URL backend, retries, timeout, delay, archive, resume.
 - Project manifest records successful downloads and scrape summary.
 
-Phase 4 — image validation
+Phase 4 — image validation ✓ implemented
 - Decode validation, format handling, dimensions, file size, orientation, metadata.
+- Added standalone `validate` CLI command and manifest status updates.
 
 Phase 5 — deduplication and quality
 - SHA-256 exact deduplication.
