@@ -23,10 +23,11 @@ Phase 4 — image validation ✓ implemented
 - Decode validation, format handling, dimensions, file size, orientation, metadata.
 - Added standalone `validate` CLI command and manifest status updates.
 
-Phase 5 — deduplication and quality
+Phase 5 — deduplication and quality ✓ implemented
 - SHA-256 exact deduplication.
 - Perceptual-hash near-duplicate detection.
-- Resolution and blur/quality filters with auditable rejection reasons.
+- Resolution, aspect-ratio, and blur/quality filters with auditable rejection reasons.
+- Added standalone `clean` stage with persistent manifest metadata.
 
 Phase 6 — image processing
 - Resize, crop, aspect-ratio handling.
