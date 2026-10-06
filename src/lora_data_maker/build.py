@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import argparse
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Iterable
 from pathlib import Path
+from typing import Iterable
 
 
 BUILD_STAGES: tuple[str, ...] = (
@@ -150,30 +151,40 @@ def run_build(
             "expected 'google' or 'direct'"
         )
 
-    try:
-        project = DatasetProject.open(paths)
-    except Exception:
-        project = None
-
+    project = DatasetProject.open(paths)
     results: list[BuildStageResult] = []
 
+    project.manifest.source.update(
+        {
+            "last_build_started_at": started_at,
+            "last_build_selected_stages": list(selected),
+            "last_build_skipped_stages": [
+                stage for stage in BUILD_STAGES
+                if stage not in selected
+                and BUILD_STAGES.index(stage)
+                >= BUILD_STAGES.index(str(from_stage).strip().lower())
+                and BUILD_STAGES.index(stage)
+                <= BUILD_STAGES.index(str(to_stage).strip().lower())
+            ],
+        }
+    )
+    project.save()
+
     for index, stage in enumerate(selected, start=1):
-        if project is None:
-            before_counts = {}
-        else:
-            before_counts = project.manifest.counts()
+        project = DatasetProject.open(paths)
+        before_counts = project.manifest.counts()
 
         print(f"[{index}/{len(selected)}] {stage}")
 
         if stage == "scrape":
-            args = __import__("argparse").Namespace(
+            args = argparse.Namespace(
                 backend=backend,
                 query=None,
                 count=None,
                 path=str(root),
             )
         else:
-            args = __import__("argparse").Namespace(path=str(root))
+            args = argparse.Namespace(path=str(root))
 
         exit_code = int(commands[stage](args))
 
@@ -194,6 +205,25 @@ def run_build(
             )
         )
 
+        project = DatasetProject.open(paths)
+        project.manifest.source["last_build_stages"] = [
+            {
+                "name": item.name,
+                "status": item.status,
+                "exit_code": item.exit_code,
+                "before_counts": item.before_counts,
+                "after_counts": item.after_counts,
+            }
+            for item in results
+        ]
+        project.manifest.source["last_build_finished_at"] = utc_now()
+        project.manifest.source["last_build_success"] = exit_code == 0
+        if exit_code != 0:
+            project.manifest.source["last_build_failed_stage"] = stage
+        elif "last_build_failed_stage" in project.manifest.source:
+            project.manifest.source.pop("last_build_failed_stage", None)
+        project.save()
+
         if exit_code != 0:
             print(f"build stopped: {stage} exited with code {exit_code}")
             return BuildSummary(
@@ -202,6 +232,22 @@ def run_build(
                 started_at=started_at,
                 finished_at=utc_now(),
             )
+
+    project = DatasetProject.open(paths)
+    project.manifest.source["last_build_stages"] = [
+        {
+            "name": item.name,
+            "status": item.status,
+            "exit_code": item.exit_code,
+            "before_counts": item.before_counts,
+            "after_counts": item.after_counts,
+        }
+        for item in results
+    ]
+    project.manifest.source["last_build_finished_at"] = utc_now()
+    project.manifest.source["last_build_success"] = True
+    project.manifest.source.pop("last_build_failed_stage", None)
+    project.save()
 
     print("build complete")
     return BuildSummary(
