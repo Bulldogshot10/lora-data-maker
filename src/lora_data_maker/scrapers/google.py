@@ -65,6 +65,13 @@ class GoogleImagesScraper(Scraper):
         country: str | None = None,
         safe: str | None = None,
     ) -> None:
+        if timeout <= 0:
+            raise ValueError("timeout must be greater than zero")
+        if retries < 0:
+            raise ValueError("retries cannot be negative")
+        if delay < 0:
+            raise ValueError("delay cannot be negative")
+
         self.timeout = timeout
         self.retries = retries
         self.delay = delay
