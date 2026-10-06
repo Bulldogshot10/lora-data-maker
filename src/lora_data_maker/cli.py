@@ -51,7 +51,7 @@ def build_parser() -> argparse.ArgumentParser:
         "path",
         nargs="?",
         default=".",
-        help="project directory or child path (default to current directory)",
+        help="project directory or child path (default: current directory)",
     )
 
     return parser
