@@ -1,0 +1,45 @@
+name: core smoke
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.12", "3.13"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package
+        run: python -m pip install .
+
+      - name: Compile
+        run: python -m compileall -q src
+
+      - name: CLI version
+        run: lora-data-maker --version
+
+      - name: CLI help
+        run: lora-data-maker --help
+
+      - name: Init and inspect project
+        run: |
+          rm -rf .smoke-project
+          lora-data-maker init .smoke-project --name julia --subject julia
+          test -f .smoke-project/config.toml
+          test -d .smoke-project/raw
+          test -d .smoke-project/work
+          test -d .smoke-project/output
+          test -d .smoke-project/cache
+          lora-data-maker info .smoke-project
