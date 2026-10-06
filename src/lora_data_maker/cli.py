@@ -18,7 +18,13 @@ from .manifest import find_image_by_source_url, register_image
 from .pack import pack_dataset
 from .paths import ProjectPaths, find_project_root, manifest_path
 from .reconcile import reconcile_raw
-from .processing import ProcessConfig, clean_manifest, process_manifest, validate_image
+from .processing import (
+    ProcessConfig,
+    YuNetFaceDetector,
+    clean_manifest,
+    process_manifest,
+    validate_image,
+)
 from .scrapers import ScraperError, ScraperManager
 from .taggers import (
     TAGGER_PRESETS,
@@ -503,11 +509,15 @@ def command_process(args: argparse.Namespace) -> int:
         raise LoraDataMakerError("config field processing.face_crop must be a boolean")
     face_padding = float(processing_config.get("face_padding", 1.75))
 
+    face_detector = None
     if face_crop:
-        raise LoraDataMakerError(
-            "processing.face_crop is not available from the CLI yet; "
-            "the programmatic processing API requires a FaceDetector"
-        )
+        try:
+            face_detector = YuNetFaceDetector(
+                cache_dir=paths.cache / "face",
+            )
+        except RuntimeError as exc:
+            raise LoraDataMakerError(str(exc)) from exc
+        print("face detector: yunet_2023mar")
 
     settings = ProcessConfig(
         target_width=target_width,
@@ -523,6 +533,7 @@ def command_process(args: argparse.Namespace) -> int:
         root=root,
         output_dir=paths.work,
         config=settings,
+        face_detector=face_detector,
     )
 
     project.manifest.source.update(
