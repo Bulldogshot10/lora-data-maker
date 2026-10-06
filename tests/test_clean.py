@@ -6,11 +6,17 @@ from lora_data_maker.models import ImageRecord, ProjectManifest
 from lora_data_maker.processing.clean import clean_manifest
 
 
-def _make_subject_image(path: Path, *, blur: float = 0.0):
+def _make_subject_image(path: Path, *, blur: float = 0.0, variant: int = 0):
     image = Image.new("RGB", (640, 640), "white")
     draw = ImageDraw.Draw(image)
     draw.ellipse((100, 100, 540, 540), fill=(80, 120, 180))
-    draw.rectangle((240, 180, 400, 460), fill=(220, 80, 80))
+    if variant == 0:
+        draw.rectangle((240, 180, 400, 460), fill=(220, 80, 80))
+    else:
+        draw.polygon(
+            ((180, 420), (320, 140), (460, 420)),
+            fill=(70, 180, 100),
+        )
     if blur:
         image = image.filter(ImageFilter.GaussianBlur(blur))
     image.save(path, format="PNG")
@@ -30,7 +36,7 @@ def test_clean_exact_duplicate_and_quality_filter(tmp_path):
     _make_subject_image(raw / "001.png")
     (raw / "002.png").write_bytes((raw / "001.png").read_bytes())
     _make_subject_image(raw / "003.png", blur=8)
-    _make_subject_image(raw / "004.png")
+    _make_subject_image(raw / "004.png", variant=1)
 
     manifest = _manifest_for(
         "raw/001.png",
