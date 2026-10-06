@@ -75,13 +75,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scrape_parser.add_argument(
         "backend",
-        choices=("google", "duckduckgo", "direct"),
+        choices=("google", "duckduckgo", "chromium", "direct"),
         help="scraper backend",
     )
     scrape_parser.add_argument(
         "query",
         nargs="?",
-        help="Google query, or a text file of URLs for direct",
+        help="search query for google/duckduckgo/chromium, or a text file of URLs for direct",
     )
     scrape_parser.add_argument(
         "--count",
