@@ -50,3 +50,25 @@ def test_process_command_writes_work_and_preserves_raw(tmp_path):
 
     assert record.metadata["processing_stage"] == "processed"
     assert record.metadata["processing_mode"] == "cover"
+
+
+def test_process_command_rejects_unavailable_cli_face_crop(tmp_path):
+    import pytest
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="example",
+            subject="example",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    config = (root / "config.toml").read_text(encoding="utf-8")
+    config = config.replace("[processing]\ntarget_width", "[processing]\nface_crop = true\ntarget_width")
+    (root / "config.toml").write_text(config, encoding="utf-8")
+
+    with pytest.raises(Exception, match="face_crop"):
+        command_process(Namespace(path=str(root)))
