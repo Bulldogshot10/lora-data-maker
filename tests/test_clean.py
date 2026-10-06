@@ -126,3 +126,26 @@ def test_clean_quality_rejection_happens_before_perceptual_dedup(tmp_path):
     assert records["raw/002.png"].status == "rejected"
     assert summary.perceptual_duplicates == 0
     assert summary.quality_rejected == 1
+
+
+def test_clean_command_rejects_string_boolean_config(tmp_path):
+    import pytest
+    from argparse import Namespace
+    from lora_data_maker.cli import command_init, command_clean
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="example",
+            subject="example",
+            trigger=None,
+            force=False,
+        )
+    )
+    config = (root / "config.toml").read_text(encoding="utf-8")
+    config = config.replace("exact = true", 'exact = "false"', 1)
+    (root / "config.toml").write_text(config, encoding="utf-8")
+
+    with pytest.raises(Exception, match="dedup.exact"):
+        command_clean(Namespace(path=str(root)))
