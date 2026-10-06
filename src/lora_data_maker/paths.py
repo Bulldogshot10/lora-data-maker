@@ -42,6 +42,16 @@ class ProjectPaths:
             directory.mkdir(parents=True, exist_ok=True)
 
 
+def manifest_path(root: Path | str, path: Path | str) -> str:
+    """Represent a path relative to root when possible, otherwise absolute."""
+    root_path = Path(root).expanduser().resolve()
+    target = Path(path).expanduser().resolve()
+    try:
+        return target.relative_to(root_path).as_posix()
+    except ValueError:
+        return target.as_posix()
+
+
 def find_project_root(start: Path | str = ".") -> Path:
     current = Path(start).expanduser().resolve()
     if current.is_file():
