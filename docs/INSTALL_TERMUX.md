@@ -66,14 +66,6 @@ pytest -q
 
 The dev extra supplies NumPy and pytest.
 
-## Optional gallery tooling
-
-~~~bash
-python -m pip install ".[gallery]"
-~~~
-
-gallery-dl is optional and is not required by the built-in Google or direct URL backends.
-
 ## Android shared storage
 
 Grant Termux storage access when working with Android shared storage:
