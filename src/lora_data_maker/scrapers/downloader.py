@@ -156,9 +156,12 @@ class ImageDownloader:
             except (requests.RequestException, OSError, ScraperError) as exc:
                 last_error = exc
                 if output_path is not None:
-                    part_path = output_path.with_name(f".{output_path.name}.part")
+                    part_path = output_path.with_name(
+                        f".{output_path.name}.part"
+                    )
                     try:
                         part_path.unlink(missing_ok=True)
+                        output_path.unlink(missing_ok=True)
                     except OSError:
                         pass
                 if attempt >= self.retries:
