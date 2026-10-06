@@ -58,10 +58,10 @@ Phase 10 — build orchestration ✓ implemented
 - State-aware resume through existing stage eligibility rules.
 - Progress output and persisted per-stage before/after summaries in the manifest.
 
-Phase 11 — export and packaging
-- Plain image+txt export.
-- Kohya-compatible dataset output.
-- ZIP packaging and manifest inclusion.
+Phase 11 — export and packaging ✓ implemented
+- Plain matching image + `.txt` export.
+- Kohya-style repeat/subject directory output.
+- ZIP packaging containing the exported dataset and `manifest.json`.
 
 Phase 12 — incremental processing
 - Add-only scrape runs.
