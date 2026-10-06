@@ -25,6 +25,7 @@ count = 300
 timeout = 20
 retries = 3
 delay = 1.0
+fallbacks = []
 min_width = 512
 min_height = 512
 
