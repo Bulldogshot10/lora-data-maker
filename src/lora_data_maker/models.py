@@ -47,7 +47,9 @@ class ImageRecord:
     VALID_STATUSES: ClassVar[set[str]] = set(IMAGE_STATUSES)
 
     def __post_init__(self) -> None:
-        value = str(self.image_id)
+        if not isinstance(self.image_id, str):
+            raise ValueError("image id must be a string")
+        value = self.image_id
         if (
             not value
             or value in {".", ".."}
