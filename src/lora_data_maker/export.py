@@ -6,6 +6,8 @@ import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
+from .paths import manifest_path
+
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -147,8 +149,8 @@ def export_manifest(
                 "export_layout": "kohya",
                 "export_repeats": repeats,
                 "export_folder": folder,
-                "export_image_path": destination_image.relative_to(root_path).as_posix(),
-                "export_caption_path": destination_caption.relative_to(root_path).as_posix(),
+                "export_image_path": manifest_path(root_path, destination_image),
+                "export_caption_path": manifest_path(root_path, destination_caption),
             }
         )
         image.set_status("exported")
