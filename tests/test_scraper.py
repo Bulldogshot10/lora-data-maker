@@ -288,3 +288,92 @@ def test_bing_extracts_original_image_urls():
         "https://cdn.example.com/a.jpg",
         "https://cdn.example.com/b.png",
     ]
+
+
+def test_chromium_does_not_force_custom_user_data_dir(monkeypatch, tmp_path):
+    import sys
+    import types
+
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
+
+    captured = {}
+
+    class FakeOptions:
+        def __init__(self):
+            self.arguments = []
+            self.binary_location = None
+
+        def add_argument(self, value):
+            self.arguments.append(value)
+
+    class FakeService:
+        def __init__(self, executable_path):
+            self.executable_path = executable_path
+
+    class FakeDriver:
+        def __init__(self):
+            self.timeout = None
+
+        def set_page_load_timeout(self, timeout):
+            self.timeout = timeout
+
+        def quit(self):
+            pass
+
+    def fake_chrome(*, service, options):
+        captured["service"] = service
+        captured["options"] = options
+        return FakeDriver()
+
+    selenium = types.ModuleType("selenium")
+    webdriver = types.ModuleType("selenium.webdriver")
+    webdriver.Chrome = fake_chrome
+    selenium.webdriver = webdriver
+
+    common = types.ModuleType("selenium.common")
+    exceptions = types.ModuleType("selenium.common.exceptions")
+    exceptions.WebDriverException = type("WebDriverException", (Exception,), {})
+    common.exceptions = exceptions
+
+    chrome = types.ModuleType("selenium.webdriver.chrome")
+    options_module = types.ModuleType("selenium.webdriver.chrome.options")
+    options_module.Options = FakeOptions
+    service_module = types.ModuleType("selenium.webdriver.chrome.service")
+    service_module.Service = FakeService
+
+    monkeypatch.setitem(sys.modules, "selenium", selenium)
+    monkeypatch.setitem(sys.modules, "selenium.webdriver", webdriver)
+    monkeypatch.setitem(sys.modules, "selenium.common", common)
+    monkeypatch.setitem(sys.modules, "selenium.common.exceptions", exceptions)
+    monkeypatch.setitem(sys.modules, "selenium.webdriver.chrome", chrome)
+    monkeypatch.setitem(
+        sys.modules,
+        "selenium.webdriver.chrome.options",
+        options_module,
+    )
+    monkeypatch.setitem(
+        sys.modules,
+        "selenium.webdriver.chrome.service",
+        service_module,
+    )
+
+    scraper = ChromiumImagesScraper(
+        timeout=7,
+        profile_root=tmp_path / "chromium-profiles",
+    )
+    monkeypatch.setattr(
+        scraper,
+        "_resolve_executable",
+        lambda value: f"/fake/{value}",
+    )
+
+    driver = scraper._start_driver()
+
+    assert driver.timeout == 7
+    assert captured["service"].executable_path == "/fake/chromedriver"
+    assert captured["options"].binary_location == "/fake/chromium-browser"
+    assert not any(
+        argument.startswith("--user-data-dir=")
+        for argument in captured["options"].arguments
+    )
+    assert not (tmp_path / "chromium-profiles").exists()
