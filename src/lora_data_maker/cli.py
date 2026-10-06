@@ -13,7 +13,7 @@ from .logging import configure_logging
 from .images import iter_image_files
 from .manifest import register_image
 from .paths import ProjectPaths, find_project_root
-from .processing import clean_manifest, validate_image
+from .processing import ProcessConfig, clean_manifest, process_manifest, validate_image
 from .scrapers import ScraperError, ScraperManager
 
 
@@ -97,6 +97,15 @@ def build_parser() -> argparse.ArgumentParser:
         "clean", help="deduplicate and quality-filter validated images"
     )
     clean_parser.add_argument(
+        "--path",
+        default=".",
+        help="project directory (default: current directory)",
+    )
+
+    process_parser = subparsers.add_parser(
+        "process", help="resize, crop, orient, and export validated images to work/"
+    )
+    process_parser.add_argument(
         "--path",
         default=".",
         help="project directory (default: current directory)",
@@ -301,6 +310,60 @@ def command_clean(args: argparse.Namespace) -> int:
     return 0 if summary.scanned else 1
 
 
+def command_process(args: argparse.Namespace) -> int:
+    root = find_project_root(args.path)
+    config = load_config(root / "config.toml")
+    paths = ProjectPaths.from_root(root, config.get("paths", {}))
+    project = DatasetProject.open(paths)
+
+    processing_config = config.get("processing", {})
+    if not isinstance(processing_config, dict):
+        raise LoraDataMakerError("config section [processing] must be a table")
+
+    target_size = int(processing_config.get("target_size", 512))
+    target_width = int(processing_config.get("target_width", target_size))
+    target_height = int(processing_config.get("target_height", target_size))
+
+    resize_mode = str(processing_config.get("resize_mode", "cover")).lower()
+    jpeg_quality = int(processing_config.get("jpeg_quality", 95))
+    face_crop = bool(processing_config.get("face_crop", False))
+    face_padding = float(processing_config.get("face_padding", 1.75))
+
+    settings = ProcessConfig(
+        target_width=target_width,
+        target_height=target_height,
+        resize_mode=resize_mode,
+        jpeg_quality=jpeg_quality,
+        face_crop=face_crop,
+        face_padding=face_padding,
+    )
+
+    processed, failed, skipped = process_manifest(
+        project.manifest,
+        root=root,
+        output_dir=paths.work,
+        config=settings,
+    )
+
+    project.manifest.source.update(
+        {
+            "last_process_processed": processed,
+            "last_process_failed": failed,
+            "last_process_skipped": skipped,
+            "last_process_target": [target_width, target_height],
+            "last_process_resize_mode": resize_mode,
+        }
+    )
+    project.save()
+
+    print(f"processed: {processed}")
+    print(f"failed: {failed}")
+    print(f"skipped: {skipped}")
+    print(f"work: {paths.work / 'processed'}")
+
+    return 0 if processed or skipped else 1
+
+
 def command_scrape(args: argparse.Namespace) -> int:
     root = find_project_root(args.path)
     config = load_config(root / "config.toml")
@@ -391,6 +454,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return command_validate(args)
         if args.command == "clean":
             return command_clean(args)
+        if args.command == "process":
+            return command_process(args)
     except (
         LoraDataMakerError,
         FileNotFoundError,
