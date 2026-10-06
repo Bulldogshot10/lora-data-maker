@@ -53,7 +53,7 @@ Phase 9 — caption and trigger system ✓ implemented
 - Idempotent trigger injection and resumable captioned state.
 
 Phase 10 — build orchestration ✓ implemented
-- End-to-end `build` command from scrape through caption.
+- End-to-end `build` command from scrape through pack.
 - Contiguous stage ranges plus repeated explicit `--skip` controls.
 - State-aware resume through existing stage eligibility rules.
 - Progress output and persisted per-stage before/after summaries in the manifest.
@@ -88,3 +88,8 @@ Phase 16 — v1.0 release ✓ implemented
 - Freeze the supported feature set at v1.0.0.
 - Run clean-install and offline end-to-end acceptance tests.
 - Publish release notes, Apache 2.0 license, third-party NOTICE, responsible-use policy, and known platform constraints.
+
+Phase 17 — v1.3 tagger presets ✓ implemented
+- Sweetspot and potato WD14-compatible presets.
+- Pinned model artifacts with SHA-256 verification.
+- Mobile-friendly tagging path for constrained devices.
