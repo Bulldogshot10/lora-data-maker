@@ -380,7 +380,23 @@ def test_chromium_does_not_force_custom_user_data_dir(monkeypatch, tmp_path):
 
 
 def test_chromium_preserves_candidate_order(monkeypatch):
+    import sys
+    import types
+
     from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
+
+    class TimeoutException(Exception):
+        pass
+
+    selenium = types.ModuleType("selenium")
+    common = types.ModuleType("selenium.common")
+    exceptions = types.ModuleType("selenium.common.exceptions")
+    exceptions.TimeoutException = TimeoutException
+    common.exceptions = exceptions
+
+    monkeypatch.setitem(sys.modules, "selenium", selenium)
+    monkeypatch.setitem(sys.modules, "selenium.common", common)
+    monkeypatch.setitem(sys.modules, "selenium.common.exceptions", exceptions)
 
     class FakeDriver:
         title = "Google Images"
