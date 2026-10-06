@@ -25,6 +25,7 @@ gallery = [
   "gallery-dl>=1.29,<2",
 ]
 dev = [
+  "numpy>=1.26,<3",
   "pytest>=8,<9",
 ]
 
