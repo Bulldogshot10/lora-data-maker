@@ -753,3 +753,47 @@ def test_downloader_rolls_back_file_when_archive_update_fails(tmp_path):
         )
 
     assert not (tmp_path / "raw" / "000001.jpg").exists()
+
+
+def test_scrape_command_fails_when_target_count_is_not_reached(tmp_path, monkeypatch):
+    from argparse import Namespace
+    from lora_data_maker.cli import command_init, command_scrape
+    from lora_data_maker.scrapers.downloader import DownloadResult
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    result = DownloadResult(
+        url="https://cdn.example.com/001.jpg",
+        path=root / "raw" / "000001.jpg",
+        sha256="0" * 64,
+        file_size=123,
+        content_type="image/jpeg",
+    )
+
+    class FakeManager:
+        def __init__(self, **kwargs):
+            pass
+
+        def run(self, query, *, count, known_urls):
+            assert count == 3
+            return [result], []
+
+    monkeypatch.setattr("lora_data_maker.cli.ScraperManager", FakeManager)
+
+    assert command_scrape(
+        Namespace(
+            backend="direct",
+            query="unused.txt",
+            count=3,
+            path=str(root),
+        )
+    ) == 1
