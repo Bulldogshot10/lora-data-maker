@@ -148,3 +148,42 @@ def test_google_detects_verification_page():
         assert "verification" in str(exc).lower()
     else:
         raise AssertionError("expected verification page to fail")
+
+
+def test_scraper_manager_skips_urls_already_in_manifest(tmp_path):
+    from lora_data_maker.scrapers.base import ImageResult
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    manager = ScraperManager(
+        backend="direct",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        delay=0,
+    )
+
+    class FakeScraper:
+        def search(self, query, *, limit):
+            yield ImageResult(
+                image_url="https://example.com/already.jpg",
+                query=query,
+            )
+
+    calls = []
+
+    class FakeDownloader:
+        def download(self, *args, **kwargs):
+            calls.append(args[0])
+            raise AssertionError("known URL should not reach downloader")
+
+    manager.scraper = FakeScraper()
+    manager.downloader = FakeDownloader()
+
+    downloads, failures = manager.run(
+        "julia",
+        count=1,
+        known_urls={"https://example.com/already.jpg"},
+    )
+
+    assert downloads == []
+    assert failures == []
+    assert calls == []
