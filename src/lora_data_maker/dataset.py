@@ -62,6 +62,7 @@ class DatasetProject:
         return cls(paths, load_manifest(paths.root / MANIFEST_FILENAME))
 
     def save(self) -> Path:
+        self.manifest.touch()
         return save_manifest(self.manifest, self.manifest_path)
 
     def counts(self) -> dict[str, int]:
