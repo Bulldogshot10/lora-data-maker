@@ -24,9 +24,6 @@ tagger = [
   "numpy>=1.26,<3",
   "onnxruntime>=1.17,<2",
 ]
-gallery = [
-  "gallery-dl>=1.29,<2",
-]
 chromium = [
   "selenium>=4.37,<5",
 ]
