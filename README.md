@@ -12,7 +12,7 @@ Model training and image generation are intentionally outside this project.
 
 ## Current state
 
-Phase 5 is implemented. The CLI can initialize projects, inspect manifests, scrape/download images, validate image files, deduplicate exact and near-duplicate images, and apply resolution/blur quality filters with auditable manifest reasons.
+Phase 6 is implemented. The CLI can initialize projects, inspect manifests, scrape/download images, validate image files, deduplicate exact and near-duplicate images, apply quality filters, and process validated images into standardized work outputs.
 
 ## Design goals
 
@@ -56,7 +56,13 @@ Deduplicate and quality-filter the validated set:
 lora-data-maker clean
 ```
 
-Downloaded images stay in `raw/`. The clean stage never deletes or rewrites them. Duplicate and quality decisions are recorded in `manifest.json`, including SHA-256, perceptual hashes, blur scores, and rejection reasons.
+Process the cleaned images into train-ready work files:
+
+```bash
+lora-data-maker process
+```
+
+Downloaded images stay in `raw/`. The clean and process stages never delete or rewrite them. Processed outputs are written under `work/processed/` as RGB JPEGs, with orientation, resize, crop, and output metadata recorded in `manifest.json`.
 
 Inspect project state:
 
@@ -83,4 +89,4 @@ lora-data-maker pack
 lora-data-maker info
 ```
 
-Upcoming stages build on the Phase 5 cleaning stage.
+Upcoming stages build on the Phase 6 processing stage.
