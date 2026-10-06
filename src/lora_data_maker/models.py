@@ -46,6 +46,17 @@ class ImageRecord:
 
     VALID_STATUSES: ClassVar[set[str]] = set(IMAGE_STATUSES)
 
+    def __post_init__(self) -> None:
+        value = str(self.image_id)
+        if (
+            not value
+            or value in {".", ".."}
+            or "/" in value
+            or "\\" in value
+            or ":" in value
+        ):
+            raise ValueError(f"invalid image id: {value!r}")
+
     def set_status(self, status: str, *, reason: str | None = None) -> None:
         if status not in self.VALID_STATUSES:
             raise ValueError(
