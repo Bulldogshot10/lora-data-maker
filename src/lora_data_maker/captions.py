@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
+from .paths import manifest_path
 from .taggers.filters import normalize_tag
 
 if TYPE_CHECKING:
@@ -139,7 +140,7 @@ def caption_manifest(
         target = caption_root / f"{image.image_id}.txt"
         write_caption(target, caption)
 
-        image.caption_path = target.relative_to(root_path).as_posix()
+        image.caption_path = manifest_path(root_path, target)
         image.metadata["caption_stage"] = "captioned"
         image.metadata["caption_separator"] = settings.separator
         image.metadata["caption_subject"] = manifest.subject
