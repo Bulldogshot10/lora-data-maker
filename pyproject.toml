@@ -17,6 +17,10 @@ dependencies = [
 lora-data-maker = "lora_data_maker.cli:main"
 
 [project.optional-dependencies]
+tagger = [
+  "numpy>=1.26,<3",
+  "onnxruntime>=1.17,<2",
+]
 gallery = [
   "gallery-dl>=1.29,<2",
 ]
