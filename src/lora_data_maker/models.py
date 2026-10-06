@@ -72,7 +72,19 @@ class ImageRecord:
         values.setdefault("metadata", {})
         values.setdefault("created_at", utc_now())
         values.setdefault("updated_at", values["created_at"])
-        return cls(**values)
+        record = cls(**values)
+        if record.status not in cls.VALID_STATUSES:
+            raise ValueError(
+                f"invalid image status {record.status!r}; "
+                f"expected one of {sorted(cls.VALID_STATUSES)}"
+            )
+        if not isinstance(record.tags, list) or not all(
+            isinstance(tag, str) for tag in record.tags
+        ):
+            raise ValueError("image record tags must be a list of strings")
+        if not isinstance(record.metadata, dict):
+            raise ValueError("image record metadata must be an object")
+        return record
 
 
 @dataclass
