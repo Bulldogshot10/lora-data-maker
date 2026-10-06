@@ -231,7 +231,7 @@ class ChromiumImagesScraper:
         provider: str,
     ) -> bool:
         try:
-            from selenium.common.exceptions import TimeoutException
+            from selenium.common.exceptions import TimeoutException, WebDriverException
         except ImportError as exc:
             raise ScraperError(
                 "Chromium backend requires Selenium; install the "
@@ -242,8 +242,21 @@ class ChromiumImagesScraper:
         for attempt in range(self.retries + 1):
             try:
                 driver.get(target_url)
+                deadline = time.monotonic() + min(max(self.timeout, 1.0), 10.0)
+                while time.monotonic() < deadline:
+                    ready_state = str(
+                        driver.execute_script(
+                            "return document.readyState || '';"
+                        )
+                    ).lower()
+                    if ready_state in {"interactive", "complete"}:
+                        break
+                    time.sleep(0.1)
+
                 if provider == "google":
                     self._check_page(driver)
+
+                time.sleep(max(self.delay, 0.25))
                 return True
             except TimeoutException as exc:
                 last_timeout = exc
@@ -272,6 +285,25 @@ class ChromiumImagesScraper:
                 raise ScraperError(
                     f"Chromium {provider} page load timed out after "
                     f"{self.retries + 1} attempts"
+                ) from exc
+            except WebDriverException as exc:
+                if attempt < self.retries:
+                    print(
+                        f"scrape: chromium provider={provider} "
+                        f"webdriver error; retry={attempt + 1}/{self.retries}",
+                        flush=True,
+                    )
+                    time.sleep(min(max(self.delay, 0.25) * (2**attempt), 30.0))
+                    continue
+                if provider == "google":
+                    print(
+                        "scrape: google webdriver error; "
+                        "falling back to Bing Images",
+                        flush=True,
+                    )
+                    return False
+                raise ScraperError(
+                    f"Chromium {provider} webdriver error: {exc}"
                 ) from exc
             except ScraperError as exc:
                 if provider == "google" and "verification" in str(exc).lower():
@@ -304,16 +336,14 @@ class ChromiumImagesScraper:
 
         options = Options()
         options.binary_location = chromium_path
+        options.page_load_strategy = "eager"
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-extensions")
-        options.add_argument("--disable-background-networking")
-        options.add_argument("--disable-popup-blocking")
         options.add_argument("--no-first-run")
         options.add_argument("--no-default-browser-check")
-        options.add_argument("--lang=en-US")
         options.add_argument(f"--user-agent={self.user_agent}")
         options.add_argument("--window-size=1365,2200")
         service = Service(executable_path=driver_path)
