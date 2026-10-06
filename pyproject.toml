@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lora-data-maker"
-version = "1.0.1"
+version = "1.0.2"
 description = "Termux-first dataset preparation toolkit for LoRA image datasets."
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
