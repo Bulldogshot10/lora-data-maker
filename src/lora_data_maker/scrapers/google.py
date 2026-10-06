@@ -100,12 +100,14 @@ class GoogleImagesScraper(Scraper):
                     )
                 break
 
+            page_added = 0
             for rank, image_url in enumerate(candidates, start=1):
                 normalized = self._normalize_url(image_url)
                 if not normalized or normalized in seen:
                     continue
                 seen.add(normalized)
                 yielded += 1
+                page_added += 1
                 yield ImageResult(
                     image_url=normalized,
                     query=query,
@@ -114,6 +116,9 @@ class GoogleImagesScraper(Scraper):
                 )
                 if yielded >= limit:
                     break
+
+            if page_added == 0:
+                break
 
             page += 1
 
