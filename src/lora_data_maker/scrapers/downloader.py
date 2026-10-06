@@ -28,6 +28,15 @@ def _configure_termux_network() -> None:
         urllib3_connection.HAS_IPV6 = False
 
 
+
+
+def _retryable_request_error(exc: requests.RequestException) -> bool:
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status is None:
+        return True
+    return status == 408 or status == 429 or status >= 500
+
 IMAGE_MIME_TYPES = {
     "image/jpeg": ".jpg",
     "image/png": ".png",
@@ -153,6 +162,8 @@ class ImageDownloader:
                     except OSError:
                         pass
                 if attempt >= self.retries:
+                    break
+                if isinstance(exc, requests.RequestException) and not _retryable_request_error(exc):
                     break
                 time.sleep(min(max(self.delay, 0.25) * (2**attempt), 30.0))
             finally:
