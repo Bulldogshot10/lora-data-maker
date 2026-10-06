@@ -45,7 +45,6 @@ class ScraperManager:
                 retries=retries,
                 delay=delay,
                 user_agent=effective_user_agent,
-                profile_root=self.cache_dir / "chromium-profiles",
             )
         elif backend == "duckduckgo":
             self.scraper = DuckDuckGoImagesScraper(
