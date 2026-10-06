@@ -39,12 +39,12 @@ lora-data-maker info [path]
 Download images through a built-in backend.
 
 ~~~bash
-lora-data-maker scrape {google,duckduckgo,chromium,direct} [query] [--count COUNT] [--path PATH]
+lora-data-maker scrape {google,duckduckgo,chromium,direct} [query] [--fallback BACKEND] [--count COUNT] [--path PATH]
 ~~~
 
 Google uses query text with the legacy HTTP parser. DuckDuckGo uses query text and its image JSON endpoint. Chromium drives a local headless Chromium browser, renders Google Images, and falls back to Bing Images when Google presents a consent/verification page; it auto-scrolls and extracts original image URLs. Direct uses a text file containing source URLs.
 
-Scrape is add-only. Known manifest source URLs and archived URLs are skipped.
+Use `--fallback` more than once to define an ordered fallback chain. A fallback starts only after the previous backend exhausts its candidates or raises a scraper error before the requested count is reached. The chain stops immediately when the requested count is reached. Known, archived, and already-seen URLs are skipped across the whole chain.
 
 ## reconcile
 
