@@ -12,7 +12,7 @@ Model training and image generation are intentionally outside this project.
 
 ## Current state
 
-Phase 11 is implemented. The CLI can initialize projects, inspect manifests, scrape/download images, validate, deduplicate, quality-filter, process images, tag with the configured WD14-compatible ONNX model, clean/inject canonical dataset tags, write deterministic captions, orchestrate the pipeline, export a Kohya-style dataset, and package the result with the manifest.
+Phase 12 is implemented. The CLI can initialize projects, inspect manifests, scrape/download images, validate and reconcile raw files, deduplicate, quality-filter, process images, tag with the configured WD14-compatible ONNX model, clean/inject canonical dataset tags, write deterministic captions, orchestrate the pipeline, export a Kohya-style dataset, and package the result with the manifest.
 
 ## Design goals
 
@@ -107,11 +107,18 @@ lora-data-maker pack
 
 The first tag run downloads the pinned WD14 model into `~/.cache/lora-data-maker/taggers/wd14/`. The core package does not import ONNX Runtime until the tagger is actually used.
 
-Downloaded images stay in `raw/`. The clean, process, tag-clean, and caption stages never delete or rewrite source images. Processed outputs are written under `work/processed/` as RGB JPEGs, while captions are written under `work/captions/`. Tags, tagger scores, canonical subject metadata, and caption metadata are recorded in `manifest.json`.
+Downloaded images stay in `raw/`. Scrape is add-only, and manifest-aware URL filtering prevents already-known source URLs from being downloaded again. The reconcile stage only adds missing raw-file records and marks missing raw files in metadata without deleting manifest records or regressing completed states. The clean, process, tag-clean, and caption stages never delete or rewrite source images. Processed outputs are written under `work/processed/` as RGB JPEGs, while captions are written under `work/captions/`. Tags, tagger scores, canonical subject metadata, and caption metadata are recorded in `manifest.json`.
+
+Reconcile raw files into the manifest without regressing completed image states:
+
+```bash
+lora-data-maker reconcile
+```
 
 Inspect project state:
 
 ```bash
+lora-data-maker reconcile
 lora-data-maker info
 ```
 
