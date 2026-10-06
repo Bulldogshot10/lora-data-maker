@@ -547,7 +547,7 @@ def command_tag(args: argparse.Namespace) -> int:
     if not isinstance(tagger_config, dict):
         raise LoraDataMakerError("config section [tagger] must be a table")
 
-    selected_preset = args.preset or str(
+    selected_preset = getattr(args, "preset", None) or str(
         tagger_config.get("preset", "sweetspot")
     )
     resolved_preset = resolve_tagger_preset(selected_preset)
@@ -555,7 +555,7 @@ def command_tag(args: argparse.Namespace) -> int:
     tagger = build_tagger(
         tagger_config,
         cache_root=Path.home() / ".cache" / "lora-data-maker" / "taggers" / "wd14",
-        preset=args.preset,
+        preset=getattr(args, "preset", None),
     )
 
     summary = tag_manifest(
