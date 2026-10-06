@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
+from .scrapers.registry import validate_backend_chain
+
 
 BUILD_STAGES: tuple[str, ...] = (
     "scrape",
@@ -145,11 +147,17 @@ def run_build(
         raise ValueError("config section [scraper] must be a table")
 
     backend = str(scraper_config.get("backend", "google"))
-    if backend not in {"google", "duckduckgo", "chromium", "direct"}:
+    fallbacks = scraper_config.get("fallbacks", [])
+    if not isinstance(fallbacks, list) or not all(
+        isinstance(item, str) for item in fallbacks
+    ):
         raise ValueError(
-            f"unsupported scraper backend {backend!r}; "
-            "expected 'google', 'duckduckgo', 'chromium', or 'direct'"
+            "config field scraper.fallbacks must be an array of strings"
         )
+
+    backend_chain = validate_backend_chain(backend, fallbacks)
+    backend = backend_chain[0]
+    fallbacks = list(backend_chain[1:])
 
     project = DatasetProject.open(paths)
     results: list[BuildStageResult] = []
@@ -179,6 +187,7 @@ def run_build(
         if stage == "scrape":
             args = argparse.Namespace(
                 backend=backend,
+                fallbacks=list(fallbacks),
                 query=None,
                 count=None,
                 path=str(root),
