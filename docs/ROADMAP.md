@@ -29,8 +29,10 @@ Phase 5 — deduplication and quality ✓ implemented
 - Resolution, aspect-ratio, and blur/quality filters with auditable rejection reasons.
 - Added standalone `clean` stage with persistent manifest metadata.
 
-Phase 6 — image processing
+Phase 6 — image processing ✓ implemented
 - Resize, crop, aspect-ratio handling.
+- Standardized RGB JPEG output under `work/processed/`.
+- EXIF orientation handling without modifying `raw/`.
 - Optional face-aware processing behind a detector interface.
 
 Phase 7 — tagger engine
