@@ -102,3 +102,24 @@ def test_process_command_returns_failure_when_any_image_fails(tmp_path):
     project.save()
 
     assert command_process(Namespace(path=str(root))) == 1
+
+
+def test_process_command_rejects_string_face_crop_boolean(tmp_path):
+    import pytest
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="example",
+            subject="example",
+            trigger=None,
+            force=False,
+        )
+    )
+    config = (root / "config.toml").read_text(encoding="utf-8")
+    config = config.replace("face_crop = false", 'face_crop = "false"', 1)
+    (root / "config.toml").write_text(config, encoding="utf-8")
+
+    with pytest.raises(Exception, match="processing.face_crop"):
+        command_process(Namespace(path=str(root)))
