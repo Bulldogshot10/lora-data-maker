@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from .base import ScraperError
+
 
 class DownloadArchive:
     """Small persistent URL archive used to make downloads resumable."""
@@ -11,9 +13,15 @@ class DownloadArchive:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._urls: set[str] = set()
         if self.path.is_file():
+            try:
+                content = self.path.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                raise ScraperError(
+                    f"could not read download archive: {self.path}"
+                ) from exc
             self._urls = {
                 line.strip()
-                for line in self.path.read_text(encoding="utf-8").splitlines()
+                for line in content.splitlines()
                 if line.strip()
             }
 
