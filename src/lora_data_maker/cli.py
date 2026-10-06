@@ -439,12 +439,17 @@ def command_clean(args: argparse.Namespace) -> int:
         raise LoraDataMakerError("config section [quality] must be a table")
     if not isinstance(processing_config, dict):
         raise LoraDataMakerError("config section [processing] must be a table")
+    for key in ("exact", "perceptual"):
+        if key in dedup_config and not isinstance(dedup_config[key], bool):
+            raise LoraDataMakerError(
+                f"config field dedup.{key} must be a boolean"
+            )
 
     summary = clean_manifest(
         project.manifest,
         root=root,
-        exact=bool(dedup_config.get("exact", True)),
-        perceptual=bool(dedup_config.get("perceptual", True)),
+        exact=dedup_config.get("exact", True),
+        perceptual=dedup_config.get("perceptual", True),
         perceptual_distance=int(dedup_config.get("perceptual_distance", 6)),
         min_width=int(quality_config.get("min_width", 512)),
         min_height=int(quality_config.get("min_height", 512)),
@@ -493,7 +498,9 @@ def command_process(args: argparse.Namespace) -> int:
 
     resize_mode = str(processing_config.get("resize_mode", "cover")).lower()
     jpeg_quality = int(processing_config.get("jpeg_quality", 95))
-    face_crop = bool(processing_config.get("face_crop", False))
+    face_crop = processing_config.get("face_crop", False)
+    if not isinstance(face_crop, bool):
+        raise LoraDataMakerError("config field processing.face_crop must be a boolean")
     face_padding = float(processing_config.get("face_padding", 1.75))
 
     if face_crop:
