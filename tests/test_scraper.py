@@ -701,3 +701,15 @@ def test_google_stops_when_page_has_only_seen_urls(monkeypatch):
         "https://cdn.example.com/a.jpg"
     ]
     assert calls["count"] == 2
+
+
+def test_google_scraper_validates_parameters():
+    from lora_data_maker.scrapers.google import GoogleImagesScraper
+    import pytest
+
+    with pytest.raises(ValueError, match="timeout"):
+        GoogleImagesScraper(timeout=0)
+    with pytest.raises(ValueError, match="retries"):
+        GoogleImagesScraper(retries=-1)
+    with pytest.raises(ValueError, match="delay"):
+        GoogleImagesScraper(delay=-1)
