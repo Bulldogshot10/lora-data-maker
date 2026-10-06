@@ -1,6 +1,6 @@
 # Architecture Contract
 
-Status: Phase 6 implemented
+Status: Phase 7 implemented
 
 ## Purpose
 
@@ -88,9 +88,9 @@ The manifest is the durable state used for resume and audit.
 
 Taggers implement a common interface and are optional dependencies.
 
-The first planned backend is a WD14-compatible ONNX tagger. The core package must remain usable without an installed tagger runtime or model.
+The first backend is a WD14-compatible ONNX tagger. The implementation uses the model's 448x448 image input and selected_tags.csv category mapping, with lazy imports of NumPy and ONNX Runtime. Model files are cached by repository and revision, and the configured model SHA-256 is verified before use.
 
-Tagger output is treated as visual metadata. The tagger is not responsible for dataset identity.
+Tagger output is treated as visual metadata. General tags, character tags, confidence scores, and rating scores are persisted in the image manifest. The tagger is not responsible for dataset identity or trigger injection.
 
 ## Processing boundary
 
@@ -134,7 +134,7 @@ The following are out of scope for v1:
 - gallery-dl for optional external download backends
 - pytest for development
 
-Optional features must never make the basic CLI import fail.
+Optional features must never make the basic CLI import fail. The `tagger` extra provides NumPy and ONNX Runtime without adding them to the core dependency set.
 
 ## Compatibility target
 
