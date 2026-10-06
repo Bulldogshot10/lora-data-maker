@@ -72,7 +72,7 @@ def test_project_paths_normalize_parent_segments_before_collision_check(tmp_path
     import pytest
     from lora_data_maker.paths import ProjectPaths
 
-    with pytest.raises(ValueError, match="paths overlap"):
+    with pytest.raises(ValueError, match="overlaps project root"):
         ProjectPaths.from_root(
             tmp_path / "project",
             {
