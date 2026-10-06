@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import defaultdict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -96,13 +95,22 @@ def clean_manifest(
         if image.status != "validated":
             continue
 
-        result = evaluate_quality(
-            root_path / image.path,
-            min_width=min_width,
-            min_height=min_height,
-            blur_threshold=blur_threshold,
-            max_aspect_ratio=max_aspect_ratio,
-        )
+        try:
+            result = evaluate_quality(
+                root_path / image.path,
+                min_width=min_width,
+                min_height=min_height,
+                blur_threshold=blur_threshold,
+                max_aspect_ratio=max_aspect_ratio,
+            )
+        except (OSError, ValueError, RuntimeError):
+            image.set_status(
+                "rejected",
+                reason="quality check could not read image",
+            )
+            image.metadata["quality_stage"] = "rejected"
+            quality_rejected += 1
+            continue
         image.width = result.width
         image.height = result.height
         image.metadata["quality_blur_score"] = result.blur_score
