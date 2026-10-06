@@ -68,11 +68,11 @@ Phase 12 — incremental processing ✓ implemented
 - State-gated processing skips records already advanced to later stages.
 - Safe raw/manifest reconciliation with missing-file audit metadata.
 
-Phase 13 — tests
-- Unit and integration coverage.
-- Pipeline fixtures.
-- Failure/retry/resume tests.
-- Termux-specific validation.
+Phase 13 — tests ✓ implemented
+- Unit and integration coverage across the pipeline stages.
+- Offline end-to-end acceptance fixture.
+- Failure, retry, state-regression, and incremental resume coverage.
+- Termux-specific validation matrix documented for manual device execution.
 
 Phase 14 — benchmark ⏭ skipped for now
 - Deferred to direct device testing on the target Android/Termux hardware.
