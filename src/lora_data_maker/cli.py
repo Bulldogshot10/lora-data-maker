@@ -75,7 +75,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scrape_parser.add_argument(
         "backend",
-        choices=("google", "direct"),
+        choices=("google", "duckduckgo", "direct"),
         help="scraper backend",
     )
     scrape_parser.add_argument(
