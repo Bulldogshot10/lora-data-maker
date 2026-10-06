@@ -24,8 +24,14 @@ jobs:
       - name: Install package
         run: python -m pip install .
 
+      - name: Install test tooling
+        run: python -m pip install "pytest>=8,<9"
+
       - name: Compile
-        run: python -m compileall -q src
+        run: python -m compileall -q src tests
+
+      - name: Run tests
+        run: pytest -q
 
       - name: CLI version
         run: lora-data-maker --version
@@ -38,6 +44,7 @@ jobs:
           rm -rf .smoke-project
           lora-data-maker init .smoke-project --name julia --subject julia
           test -f .smoke-project/config.toml
+          test -f .smoke-project/manifest.json
           test -d .smoke-project/raw
           test -d .smoke-project/work
           test -d .smoke-project/output
