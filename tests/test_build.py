@@ -138,3 +138,35 @@ def test_run_build_stops_on_failure_and_records_failed_stage(tmp_path, monkeypat
     assert project.manifest.source["last_build_success"] is False
     assert project.manifest.source["last_build_failed_stage"] == "validate"
     assert project.manifest.source["last_build_stages"][0]["exit_code"] == 1
+
+
+def test_build_tag_command_namespace_works_without_preset(tmp_path, monkeypatch):
+    from lora_data_maker.cli import command_tag
+    from lora_data_maker.taggers import TagResult
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    class FakeTagger:
+        def tag_images(self, paths):
+            return [TagResult(tags=["portrait"]) for _ in paths]
+
+    monkeypatch.setattr("lora_data_maker.cli.build_tagger", lambda *a, **k: FakeTagger())
+    monkeypatch.setattr(
+        "lora_data_maker.cli.tag_manifest",
+        lambda manifest, root, tagger: type(
+            "Summary",
+            (),
+            {"scanned": 0, "tagged": 0, "failed": 0, "skipped": 0},
+        )(),
+    )
+
+    assert command_tag(Namespace(path=str(root))) == 1
