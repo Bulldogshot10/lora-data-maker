@@ -48,6 +48,12 @@ jobs:
       - name: Build help
         run: lora-data-maker build --help
 
+      - name: Export help
+        run: lora-data-maker export --help
+
+      - name: Pack help
+        run: lora-data-maker pack --help
+
       - name: Init and inspect project
         run: |
           rm -rf .smoke-project
