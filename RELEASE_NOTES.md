@@ -1,3 +1,27 @@
+# v1.3.0
+
+## Tagger presets
+
+- Added the `sweetspot` WD14-compatible preset.
+- Added the `potato` mobile QUINT8 SwinV2 preset.
+- Pinned model revisions and SHA-256 verification through preset metadata.
+- Updated configuration examples to use the current presets instead of the legacy EVA02 model.
+
+## Scraper hardening
+
+- Hardened Chromium/Selenium startup for Termux by removing the forced custom browser profile.
+- Added bounded navigation, retry handling, and Google-to-Bing fallback behavior.
+- Preserved candidate ordering across Chromium providers.
+
+## Pipeline and paths
+
+- Extended `build` orchestration through export and pack.
+- Added support for absolute configured raw/work/output paths in manifest records.
+
+## Historical v1.0.0 release
+
+`v1.0.0` established the initial stable pipeline and is retained below for history.
+
 # v1.0.0
 
 Initial stable release of lora-data-maker.
