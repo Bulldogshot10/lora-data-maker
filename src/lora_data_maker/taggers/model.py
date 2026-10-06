@@ -39,6 +39,8 @@ class HuggingFaceModelCache:
         repo_id: str,
         revision: str = "main",
         timeout: float = 60.0,
+        model_filename: str = "model.onnx",
+        labels_filename: str = "selected_tags.csv",
         session: requests.Session | None = None,
     ) -> None:
         if not repo_id.strip():
@@ -47,6 +49,10 @@ class HuggingFaceModelCache:
             raise ValueError("revision must not be empty")
         if timeout <= 0:
             raise ValueError("timeout must be greater than zero")
+        if not _is_safe_filename(model_filename):
+            raise ValueError("model_filename must be a simple filename")
+        if not _is_safe_filename(labels_filename):
+            raise ValueError("labels_filename must be a simple filename")
 
         self.root = Path(cache_dir).expanduser().resolve() / cache_key(
             repo_id,
@@ -55,15 +61,17 @@ class HuggingFaceModelCache:
         self.repo_id = repo_id
         self.revision = revision
         self.timeout = timeout
+        self.model_filename = model_filename
+        self.labels_filename = labels_filename
         self.session = session or requests.Session()
 
     @property
     def model_path(self) -> Path:
-        return self.root / "model.onnx"
+        return self.root / self.model_filename
 
     @property
     def labels_path(self) -> Path:
-        return self.root / "selected_tags.csv"
+        return self.root / self.labels_filename
 
     def ensure(
         self,
@@ -73,12 +81,12 @@ class HuggingFaceModelCache:
         self.root.mkdir(parents=True, exist_ok=True)
 
         self._ensure_file(
-            "model.onnx",
+            self.model_filename,
             self.model_path,
             expected_sha256=model_sha256,
         )
         self._ensure_file(
-            "selected_tags.csv",
+            self.labels_filename,
             self.labels_path,
         )
 
@@ -137,6 +145,11 @@ class HuggingFaceModelCache:
             raise ModelDownloadError(
                 f"failed downloading {self.repo_id}/{filename}: {exc}"
             ) from exc
+
+
+def _is_safe_filename(filename: str) -> bool:
+    value = str(filename).strip()
+    return bool(value) and Path(value).name == value and value not in {".", ".."}
 
 
 def _stream_response(

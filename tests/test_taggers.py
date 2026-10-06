@@ -183,3 +183,116 @@ def test_wd14_fake_inference_runs_preprocess_and_decode(tmp_path):
     assert len(results) == 2
     assert results[0].tags == ["blue eyes", "julia", "smile"]
     assert abs(results[0].ratings["safe"] - 0.99) < 1e-6
+
+
+
+def test_mobile_wd14_labels_loads_tags_json(tmp_path):
+    import json
+
+    labels = tmp_path / "tags.json"
+    labels.write_text(
+        json.dumps(
+            {
+                "0": ["safe", 9, 1],
+                "1": ["blue_eyes", 0, 10],
+                "2": ["julia", 4, 10],
+                "3": ["smile", 0, 10],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    from lora_data_maker.taggers.mobile import MobileWD14Labels
+
+    result = MobileWD14Labels.load(labels)
+
+    assert result.names == ["safe", "blue eyes", "julia", "smile"]
+    assert result.rating_indexes == [0]
+    assert result.general_indexes == [1, 3]
+    assert result.character_indexes == [2]
+
+
+class MobileFakeInput:
+    shape = [1, "height", "width", 3]
+    name = "pixel_values"
+    type = "tensor(uint8)"
+
+
+class MobileFakeOutput:
+    name = "probabilities"
+
+
+class MobileFakeSession:
+    def get_inputs(self):
+        return [MobileFakeInput()]
+
+    def get_outputs(self):
+        return [MobileFakeOutput()]
+
+    def run(self, output_names, inputs):
+        batch = next(iter(inputs.values()))
+        import numpy as np
+
+        assert batch.dtype == np.uint8
+        assert batch.ndim == 4
+        assert batch.shape[0] == 1
+        return [
+            np.array(
+                [[0.99, 0.92, 0.87, 0.80]],
+                dtype=np.float32,
+            )
+        ]
+
+
+def test_mobile_wd14_fake_inference_uses_uint8_input(tmp_path):
+    import json
+    from PIL import Image
+
+    model_path = tmp_path / "model.onnx"
+    labels_path = tmp_path / "tags.json"
+    model_path.write_bytes(b"fake")
+    labels_path.write_text(
+        json.dumps(
+            {
+                "0": ["safe", 9, 1],
+                "1": ["blue_eyes", 0, 10],
+                "2": ["julia", 4, 10],
+                "3": ["smile", 0, 10],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    image = tmp_path / "image.png"
+    Image.new("RGB", (320, 240), (20, 30, 40)).save(image)
+
+    from lora_data_maker.taggers.mobile import MobileWD14Tagger
+
+    tagger = MobileWD14Tagger(
+        model_cache=FakeCache(model_path, labels_path),
+        threshold=0.75,
+        character_threshold=0.85,
+        session_factory=lambda _path: MobileFakeSession(),
+    )
+
+    result = tagger.tag_image(image)
+
+    assert result.tags == ["blue eyes", "julia", "smile"]
+    assert result.characters == {"julia": 0.87}
+    assert abs(result.ratings["safe"] - 0.99) < 1e-6
+
+
+def test_build_tagger_presets():
+    from lora_data_maker.taggers import POTATO, SWEETSPOT
+    from lora_data_maker.taggers.manager import build_tagger
+    from lora_data_maker.taggers.mobile import MobileWD14Tagger
+    from lora_data_maker.taggers.wd14 import WD14Tagger
+
+    sweetspot = build_tagger({}, preset="sweetspot")
+    potato = build_tagger({}, preset="potato")
+
+    assert sweetspot.model_cache.repo_id == SWEETSPOT.repo_id
+    assert isinstance(sweetspot, WD14Tagger)
+    assert potato.model_cache.repo_id == POTATO.repo_id
+    assert potato.model_cache.model_filename == POTATO.model_filename
+    assert isinstance(potato, MobileWD14Tagger)

@@ -1,8 +1,16 @@
 from .base import TagResult, Tagger, TaggerError
+from .mobile import MobileWD14Labels, MobileWD14Tagger
 from .clean_stage import TagCleanSummary, clean_tag_manifest
 from .filters import clean_tags, normalize_tag, normalize_tags, tag_set
 from .manager import build_tagger
 from .model import HuggingFaceModelCache, ModelDownloadError, ModelFiles
+from .presets import (
+    POTATO,
+    SWEETSPOT,
+    TAGGER_PRESETS,
+    TaggerPreset,
+    resolve_tagger_preset,
+)
 from .stage import TagSummary, tag_manifest
 from .wd14 import WD14Labels, WD14Tagger, mcut_threshold
 
@@ -10,6 +18,12 @@ __all__ = [
     "HuggingFaceModelCache",
     "ModelDownloadError",
     "ModelFiles",
+    "MobileWD14Labels",
+    "MobileWD14Tagger",
+    "POTATO",
+    "SWEETSPOT",
+    "TAGGER_PRESETS",
+    "TaggerPreset",
     "TagCleanSummary",
     "TagResult",
     "Tagger",
@@ -25,4 +39,5 @@ __all__ = [
     "normalize_tags",
     "tag_manifest",
     "tag_set",
+    "resolve_tagger_preset",
 ]
