@@ -15,6 +15,7 @@ from .manifest import register_image
 from .paths import ProjectPaths, find_project_root
 from .processing import ProcessConfig, clean_manifest, process_manifest, validate_image
 from .scrapers import ScraperError, ScraperManager
+from .taggers import TaggerError, build_tagger, tag_manifest
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -106,6 +107,15 @@ def build_parser() -> argparse.ArgumentParser:
         "process", help="resize, crop, orient, and export validated images to work/"
     )
     process_parser.add_argument(
+        "--path",
+        default=".",
+        help="project directory (default: current directory)",
+    )
+
+    tag_parser = subparsers.add_parser(
+        "tag", help="run the configured image tagger on processed images"
+    )
+    tag_parser.add_argument(
         "--path",
         default=".",
         help="project directory (default: current directory)",
@@ -364,6 +374,58 @@ def command_process(args: argparse.Namespace) -> int:
     return 0 if processed or skipped else 1
 
 
+def command_tag(args: argparse.Namespace) -> int:
+    root = find_project_root(args.path)
+    config = load_config(root / "config.toml")
+    paths = ProjectPaths.from_root(root, config.get("paths", {}))
+    project = DatasetProject.open(paths)
+
+    tagger_config = config.get("tagger", {})
+    if not isinstance(tagger_config, dict):
+        raise LoraDataMakerError("config section [tagger] must be a table")
+
+    tagger = build_tagger(
+        tagger_config,
+        cache_root=Path.home() / ".cache" / "lora-data-maker" / "taggers" / "wd14",
+    )
+
+    summary = tag_manifest(
+        project.manifest,
+        root=root,
+        tagger=tagger,
+    )
+
+    project.manifest.source.update(
+        {
+            "last_tag_scanned": summary.scanned,
+            "last_tag_tagged": summary.tagged,
+            "last_tag_failed": summary.failed,
+            "last_tag_skipped": summary.skipped,
+            "last_tag_backend": str(tagger_config.get("backend", "wd14")),
+            "last_tag_model": str(
+                tagger_config.get(
+                    "model",
+                    "SmilingWolf/wd-eva02-large-tagger-v3",
+                )
+            ),
+            "last_tag_revision": str(
+                tagger_config.get(
+                    "revision",
+                    "b25b82a03f7282e41aa2f257a52c7583b710bd1c",
+                )
+            ),
+        }
+    )
+    project.save()
+
+    print(f"scanned: {summary.scanned}")
+    print(f"tagged: {summary.tagged}")
+    print(f"failed: {summary.failed}")
+    print(f"skipped: {summary.skipped}")
+
+    return 0 if summary.tagged or summary.skipped else 1
+
+
 def command_scrape(args: argparse.Namespace) -> int:
     root = find_project_root(args.path)
     config = load_config(root / "config.toml")
@@ -456,6 +518,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return command_clean(args)
         if args.command == "process":
             return command_process(args)
+        if args.command == "tag":
+            return command_tag(args)
     except (
         LoraDataMakerError,
         FileNotFoundError,
@@ -463,6 +527,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         ValueError,
         KeyError,
         ScraperError,
+        TaggerError,
     ) as exc:
         logger.error(str(exc))
         return 1
