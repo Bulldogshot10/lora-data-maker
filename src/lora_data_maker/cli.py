@@ -8,12 +8,14 @@ from typing import Sequence
 from . import __version__
 from .build import BUILD_STAGES, run_build
 from .captions import CaptionConfig, caption_manifest
+from .export import export_manifest, kohya_folder_name
 from .config import load_config, write_default_config
 from .dataset import DatasetProject
 from .exceptions import LoraDataMakerError
 from .logging import configure_logging
 from .images import iter_image_files
 from .manifest import register_image
+from .pack import pack_dataset
 from .paths import ProjectPaths, find_project_root
 from .processing import ProcessConfig, clean_manifest, process_manifest, validate_image
 from .scrapers import ScraperError, ScraperManager
@@ -172,6 +174,45 @@ def build_parser() -> argparse.ArgumentParser:
         choices=BUILD_STAGES,
         default=[],
         help="skip a stage; may be repeated",
+    )
+
+    export_parser = subparsers.add_parser(
+        "export", help="export captioned images as a Kohya-style dataset"
+    )
+    export_parser.add_argument(
+        "--path",
+        default=".",
+        help="project directory (default: current directory)",
+    )
+    export_parser.add_argument(
+        "--repeats",
+        type=int,
+        default=None,
+        help="Kohya folder repeat count (default: config)",
+    )
+    export_parser.add_argument(
+        "--folder-name",
+        default=None,
+        help="explicit output dataset folder name",
+    )
+
+    pack_parser = subparsers.add_parser(
+        "pack", help="package the exported dataset and manifest into a ZIP"
+    )
+    pack_parser.add_argument(
+        "--path",
+        default=".",
+        help="project directory (default: current directory)",
+    )
+    pack_parser.add_argument(
+        "--archive",
+        default=None,
+        help="archive path (default: output/<project-name>.zip)",
+    )
+    pack_parser.add_argument(
+        "--dataset-dir",
+        default=None,
+        help="exported dataset directory; defaults to the last export",
     )
 
     return parser
@@ -588,6 +629,131 @@ def command_caption(args: argparse.Namespace) -> int:
 
 
 
+def command_export(args: argparse.Namespace) -> int:
+    root = find_project_root(args.path)
+    config = load_config(root / "config.toml")
+    paths = ProjectPaths.from_root(root, config.get("paths", {}))
+    project = DatasetProject.open(paths)
+
+    export_config = config.get("export", {})
+    if not isinstance(export_config, dict):
+        raise LoraDataMakerError("config section [export] must be a table")
+
+    repeats = (
+        args.repeats
+        if args.repeats is not None
+        else int(export_config.get("repeats", 1))
+    )
+    folder_name = (
+        args.folder_name
+        if args.folder_name is not None
+        else str(export_config.get("folder_name", "") or "")
+    )
+
+    dataset_folder = kohya_folder_name(
+        subject=project.manifest.subject,
+        repeats=repeats,
+        folder_name=folder_name,
+    )
+    summary = export_manifest(
+        project.manifest,
+        root=root,
+        output_dir=paths.output,
+        repeats=repeats,
+        folder_name=folder_name,
+    )
+
+    project.manifest.source.update(
+        {
+            "last_export_scanned": summary.scanned,
+            "last_export_exported": summary.exported,
+            "last_export_failed": summary.failed,
+            "last_export_skipped": summary.skipped,
+            "last_export_repeats": repeats,
+            "last_export_folder": dataset_folder,
+            "last_export_dir": (
+                Path(summary.output_dir).relative_to(root).as_posix()
+            ),
+        }
+    )
+    project.save()
+
+    print(f"scanned: {summary.scanned}")
+    print(f"exported: {summary.exported}")
+    print(f"failed: {summary.failed}")
+    print(f"skipped: {summary.skipped}")
+    print(f"dataset: {summary.output_dir}")
+
+    return 0 if summary.exported or summary.skipped else 1
+
+
+def command_pack(args: argparse.Namespace) -> int:
+    root = find_project_root(args.path)
+    config = load_config(root / "config.toml")
+    paths = ProjectPaths.from_root(root, config.get("paths", {}))
+    project = DatasetProject.open(paths)
+
+    dataset_dir = args.dataset_dir
+    if dataset_dir:
+        candidate = Path(dataset_dir).expanduser()
+        dataset_root = (
+            candidate if candidate.is_absolute() else root / candidate
+        ).resolve()
+    else:
+        last_export_dir = project.manifest.source.get("last_export_dir")
+        if isinstance(last_export_dir, str) and last_export_dir.strip():
+            dataset_root = (root / last_export_dir).resolve()
+        else:
+            export_config = config.get("export", {})
+            if not isinstance(export_config, dict):
+                raise LoraDataMakerError(
+                    "config section [export] must be a table"
+                )
+            repeats = int(export_config.get("repeats", 1))
+            folder_name = str(export_config.get("folder_name", "") or "")
+            dataset_root = (
+                paths.output
+                / kohya_folder_name(
+                    subject=project.manifest.subject,
+                    repeats=repeats,
+                    folder_name=folder_name,
+                )
+            ).resolve()
+
+    archive = (
+        Path(args.archive).expanduser()
+        if args.archive
+        else paths.output / f"{project.manifest.project_name}.zip"
+    )
+    archive = archive if archive.is_absolute() else root / archive
+    archive = archive.resolve()
+
+    summary = pack_dataset(
+        root=root,
+        dataset_dir=dataset_root,
+        archive_path=archive,
+        manifest_path=project.manifest_path,
+    )
+
+    project.manifest.source.update(
+        {
+            "last_pack_archive": summary.archive_path,
+            "last_pack_file_count": summary.file_count,
+            "last_pack_size_bytes": summary.size_bytes,
+            "last_pack_sha256": summary.sha256,
+        }
+    )
+    project.save()
+
+    print(f"archive: {summary.archive_path}")
+    print(f"files: {summary.file_count}")
+    print(f"size: {summary.size_bytes}")
+    print(f"sha256: {summary.sha256}")
+
+    return 0
+
+
+
 def command_scrape(args: argparse.Namespace) -> int:
     root = find_project_root(args.path)
     config = load_config(root / "config.toml")
@@ -694,6 +860,10 @@ def main(argv: Sequence[str] | None = None) -> int:
                 skip=args.skip,
             )
             return 0 if summary.success else 1
+        if args.command == "export":
+            return command_export(args)
+        if args.command == "pack":
+            return command_pack(args)
     except (
         LoraDataMakerError,
         FileNotFoundError,
