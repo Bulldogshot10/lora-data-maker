@@ -161,3 +161,55 @@ def test_export_command_returns_failure_when_candidate_fails(tmp_path):
     assert command_export(
         Namespace(path=str(root), repeats=1, folder_name=None)
     ) == 1
+
+
+def test_export_rolls_back_partial_pair_on_caption_failure(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    processed = root / "work" / "processed"
+    captions = root / "work" / "captions"
+    processed.mkdir(parents=True)
+    captions.mkdir(parents=True)
+
+    image_id = "abc123"
+    source_image = processed / f"{image_id}.jpg"
+    source_caption = captions / f"{image_id}.txt"
+    Image.new("RGB", (32, 32), (20, 30, 40)).save(source_image)
+    source_caption.write_text("julia\n", encoding="utf-8")
+
+    manifest = ProjectManifest(
+        project_name="julia-set",
+        subject="julia",
+        trigger="julia",
+    )
+    manifest.add_image(
+        ImageRecord(
+            image_id=image_id,
+            path="raw/001.jpg",
+            status="captioned",
+            processed_path=source_image.relative_to(root).as_posix(),
+            caption_path=source_caption.relative_to(root).as_posix(),
+        )
+    )
+
+    from lora_data_maker import export as export_module
+    original = export_module._copy_atomic
+
+    def fail_caption(source, destination):
+        if destination.suffix == ".txt":
+            raise OSError("simulated caption copy failure")
+        original(source, destination)
+
+    monkeypatch.setattr(export_module, "_copy_atomic", fail_caption)
+
+    summary = export_manifest(
+        manifest,
+        root=root,
+        output_dir=root / "output",
+        repeats=1,
+    )
+
+    destination = root / "output" / "1_julia"
+    assert summary.failed == 1
+    assert not (destination / f"{image_id}.jpg").exists()
+    assert not (destination / f"{image_id}.txt").exists()
+    assert manifest.images[image_id].status == "captioned"
