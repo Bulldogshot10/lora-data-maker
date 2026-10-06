@@ -74,14 +74,15 @@ Phase 13 — tests
 - Failure/retry/resume tests.
 - Termux-specific validation.
 
-Phase 14 — benchmark
-- Measure time, RAM, disk usage, scraper throughput, and tagger throughput.
-- Establish practical defaults for Android/Termux.
+Phase 14 — benchmark ⏭ skipped for now
+- Deferred to direct device testing on the target Android/Termux hardware.
 
-Phase 15 — documentation
-- Termux install guide.
-- Full CLI reference.
-- Dataset layout, config, tag rules, and troubleshooting.
+Phase 15 — documentation ✓ implemented
+- Termux installation guide.
+- Full CLI reference for all current commands.
+- Configuration and dataset-layout references.
+- Tag rules and trigger behavior documentation.
+- Troubleshooting guide.
 
 Phase 16 — v1.0 release
 - Freeze the supported feature set.
