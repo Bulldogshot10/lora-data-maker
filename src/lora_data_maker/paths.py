@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Mapping
+from collections.abc import Mapping
 
 
 @dataclass(frozen=True)
@@ -28,13 +28,32 @@ class ProjectPaths:
             candidate = Path(str(value)).expanduser()
             return candidate if candidate.is_absolute() else root_path / candidate
 
+        paths = {
+            "raw": resolve_dir("raw", "raw"),
+            "work": resolve_dir("work", "work"),
+            "output": resolve_dir("output", "output"),
+            "cache": resolve_dir("cache", "cache"),
+        }
+
+        if not isinstance(configured, Mapping):
+            raise ValueError("config section [paths] must be a table")
+
+        labels = list(paths.items())
+        for index, (left_name, left_path) in enumerate(labels):
+            for right_name, right_path in labels[index + 1:]:
+                if _paths_overlap(left_path, right_path):
+                    raise ValueError(
+                        f"configured paths overlap: {left_name}={left_path} "
+                        f"and {right_name}={right_path}"
+                    )
+
         return cls(
             root=root_path,
             config=root_path / "config.toml",
-            raw=resolve_dir("raw", "raw"),
-            work=resolve_dir("work", "work"),
-            output=resolve_dir("output", "output"),
-            cache=resolve_dir("cache", "cache"),
+            raw=paths["raw"],
+            work=paths["work"],
+            output=paths["output"],
+            cache=paths["cache"],
         )
 
     def create_directories(self) -> None:
@@ -64,3 +83,7 @@ def find_project_root(start: Path | str = ".") -> Path:
     raise FileNotFoundError(
         f"could not find config.toml from {current} or any parent directory"
     )
+
+
+def _paths_overlap(first: Path, second: Path) -> bool:
+    return first == second or first in second.parents or second in first.parents
