@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from PIL import Image, UnidentifiedImageError
+from PIL.Image import DecompressionBombError
 
 
 SUPPORTED_MIME_BY_FORMAT = {
@@ -178,12 +179,12 @@ def validate_image(
             metadata=metadata,
         )
 
-    except UnidentifiedImageError:
+    except (UnidentifiedImageError, DecompressionBombError):
         return ImageValidationResult(
             path=image_path,
             valid=False,
             file_size=file_size,
-            reason="unidentified image or corrupt image",
+            reason="unidentified image, corrupt image, or unsafe image dimensions",
         )
     except (OSError, ValueError, SyntaxError, RuntimeError) as exc:
         return ImageValidationResult(
