@@ -21,9 +21,11 @@ from .reconcile import reconcile_raw
 from .processing import ProcessConfig, clean_manifest, process_manifest, validate_image
 from .scrapers import ScraperError, ScraperManager
 from .taggers import (
+    TAGGER_PRESETS,
     TaggerError,
     build_tagger,
     clean_tag_manifest,
+    resolve_tagger_preset,
     tag_manifest,
 )
 
@@ -138,6 +140,12 @@ def build_parser() -> argparse.ArgumentParser:
         "--path",
         default=".",
         help="project directory (default: current directory)",
+    )
+    tag_parser.add_argument(
+        "--preset",
+        choices=tuple(TAGGER_PRESETS),
+        default=None,
+        help="tagger preset (default: config, otherwise sweetspot)",
     )
 
     clean_tags_parser = subparsers.add_parser(
@@ -533,9 +541,15 @@ def command_tag(args: argparse.Namespace) -> int:
     if not isinstance(tagger_config, dict):
         raise LoraDataMakerError("config section [tagger] must be a table")
 
+    selected_preset = args.preset or str(
+        tagger_config.get("preset", "sweetspot")
+    )
+    resolved_preset = resolve_tagger_preset(selected_preset)
+
     tagger = build_tagger(
         tagger_config,
         cache_root=Path.home() / ".cache" / "lora-data-maker" / "taggers" / "wd14",
+        preset=args.preset,
     )
 
     summary = tag_manifest(
@@ -551,18 +565,9 @@ def command_tag(args: argparse.Namespace) -> int:
             "last_tag_failed": summary.failed,
             "last_tag_skipped": summary.skipped,
             "last_tag_backend": str(tagger_config.get("backend", "wd14")),
-            "last_tag_model": str(
-                tagger_config.get(
-                    "model",
-                    "SmilingWolf/wd-eva02-large-tagger-v3",
-                )
-            ),
-            "last_tag_revision": str(
-                tagger_config.get(
-                    "revision",
-                    "b25b82a03f7282e41aa2f257a52c7583b710bd1c",
-                )
-            ),
+            "last_tag_preset": resolved_preset.name,
+            "last_tag_model": resolved_preset.repo_id,
+            "last_tag_revision": resolved_preset.revision,
         }
     )
     project.save()
