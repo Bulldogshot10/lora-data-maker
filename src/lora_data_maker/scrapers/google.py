@@ -11,6 +11,16 @@ import requests
 from .base import ImageResult, Scraper, ScraperError
 
 
+
+
+def _retryable_request_error(exc: requests.RequestException) -> bool:
+    response = getattr(exc, "response", None)
+    status = getattr(response, "status_code", None)
+    if status is None:
+        return True
+    return status == 408 or status == 429 or status >= 500
+
+
 DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Linux; Android 14; Mobile) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -136,6 +146,8 @@ class GoogleImagesScraper(Scraper):
             except requests.RequestException as exc:
                 last_error = exc
                 if attempt >= self.retries:
+                    break
+                if not _retryable_request_error(exc):
                     break
                 import time
                 time.sleep(min(max(self.delay, 0.25) * (2**attempt), 30.0))
