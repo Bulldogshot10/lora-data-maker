@@ -114,7 +114,7 @@ def find_perceptual_duplicates(
     accepted: list[tuple[str, str]] = []
     duplicates: list[DuplicateMatch] = []
 
-    for image_id, image_hash in sorted(items, key=lambda item: item[0]):
+    for image_id, image_hash in items:
         match: tuple[str, int] | None = None
         for accepted_id, accepted_hash in accepted:
             distance = hamming_distance(image_hash, accepted_hash)
