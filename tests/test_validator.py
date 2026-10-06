@@ -69,3 +69,12 @@ def test_missing_file(tmp_path):
     result = validate_image(tmp_path / "missing.jpg")
     assert result.valid is False
     assert result.reason == "file not found"
+def test_rejects_truncated_jpeg(tmp_path):
+    path = tmp_path / "truncated.jpg"
+    Image.new("RGB", (640, 480), (10, 20, 30)).save(path, format="JPEG")
+    path.write_bytes(path.read_bytes()[:20])
+
+    result = validate_image(path)
+
+    assert result.valid is False
+    assert "decode failed" in (result.reason or "").lower()
