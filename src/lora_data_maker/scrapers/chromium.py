@@ -233,6 +233,9 @@ class ChromiumGoogleImagesScraper:
                     normalized = image_url.strip()
                     if not normalized.startswith(("http://", "https://")):
                         continue
+                    image_host = urlparse(normalized).netloc.lower()
+                    if image_host == "encrypted-tbn0.gstatic.com":
+                        continue
                     if not GoogleImagesScraper._looks_like_image_url(normalized):
                         continue
                     if normalized in seen:
