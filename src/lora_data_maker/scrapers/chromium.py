@@ -3,7 +3,6 @@ from __future__ import annotations
 import html
 import json
 import shutil
-import tempfile
 import time
 from pathlib import Path
 from typing import Iterator
@@ -51,10 +50,13 @@ class ChromiumImagesScraper:
         self.chromium_binary = chromium_binary
         self.chromedriver_binary = chromedriver_binary
         self.max_scrolls = max_scrolls
+        # Kept for backwards compatibility. Selenium manages its own temporary
+        # browser profile; forcing --user-data-dir breaks Chromium/ChromeDriver
+        # startup on some Termux/Android installations.
         self.profile_root = (
             Path(profile_root).expanduser().resolve()
             if profile_root is not None
-            else Path(tempfile.gettempdir()) / "lora-data-maker-chromium"
+            else None
         )
 
     def search(self, query: str, *, limit: int) -> Iterator[ImageResult]:
@@ -63,8 +65,8 @@ class ChromiumImagesScraper:
         if limit <= 0:
             return
 
+        print("scrape: chromium starting browser...", flush=True)
         driver = self._start_driver()
-        profile_dir = Path(driver._lora_profile_dir)
 
         try:
             providers = (
@@ -176,10 +178,7 @@ class ChromiumImagesScraper:
         except Exception as exc:
             raise ScraperError(f"Chromium scraper failed: {exc}") from exc
         finally:
-            try:
-                driver.quit()
-            finally:
-                shutil.rmtree(profile_dir, ignore_errors=True)
+            driver.quit()
 
     @staticmethod
     def _build_search_url(provider: str, base_url: str, query: str) -> str:
@@ -242,14 +241,6 @@ class ChromiumImagesScraper:
         chromium_path = self._resolve_executable(self.chromium_binary)
         driver_path = self._resolve_executable(self.chromedriver_binary)
 
-        self.profile_root.mkdir(parents=True, exist_ok=True)
-        profile_dir = Path(
-            tempfile.mkdtemp(
-                prefix="profile-",
-                dir=str(self.profile_root),
-            )
-        )
-
         options = Options()
         options.binary_location = chromium_path
         options.add_argument("--headless=new")
@@ -264,17 +255,13 @@ class ChromiumImagesScraper:
         options.add_argument("--lang=en-US")
         options.add_argument(f"--user-agent={self.user_agent}")
         options.add_argument("--window-size=1365,2200")
-        options.add_argument(f"--user-data-dir={profile_dir}")
-
         service = Service(executable_path=driver_path)
 
         try:
             driver = webdriver.Chrome(service=service, options=options)
-            driver._lora_profile_dir = str(profile_dir)
             driver.set_page_load_timeout(self.timeout)
             return driver
         except WebDriverException as exc:
-            shutil.rmtree(profile_dir, ignore_errors=True)
             raise ScraperError(
                 "could not start Chromium WebDriver: "
                 f"{exc}. Check that chromium-browser and chromedriver "
