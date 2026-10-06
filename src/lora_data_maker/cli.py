@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Sequence
 
 from . import __version__
+from .captions import CaptionConfig, caption_manifest
 from .config import load_config, write_default_config
 from .dataset import DatasetProject
 from .exceptions import LoraDataMakerError
@@ -130,6 +131,15 @@ def build_parser() -> argparse.ArgumentParser:
         "clean-tags", help="normalize, filter, and inject the dataset subject into tags"
     )
     clean_tags_parser.add_argument(
+        "--path",
+        default=".",
+        help="project directory (default: current directory)",
+    )
+
+    caption_parser = subparsers.add_parser(
+        "caption", help="write deterministic caption files from cleaned tags"
+    )
+    caption_parser.add_argument(
         "--path",
         default=".",
         help="project directory (default: current directory)",
@@ -483,6 +493,72 @@ def command_clean_tags(args: argparse.Namespace) -> int:
     return 0 if summary.cleaned or summary.skipped else 1
 
 
+def command_caption(args: argparse.Namespace) -> int:
+    root = find_project_root(args.path)
+    config = load_config(root / "config.toml")
+    paths = ProjectPaths.from_root(root, config.get("paths", {}))
+    project = DatasetProject.open(paths)
+
+    caption_config = config.get("caption", {})
+    if not isinstance(caption_config, dict):
+        raise LoraDataMakerError("config section [caption] must be a table")
+
+    separator = caption_config.get("separator", ", ")
+    subject_position = caption_config.get("subject_position", "first")
+    trigger_from_subject = caption_config.get("trigger_from_subject", True)
+
+    if not isinstance(separator, str):
+        raise LoraDataMakerError("config field caption.separator must be a string")
+    if not isinstance(subject_position, str):
+        raise LoraDataMakerError(
+            "config field caption.subject_position must be a string"
+        )
+    if not isinstance(trigger_from_subject, bool):
+        raise LoraDataMakerError(
+            "config field caption.trigger_from_subject must be a boolean"
+        )
+
+    settings = CaptionConfig(
+        separator=separator,
+        subject_position=subject_position,
+        trigger_from_subject=trigger_from_subject,
+    )
+
+    summary = caption_manifest(
+        project.manifest,
+        root=root,
+        output_dir=paths.work / "captions",
+        config=settings,
+    )
+
+    project.manifest.source.update(
+        {
+            "last_caption_scanned": summary.scanned,
+            "last_caption_captioned": summary.captioned,
+            "last_caption_failed": summary.failed,
+            "last_caption_skipped": summary.skipped,
+            "last_caption_separator": separator,
+            "last_caption_subject": project.manifest.subject,
+            "last_caption_trigger": (
+                project.manifest.subject
+                if trigger_from_subject
+                else project.manifest.trigger
+            ),
+            "last_caption_trigger_from_subject": trigger_from_subject,
+        }
+    )
+    project.save()
+
+    print(f"scanned: {summary.scanned}")
+    print(f"captioned: {summary.captioned}")
+    print(f"failed: {summary.failed}")
+    print(f"skipped: {summary.skipped}")
+    print(f"captions: {paths.work / 'captions'}")
+
+    return 0 if summary.captioned or summary.skipped else 1
+
+
+
 def command_scrape(args: argparse.Namespace) -> int:
     root = find_project_root(args.path)
     config = load_config(root / "config.toml")
@@ -579,6 +655,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return command_tag(args)
         if args.command == "clean-tags":
             return command_clean_tags(args)
+        if args.command == "caption":
+            return command_caption(args)
     except (
         LoraDataMakerError,
         FileNotFoundError,
