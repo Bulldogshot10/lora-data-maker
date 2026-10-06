@@ -138,6 +138,11 @@ def export_manifest(
             _copy_atomic(source_image, destination_image)
             _copy_atomic(source_caption, destination_caption)
         except (OSError, ValueError, shutil.Error) as exc:
+            for partial in (destination_image, destination_caption):
+                try:
+                    partial.unlink(missing_ok=True)
+                except OSError:
+                    pass
             failed += 1
             image.metadata["export_stage"] = "failed"
             image.metadata["export_error"] = str(exc)
