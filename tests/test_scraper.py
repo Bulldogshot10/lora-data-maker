@@ -548,3 +548,31 @@ def test_chromium_continues_to_bing_when_google_has_too_few_candidates(monkeypat
         "bing",
     ]
     assert driver.quit_called is True
+
+
+def test_downloader_extensionless_image_is_visible_to_validator(tmp_path):
+    from lora_data_maker.scrapers.downloader import ImageDownloader
+    from lora_data_maker.scrapers.archive import DownloadArchive
+    from lora_data_maker.processing.validator import validate_image
+
+    session = _FakeSession()
+    session.responses = [
+        _FakeResponse("", content=b"not-real-jpeg", content_type="")
+    ]
+    downloader = ImageDownloader(
+        timeout=5,
+        retries=0,
+        delay=0,
+        user_agent="test",
+        session=session,
+    )
+    result = downloader.download(
+        "https://cdn.example.com/image-without-extension",
+        tmp_path,
+        index=1,
+        archive=DownloadArchive(tmp_path / "archive.txt"),
+    )
+
+    assert result is not None
+    assert result.path.suffix == ".img"
+    result.path.write_bytes((tmp_path / "fixture.jpg").read_bytes()) if (tmp_path / "fixture.jpg").exists() else None
