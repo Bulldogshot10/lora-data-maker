@@ -16,7 +16,7 @@ from .logging import configure_logging
 from .images import iter_image_files
 from .manifest import find_image_by_source_url, register_image
 from .pack import pack_dataset
-from .paths import ProjectPaths, find_project_root
+from .paths import ProjectPaths, find_project_root, manifest_path
 from .reconcile import reconcile_raw
 from .processing import ProcessConfig, clean_manifest, process_manifest, validate_image
 from .scrapers import ScraperError, ScraperManager
@@ -326,7 +326,7 @@ def command_validate(args: argparse.Namespace) -> int:
 
     scanned = valid_count = rejected_count = skipped_count = 0
     for image_path in iter_image_files(paths.raw):
-        relative_path = image_path.relative_to(root).as_posix()
+        relative_path = manifest_path(root, image_path)
         record = existing.get(relative_path)
         if record is None:
             record = register_image(
@@ -732,7 +732,7 @@ def command_export(args: argparse.Namespace) -> int:
             "last_export_repeats": repeats,
             "last_export_folder": dataset_folder,
             "last_export_dir": (
-                Path(summary.output_dir).relative_to(root).as_posix()
+                manifest_path(root, summary.output_dir)
             ),
         }
     )
@@ -858,7 +858,7 @@ def command_scrape(args: argparse.Namespace) -> int:
 
     added_records = 0
     for result in downloads:
-        relative_path = result.path.relative_to(root).as_posix()
+        relative_path = manifest_path(root, result.path)
         record = find_image_by_source_url(project.manifest, result.url)
         if record is None:
             record = register_image(
