@@ -76,6 +76,7 @@ class ChromiumImagesScraper:
 
             for provider, base_url in providers:
                 seen: set[str] = set()
+                ordered_candidates: list[str] = []
                 last_candidate_count = 0
                 stagnant_rounds = 0
 
@@ -85,19 +86,13 @@ class ChromiumImagesScraper:
                     flush=True,
                 )
 
-                try:
-                    driver.get(target_url)
-                    if provider == "google":
-                        self._check_page(driver)
-                except ScraperError as exc:
-                    if provider == "google" and "verification" in str(exc).lower():
-                        print(
-                            "scrape: google verification detected; "
-                            "falling back to Bing Images",
-                            flush=True,
-                        )
-                        continue
-                    raise
+                loaded = self._load_page(
+                    driver,
+                    target_url,
+                    provider=provider,
+                )
+                if not loaded:
+                    continue
 
                 for scroll_no in range(1, self.max_scrolls + 1):
                     if provider == "google":
@@ -120,7 +115,9 @@ class ChromiumImagesScraper:
                         candidates = self._extract_bing_image_urls(raw_items)
 
                     for candidate in candidates:
-                        seen.add(candidate)
+                        if candidate not in seen:
+                            seen.add(candidate)
+                            ordered_candidates.append(candidate)
 
                     print(
                         f"scrape: chromium provider={provider} "
@@ -149,8 +146,8 @@ class ChromiumImagesScraper:
                     if provider == "google":
                         self._check_page(driver)
 
-                if seen:
-                    for rank, image_url in enumerate(seen, start=1):
+                if ordered_candidates:
+                    for rank, image_url in enumerate(ordered_candidates, start=1):
                         yield ImageResult(
                             image_url=image_url,
                             query=query,
@@ -225,6 +222,70 @@ class ChromiumImagesScraper:
             urls.append(image_url)
 
         return urls
+
+    def _load_page(
+        self,
+        driver,
+        target_url: str,
+        *,
+        provider: str,
+    ) -> bool:
+        try:
+            from selenium.common.exceptions import TimeoutException
+        except ImportError as exc:
+            raise ScraperError(
+                "Chromium backend requires Selenium; install the "
+                "chromium optional dependency"
+            ) from exc
+
+        last_timeout: Exception | None = None
+        for attempt in range(self.retries + 1):
+            try:
+                driver.get(target_url)
+                if provider == "google":
+                    self._check_page(driver)
+                return True
+            except TimeoutException as exc:
+                last_timeout = exc
+                try:
+                    driver.execute_script("window.stop();")
+                except Exception:
+                    pass
+
+                if attempt < self.retries:
+                    print(
+                        f"scrape: chromium provider={provider} "
+                        f"page load timeout; retry={attempt + 1}/{self.retries}",
+                        flush=True,
+                    )
+                    time.sleep(min(max(self.delay, 0.25) * (2**attempt), 30.0))
+                    continue
+
+                if provider == "google":
+                    print(
+                        "scrape: google page load timed out; "
+                        "falling back to Bing Images",
+                        flush=True,
+                    )
+                    return False
+
+                raise ScraperError(
+                    f"Chromium {provider} page load timed out after "
+                    f"{self.retries + 1} attempts"
+                ) from exc
+            except ScraperError as exc:
+                if provider == "google" and "verification" in str(exc).lower():
+                    print(
+                        "scrape: google verification detected; "
+                        "falling back to Bing Images",
+                        flush=True,
+                    )
+                    return False
+                raise
+
+        raise ScraperError(
+            f"Chromium {provider} page load failed: {last_timeout}"
+        )
 
     def _start_driver(self):
         try:
