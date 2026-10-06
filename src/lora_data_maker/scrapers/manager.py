@@ -5,7 +5,7 @@ from collections.abc import Iterable
 
 from .archive import DownloadArchive
 from .base import ImageResult, Scraper, ScraperError
-from .chromium import ChromiumGoogleImagesScraper
+from .chromium import ChromiumImagesScraper
 from .direct import DirectURLScraper
 from .duckduckgo import DuckDuckGoImagesScraper
 from .downloader import DownloadResult, ImageDownloader
@@ -40,7 +40,7 @@ class ScraperManager:
                 user_agent=effective_user_agent,
             )
         elif backend == "chromium":
-            self.scraper = ChromiumGoogleImagesScraper(
+            self.scraper = ChromiumImagesScraper(
                 timeout=timeout,
                 retries=retries,
                 delay=delay,
