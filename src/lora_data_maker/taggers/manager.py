@@ -55,13 +55,11 @@ def build_tagger(
 
     return WD14Tagger(
         model_cache=model_cache,
+        model_sha256=str(config.get("model_sha256", "")).strip() or None,
         threshold=float(config.get("threshold", 0.35)),
         character_threshold=float(
             config.get("character_threshold", 0.85)
         ),
         use_mcut=bool(config.get("use_mcut", False)),
-        character_mcut_floor=float(
-            config.get("character_mcut_floor", 0.15)
-        ),
         batch_size=int(config.get("batch_size", 1)),
     )
