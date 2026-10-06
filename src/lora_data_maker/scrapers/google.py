@@ -199,8 +199,9 @@ class GoogleImagesScraper(Scraper):
             "www.google.co.uk",
             "consent.google.com",
             "accounts.google.com",
+            "support.google.com",
         }
-        if host in blocked_hosts:
+        if host in blocked_hosts or host.endswith(".google.com"):
             return False
 
         if "/search" in path or "google.com/url" in value.lower():
