@@ -38,7 +38,7 @@ retries = 3
 delay = 1.0
 ~~~
 
-Built-in backends are google and direct.
+Built-in backends are google, duckduckgo, chromium, and direct.
 
 ## validation
 
@@ -112,6 +112,10 @@ download_timeout = 60
 ~~~
 
 The generated default config pins the model revision and SHA-256.
+
+For chromium, the optional Selenium dependency is required. The backend expects
+chromium-browser and chromedriver on PATH by default and uses a temporary browser
+profile under cache/chromium-profiles/.
 
 ## tag_rules
 
