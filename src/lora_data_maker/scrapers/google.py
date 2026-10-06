@@ -17,7 +17,7 @@ DEFAULT_USER_AGENT = (
     "Chrome/154.0.0.0 Mobile Safari/537.36"
 )
 
-_URL_RE = re.compile(r"https?://[^\s\"'<>\\]+", re.IGNORECASE)
+_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
 
 
 class _ImageAttributeParser(HTMLParser):
@@ -169,10 +169,10 @@ class GoogleImagesScraper(Scraper):
     @staticmethod
     def _decode_url(value: str) -> str:
         text = html.unescape(value)
-        text = text.replace("\/", "/")
-        text = text.replace("\u003d", "=").replace("\u0026", "&")
-        text = text.replace("\u002F", "/").replace("\u002f", "/")
-        text = text.rstrip(".,);]}\"'")
+        text = text.replace(r"\/", "/")
+        text = text.replace(r"\u003d", "=").replace(r"\u0026", "&")
+        text = text.replace(r"\u002F", "/").replace(r"\u002f", "/")
+        text = text.rstrip(".,);]}\\\"'")
         return text
 
     @staticmethod
