@@ -76,6 +76,7 @@ class ChromiumImagesScraper:
 
             seen: set[str] = set()
             ordered_candidates: list[str] = []
+            candidate_providers: dict[str, str] = {}
 
             for provider, base_url in providers:
                 last_candidate_count = 0
@@ -119,6 +120,7 @@ class ChromiumImagesScraper:
                         if candidate not in seen:
                             seen.add(candidate)
                             ordered_candidates.append(candidate)
+                            candidate_providers[candidate] = provider
 
                     print(
                         f"scrape: chromium provider={provider} "
@@ -162,9 +164,18 @@ class ChromiumImagesScraper:
                     yield ImageResult(
                         image_url=image_url,
                         query=query,
-                        page_url=self.GOOGLE_URL if rank <= limit else None,
+                        page_url=(
+                            self.GOOGLE_URL
+                            if candidate_providers.get(image_url) == "google"
+                            else self.BING_URL
+                        ),
                         rank=rank,
-                        metadata={"provider": "chromium"},
+                        metadata={
+                            "provider": candidate_providers.get(
+                                image_url,
+                                "chromium",
+                            )
+                        },
                     )
                     if rank >= limit:
                         break
