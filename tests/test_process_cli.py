@@ -53,7 +53,46 @@ def test_process_command_writes_work_and_preserves_raw(tmp_path):
     assert record.metadata["processing_mode"] == "cover"
 
 
-def test_process_command_rejects_unavailable_cli_face_crop(tmp_path):
+def test_process_command_uses_yunet_for_face_crop(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="example",
+            subject="example",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    source = root / "raw" / "input.png"
+    _make_image(source)
+
+    config = (root / "config.toml").read_text(encoding="utf-8")
+    config = config.replace("face_crop = false", "face_crop = true", 1)
+    (root / "config.toml").write_text(config, encoding="utf-8")
+
+    class FakeFaceDetector:
+        def detect(self, image):
+            from lora_data_maker.processing.faces import FaceBox
+            return [FaceBox(250, 100, 550, 400)]
+
+    monkeypatch.setattr(
+        "lora_data_maker.cli.YuNetFaceDetector",
+        lambda **kwargs: FakeFaceDetector(),
+    )
+
+    assert command_validate(Namespace(path=str(root))) == 0
+    assert command_clean(Namespace(path=str(root))) == 0
+    assert command_process(Namespace(path=str(root))) == 0
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    record = next(iter(project.manifest.images.values()))
+    assert record.status == "processed"
+    assert record.metadata["processing_face_detected"] is True
+
+
+def test_process_command_reports_missing_face_detector(tmp_path, monkeypatch):
     import pytest
 
     root = tmp_path / "project"
@@ -71,9 +110,13 @@ def test_process_command_rejects_unavailable_cli_face_crop(tmp_path):
     config = config.replace("face_crop = false", "face_crop = true", 1)
     (root / "config.toml").write_text(config, encoding="utf-8")
 
-    with pytest.raises(LoraDataMakerError, match="face_crop"):
-        command_process(Namespace(path=str(root)))
+    def missing_detector(**kwargs):
+        raise RuntimeError("face crop requires OpenCV (cv2) and NumPy")
 
+    monkeypatch.setattr("lora_data_maker.cli.YuNetFaceDetector", missing_detector)
+
+    with pytest.raises(LoraDataMakerError, match="requires OpenCV"):
+        command_process(Namespace(path=str(root)))
 
 def test_process_command_returns_failure_when_any_image_fails(tmp_path):
     from lora_data_maker.models import ImageRecord
