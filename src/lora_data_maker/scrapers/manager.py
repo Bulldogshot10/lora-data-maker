@@ -6,6 +6,7 @@ from collections.abc import Iterable
 from .archive import DownloadArchive
 from .base import ImageResult, Scraper, ScraperError
 from .direct import DirectURLScraper
+from .duckduckgo import DuckDuckGoImagesScraper
 from .downloader import DownloadResult, ImageDownloader
 from .google import DEFAULT_USER_AGENT, GoogleImagesScraper
 
@@ -37,11 +38,18 @@ class ScraperManager:
                 delay=delay,
                 user_agent=effective_user_agent,
             )
+        elif backend == "duckduckgo":
+            self.scraper = DuckDuckGoImagesScraper(
+                timeout=timeout,
+                retries=retries,
+                delay=delay,
+                user_agent=effective_user_agent,
+            )
         elif backend == "direct":
             self.scraper = DirectURLScraper()
         else:
             raise ScraperError(
-                f"unknown scraper backend {backend!r}; expected google or direct"
+                f"unknown scraper backend {backend!r}; expected google, duckduckgo, or direct"
             )
 
         self.downloader = ImageDownloader(
