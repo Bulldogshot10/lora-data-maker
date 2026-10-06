@@ -52,9 +52,11 @@ Phase 9 — caption and trigger system ✓ implemented
 - Derive trigger from subject by default, with explicit trigger support.
 - Idempotent trigger injection and resumable captioned state.
 
-Phase 10 — build orchestration
-- End-to-end build command.
-- Stage skipping, resume, progress, and stage summaries.
+Phase 10 — build orchestration ✓ implemented
+- End-to-end `build` command from scrape through caption.
+- Contiguous stage ranges plus repeated explicit `--skip` controls.
+- State-aware resume through existing stage eligibility rules.
+- Progress output and persisted per-stage before/after summaries in the manifest.
 
 Phase 11 — export and packaging
 - Plain image+txt export.
