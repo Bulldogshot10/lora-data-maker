@@ -17,12 +17,6 @@ dependencies = [
 lora-data-maker = "lora_data_maker.cli:main"
 
 [project.optional-dependencies]
-opencv = [
-  "opencv-python>=4.10,<5",
-]
-tagger = [
-  "onnxruntime>=1.17,<2",
-]
 gallery = [
   "gallery-dl>=1.29,<2",
 ]
