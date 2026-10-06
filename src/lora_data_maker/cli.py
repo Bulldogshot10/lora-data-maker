@@ -151,13 +151,6 @@ def command_scrape(args: argparse.Namespace) -> int:
     if not isinstance(scraper_config, dict):
         raise LoraDataMakerError("config section [scraper] must be a table")
 
-    configured_backend = str(scraper_config.get("backend", args.backend))
-    if configured_backend != args.backend:
-        raise LoraDataMakerError(
-            f"CLI backend {args.backend!r} does not match configured backend "
-            f"{configured_backend!r}"
-        )
-
     query = args.query or scraper_config.get("query")
     if not isinstance(query, str) or not query.strip():
         raise LoraDataMakerError(
