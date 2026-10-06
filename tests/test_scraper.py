@@ -500,9 +500,11 @@ def test_chromium_continues_to_bing_when_google_has_too_few_candidates(monkeypat
 
     from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
 
+    TimeoutException = type("TimeoutException", (Exception,), {})
     WebDriverException = type("WebDriverException", (Exception,), {})
     common = types.ModuleType("selenium.common")
     exceptions = types.ModuleType("selenium.common.exceptions")
+    exceptions.TimeoutException = TimeoutException
     exceptions.WebDriverException = WebDriverException
     common.exceptions = exceptions
     monkeypatch.setitem(sys.modules, "selenium.common", common)
