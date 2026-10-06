@@ -12,7 +12,7 @@ Model training and image generation are intentionally outside this project.
 
 ## Current state
 
-Phase 16 / v1.0.0 is released. The CLI supports the full dataset-preparation pipeline through export and packaging, incremental processing, and a complete project documentation set for Termux installation, CLI usage, configuration, dataset layout, troubleshooting, licensing, and responsible use.
+Phase 16 / v1.0.0 feature freeze is complete. The CLI supports the full dataset-preparation pipeline through export and packaging, incremental processing, and a complete project documentation set for Termux installation, CLI usage, configuration, dataset layout, troubleshooting, licensing, and responsible use.
 
 ## Design goals
 
@@ -118,7 +118,6 @@ lora-data-maker reconcile
 Inspect project state:
 
 ```bash
-lora-data-maker reconcile
 lora-data-maker info
 ```
 
@@ -126,7 +125,7 @@ Persistent download URLs are stored in `cache/downloads.txt`, and successful dow
 
 The scraper does not attempt CAPTCHA, login, or provider-verification bypasses.
 
-## Planned core commands
+## Core commands
 
 ```text
 lora-data-maker init
