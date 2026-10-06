@@ -1,24 +1,27 @@
 from __future__ import annotations
 
+import html
+import json
 import shutil
 import tempfile
 import time
 from pathlib import Path
 from typing import Iterator
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from .base import ImageResult, ScraperError
 from .google import DEFAULT_USER_AGENT, GoogleImagesScraper
 
 
-class ChromiumGoogleImagesScraper:
-    """Google Images scraper driven by a local headless Chromium browser.
+class ChromiumImagesScraper:
+    """Image-search scraper driven by a local headless Chromium browser.
 
     Selenium is imported lazily so the core package remains usable without the
     optional Chromium stack.
     """
 
-    SEARCH_URL = "https://www.google.com/search"
+    GOOGLE_URL = "https://www.google.com/search"
+    BING_URL = "https://www.bing.com/images/search"
 
     def __init__(
         self,
@@ -56,7 +59,7 @@ class ChromiumGoogleImagesScraper:
 
     def search(self, query: str, *, limit: int) -> Iterator[ImageResult]:
         if not query.strip():
-            raise ScraperError("Chromium Google Images query cannot be empty")
+            raise ScraperError("Chromium image-search query cannot be empty")
         if limit <= 0:
             return
 
@@ -64,75 +67,110 @@ class ChromiumGoogleImagesScraper:
         profile_dir = Path(driver._lora_profile_dir)
 
         try:
-            url = self.SEARCH_URL
-            params = {
-                "tbm": "isch",
-                "q": query,
-                "hl": "en",
-            }
+            providers = (
+                ("google", self.GOOGLE_URL),
+                ("bing", self.BING_URL),
+            )
 
-            from urllib.parse import urlencode
+            for provider, base_url in providers:
+                seen: set[str] = set()
+                last_candidate_count = 0
+                stagnant_rounds = 0
 
-            target_url = f"{url}?{urlencode(params)}"
-            driver.get(target_url)
-            self._check_page(driver)
-
-            seen: set[str] = set()
-            last_candidate_count = 0
-            stagnant_rounds = 0
-
-            for scroll_no in range(1, self.max_scrolls + 1):
-                hrefs = driver.execute_script(
-                    """
-                    return Array.from(document.querySelectorAll('a[href]'))
-                        .map(a => a.href)
-                        .filter(Boolean);
-                    """
-                )
-
-                candidates = self._extract_image_urls(hrefs)
-                new_candidates = [
-                    candidate for candidate in candidates
-                    if candidate not in seen
-                ]
-
-                for candidate in new_candidates:
-                    seen.add(candidate)
-
+                target_url = self._build_search_url(provider, base_url, query)
                 print(
-                    f"scrape: chromium scroll {scroll_no}/{self.max_scrolls} "
-                    f"candidates={len(seen)}",
+                    f"scrape: chromium provider={provider} query={query}",
                     flush=True,
                 )
 
-                if len(seen) >= limit:
-                    break
+                try:
+                    driver.get(target_url)
+                    if provider == "google":
+                        self._check_page(driver)
+                except ScraperError as exc:
+                    if provider == "google" and "verification" in str(exc).lower():
+                        print(
+                            "scrape: google verification detected; "
+                            "falling back to Bing Images",
+                            flush=True,
+                        )
+                        continue
+                    raise
 
-                if len(seen) == last_candidate_count:
-                    stagnant_rounds += 1
-                else:
-                    stagnant_rounds = 0
-                last_candidate_count = len(seen)
+                for scroll_no in range(1, self.max_scrolls + 1):
+                    if provider == "google":
+                        raw_items = driver.execute_script(
+                            """
+                            return Array.from(document.querySelectorAll('a[href]'))
+                                .map(a => a.href)
+                                .filter(Boolean);
+                            """
+                        )
+                        candidates = self._extract_image_urls(raw_items)
+                    else:
+                        raw_items = driver.execute_script(
+                            """
+                            return Array.from(document.querySelectorAll('a.iusc'))
+                                .map(a => a.getAttribute('m'))
+                                .filter(Boolean);
+                            """
+                        )
+                        candidates = self._extract_bing_image_urls(raw_items)
 
-                if stagnant_rounds >= 4:
-                    break
+                    for candidate in candidates:
+                        seen.add(candidate)
 
-                driver.execute_script(
-                    "window.scrollTo(0, document.body.scrollHeight);"
-                )
-                time.sleep(max(self.delay, 0.5))
-                self._check_page(driver)
+                    print(
+                        f"scrape: chromium provider={provider} "
+                        f"scroll={scroll_no}/{self.max_scrolls} "
+                        f"candidates={len(seen)}",
+                        flush=True,
+                    )
 
-            for rank, image_url in enumerate(seen, start=1):
-                yield ImageResult(
-                    image_url=image_url,
-                    query=query,
-                    page_url=self.SEARCH_URL,
-                    rank=rank,
-                )
-                if rank >= limit:
-                    break
+                    if len(seen) >= limit:
+                        break
 
+                    if len(seen) == last_candidate_count:
+                        stagnant_rounds += 1
+                    else:
+                        stagnant_rounds = 0
+                    last_candidate_count = len(seen)
+
+                    if stagnant_rounds >= 4:
+                        break
+
+                    driver.execute_script(
+                        "window.scrollTo(0, document.body.scrollHeight);"
+                    )
+                    time.sleep(max(self.delay, 0.5))
+
+                    if provider == "google":
+                        self._check_page(driver)
+
+                if seen:
+                    for rank, image_url in enumerate(seen, start=1):
+                        yield ImageResult(
+                            image_url=image_url,
+                            query=query,
+                            page_url=base_url,
+                            rank=rank,
+                            metadata={"provider": provider},
+                        )
+                        if rank >= limit:
+                            break
+                    return
+
+                if provider == "google":
+                    print(
+                        "scrape: google returned no image candidates; "
+                        "falling back to Bing Images",
+                        flush=True,
+                    )
+
+            raise ScraperError(
+                "Chromium image search returned no parseable image URLs "
+                "from Google or Bing"
+            )
         except ScraperError:
             raise
         except Exception as exc:
@@ -142,6 +180,52 @@ class ChromiumGoogleImagesScraper:
                 driver.quit()
             finally:
                 shutil.rmtree(profile_dir, ignore_errors=True)
+
+    @staticmethod
+    def _build_search_url(provider: str, base_url: str, query: str) -> str:
+        if provider == "google":
+            params = {"tbm": "isch", "q": query, "hl": "en"}
+        else:
+            params = {"q": query, "form": "HDRSC2"}
+        return f"{base_url}?{urlencode(params)}"
+
+    @staticmethod
+    def _extract_bing_image_urls(payloads: object) -> list[str]:
+        if not isinstance(payloads, list):
+            return []
+
+        urls: list[str] = []
+        seen: set[str] = set()
+
+        for raw_payload in payloads:
+            if not isinstance(raw_payload, str):
+                continue
+
+            try:
+                data = json.loads(html.unescape(raw_payload))
+            except (TypeError, ValueError):
+                continue
+
+            if not isinstance(data, dict):
+                continue
+
+            image_url = data.get("murl")
+            if (
+                not isinstance(image_url, str)
+                or not image_url.startswith(("http://", "https://"))
+            ):
+                continue
+
+            host = urlparse(image_url).netloc.lower()
+            if host.endswith("bing.com") or host.endswith("mm.bing.net"):
+                continue
+            if image_url in seen:
+                continue
+
+            seen.add(image_url)
+            urls.append(image_url)
+
+        return urls
 
     def _start_driver(self):
         try:
