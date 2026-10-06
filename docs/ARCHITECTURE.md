@@ -1,6 +1,6 @@
 # Architecture Contract
 
-Status: Phase 7 implemented
+Status: Phase 8 implemented
 
 ## Purpose
 
@@ -90,7 +90,7 @@ Taggers implement a common interface and are optional dependencies.
 
 The first backend is a WD14-compatible ONNX tagger. The implementation uses the model's 448x448 image input and selected_tags.csv category mapping, with lazy imports of NumPy and ONNX Runtime. Model files are cached by repository and revision, and the configured model SHA-256 is verified before use.
 
-Tagger output is treated as visual metadata. General tags, character tags, confidence scores, and rating scores are persisted in the image manifest. The tagger is not responsible for dataset identity or trigger injection.
+Tagger output is treated as visual metadata. General tags, character tags, confidence scores, and rating scores are persisted in the image manifest. The tag-cleaning stage normalizes tags, removes configured blacklist entries, deduplicates while preserving order, and injects the canonical `subject` exactly once at the front. The tagger is not responsible for dataset identity or caption-file trigger handling.
 
 ## Processing boundary
 
