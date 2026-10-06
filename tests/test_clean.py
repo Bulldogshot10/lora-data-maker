@@ -67,3 +67,33 @@ def test_clean_exact_duplicate_and_quality_filter(tmp_path):
     assert records["raw/004.png"].status == "validated"
     assert records["raw/002.png"].metadata["duplicate_kind"] == "exact"
     assert records["raw/003.png"].metadata["quality_stage"] == "rejected"
+
+
+def test_clean_command_is_successful_when_all_records_are_already_advanced(tmp_path):
+    from argparse import Namespace
+    from lora_data_maker.cli import command_clean, command_init
+    from lora_data_maker.dataset import DatasetProject
+    from lora_data_maker.models import ImageRecord
+    from lora_data_maker.paths import ProjectPaths
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    project.manifest.add_image(
+        ImageRecord(
+            path="raw/a.jpg",
+            status="exported",
+        )
+    )
+    project.save()
+
+    assert command_clean(Namespace(path=str(root))) == 0
