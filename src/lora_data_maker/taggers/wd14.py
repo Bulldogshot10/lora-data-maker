@@ -48,40 +48,59 @@ class WD14Labels:
         general_indexes: list[int] = []
         character_indexes: list[int] = []
 
-        with Path(path).open("r", encoding="utf-8", newline="") as handle:
-            reader = csv.DictReader(handle)
-            if reader.fieldnames is None or not {
-                "name",
-                "category",
-            }.issubset(reader.fieldnames):
-                raise TaggerError(
-                    "invalid WD14 selected_tags.csv: expected name/category columns"
-                )
-
-            for index, row in enumerate(reader):
-                raw_name = (row.get("name") or "").strip()
-                if not raw_name:
+        try:
+            with Path(path).open(
+                "r",
+                encoding="utf-8",
+                newline="",
+            ) as handle:
+                reader = csv.DictReader(handle)
+                if reader.fieldnames is None or not {
+                    "name",
+                    "category",
+                }.issubset(reader.fieldnames):
                     raise TaggerError(
-                        f"invalid WD14 selected_tags.csv row {index + 2}: empty tag name"
+                        "invalid WD14 selected_tags.csv: "
+                        "expected name/category columns"
                     )
-                category = int(row.get("category") or -1)
 
-                name = (
-                    raw_name
-                    if raw_name in KAOMOJIS
-                    else raw_name.replace("_", " ")
-                )
-                names.append(name)
+                for index, row in enumerate(reader):
+                    raw_name = (row.get("name") or "").strip()
+                    if not raw_name:
+                        raise TaggerError(
+                            "invalid WD14 selected_tags.csv row "
+                            f"{index + 2}: empty tag name"
+                        )
 
-                if category == 9:
-                    rating_indexes.append(index)
-                elif category == 0:
-                    general_indexes.append(index)
-                elif category == 4:
-                    character_indexes.append(index)
+                    try:
+                        category = int(row.get("category") or -1)
+                    except ValueError as exc:
+                        raise TaggerError(
+                            f"invalid WD14 category at row {index + 2}"
+                        ) from exc
 
-        if not names or len(rating_indexes) == 0 or len(general_indexes) == 0:
-            raise TaggerError("WD14 labels are missing required rating/general categories")
+                    name = (
+                        raw_name
+                        if raw_name in KAOMOJIS
+                        else raw_name.replace("_", " ")
+                    )
+                    names.append(name)
+
+                    if category == 9:
+                        rating_indexes.append(index)
+                    elif category == 0:
+                        general_indexes.append(index)
+                    elif category == 4:
+                        character_indexes.append(index)
+        except OSError as exc:
+            raise TaggerError(
+                f"could not read WD14 labels: {path}"
+            ) from exc
+
+        if not names or not rating_indexes or not general_indexes:
+            raise TaggerError(
+                "WD14 labels are missing required rating/general categories"
+            )
 
         return cls(
             names=names,
@@ -95,7 +114,10 @@ def mcut_threshold(probabilities: Sequence[float]) -> float:
     if len(probabilities) < 2:
         return 0.0
 
-    ordered = sorted((float(value) for value in probabilities), reverse=True)
+    ordered = sorted(
+        (float(value) for value in probabilities),
+        reverse=True,
+    )
     differences = [
         ordered[index] - ordered[index + 1]
         for index in range(len(ordered) - 1)
@@ -142,34 +164,47 @@ class WD14Tagger:
             return
 
         try:
-            import onnxruntime as ort
             import numpy as np
         except ImportError as exc:
             raise TaggerError(
-                "WD14 tagger requires optional dependencies; "
-                "install the 'tagger' extra with numpy and onnxruntime"
+                "WD14 tagger requires the optional numpy dependency; "
+                "install the 'tagger' extra"
+            ) from exc
+
+        try:
+            if self.session_factory is None:
+                import onnxruntime as ort
+                session_factory = ort.InferenceSession
+            else:
+                session_factory = self.session_factory
+        except ImportError as exc:
+            raise TaggerError(
+                "WD14 tagger requires optional onnxruntime; "
+                "install the 'tagger' extra"
             ) from exc
 
         files = self.model_cache.ensure()
-        factory = self.session_factory or ort.InferenceSession
-        session = factory(str(files.model_path))
+        session = session_factory(str(files.model_path))
         inputs = session.get_inputs()
         if not inputs:
             raise TaggerError("WD14 ONNX model has no inputs")
 
         shape = inputs[0].shape
         if len(shape) != 4:
-            raise TaggerError(f"unexpected WD14 ONNX input shape: {shape}")
+            raise TaggerError(
+                f"unexpected WD14 ONNX input shape: {shape}"
+            )
 
         target_size = shape[1]
         channels = shape[3]
         if not isinstance(target_size, int) or target_size < 1:
-            raise TaggerError(f"dynamic/invalid WD14 target height: {target_size}")
+            raise TaggerError(
+                f"dynamic/invalid WD14 target height: {target_size}"
+            )
         if channels != 3:
-            raise TaggerError(f"unexpected WD14 channel count: {channels}")
-
-        if np is None:
-            raise TaggerError("numpy runtime unavailable")
+            raise TaggerError(
+                f"unexpected WD14 channel count: {channels}"
+            )
 
         self._session = session
         self._labels = WD14Labels.load(files.labels_path)
@@ -207,44 +242,68 @@ class WD14Tagger:
         return results
 
     def _prepare_batch(self, paths: list[Path | str]):
-        try:
-            import numpy as np
-        except ImportError as exc:
-            raise TaggerError("numpy is required for WD14 inference") from exc
+        import numpy as np
+
+        if self._target_size is None:
+            raise TaggerError("WD14 model target size is not loaded")
 
         arrays = []
         for path in paths:
-            with Image.open(Path(path).expanduser().resolve()) as image:
-                rgba = image.convert("RGBA")
-                canvas = Image.new("RGBA", rgba.size, (255, 255, 255, 255))
-                canvas.alpha_composite(rgba)
-                rgb = canvas.convert("RGB")
-
-                max_dim = max(rgb.size)
-                pad_left = (max_dim - rgb.width) // 2
-                pad_top = (max_dim - rgb.height) // 2
-                padded = Image.new("RGB", (max_dim, max_dim), (255, 255, 255))
-                padded.paste(rgb, (pad_left, pad_top))
-
-                if max_dim != self._target_size:
-                    padded = padded.resize(
-                        (self._target_size, self._target_size),
-                        Image.Resampling.BICUBIC,
+            try:
+                with Image.open(
+                    Path(path).expanduser().resolve()
+                ) as image:
+                    rgba = image.convert("RGBA")
+                    canvas = Image.new(
+                        "RGBA",
+                        rgba.size,
+                        (255, 255, 255, 255),
                     )
+                    canvas.alpha_composite(rgba)
+                    rgb = canvas.convert("RGB")
 
-                array = np.asarray(padded, dtype=np.float32)[:, :, ::-1]
-                arrays.append(array)
+                    max_dim = max(rgb.size)
+                    pad_left = (max_dim - rgb.width) // 2
+                    pad_top = (max_dim - rgb.height) // 2
+                    padded = Image.new(
+                        "RGB",
+                        (max_dim, max_dim),
+                        (255, 255, 255),
+                    )
+                    padded.paste(rgb, (pad_left, pad_top))
+
+                    if max_dim != self._target_size:
+                        padded = padded.resize(
+                            (self._target_size, self._target_size),
+                            Image.Resampling.BICUBIC,
+                        )
+
+                    array = np.asarray(
+                        padded,
+                        dtype=np.float32,
+                    )[:, :, ::-1]
+                    arrays.append(array)
+            except (OSError, ValueError) as exc:
+                raise TaggerError(
+                    f"could not prepare image for WD14: {path}"
+                ) from exc
 
         return np.stack(arrays, axis=0)
 
     def _decode_prediction(self, prediction) -> TagResult:
+        if self._labels is None:
+            raise TaggerError("WD14 labels are not loaded")
+
         if len(prediction) != len(self._labels.names):
             raise TaggerError(
                 f"WD14 output has {len(prediction)} labels; "
                 f"expected {len(self._labels.names)}"
             )
 
-        def selected(indexes: list[int], threshold: float) -> dict[str, float]:
+        def selected(
+            indexes: list[int],
+            threshold: float,
+        ) -> dict[str, float]:
             return {
                 self._labels.names[index]: float(prediction[index])
                 for index in indexes
@@ -255,16 +314,22 @@ class WD14Tagger:
             self._labels.names[index]: float(prediction[index])
             for index in self._labels.rating_indexes
         }
+
         general_threshold = self.threshold
-        general_scores = [float(prediction[index]) for index in self._labels.general_indexes]
+        general_scores = [
+            float(prediction[index])
+            for index in self._labels.general_indexes
+        ]
         if self.use_mcut:
-            general_threshold = mcut_threshold(general_scores)
+            general_threshold = max(
+                self.threshold,
+                mcut_threshold(general_scores),
+            )
 
         characters = selected(
             self._labels.character_indexes,
             self.character_threshold,
         )
-
         tags = selected(
             self._labels.general_indexes,
             general_threshold,
@@ -282,7 +347,7 @@ class WD14Tagger:
 
         return TagResult(
             tags=ordered_tags,
-            scores={name: float(score) for name, score in tags.items()},
+            scores=dict(tags),
             ratings=ratings,
             characters=characters,
         )
