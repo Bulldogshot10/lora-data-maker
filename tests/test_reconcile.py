@@ -116,3 +116,27 @@ def test_reconcile_command_persists_summary(tmp_path):
     refreshed = DatasetProject.open(ProjectPaths.from_root(root))
     assert refreshed.manifest.source["last_reconcile_added"] == 1
     assert refreshed.manifest.source["last_reconcile_scanned"] == 1
+
+
+def test_reconcile_supports_raw_directory_outside_project_root(tmp_path):
+    root = tmp_path / "project"
+    raw = tmp_path / "external-raw"
+    root.mkdir()
+    raw.mkdir()
+    Image.new("RGB", (32, 32)).save(raw / "001.jpg")
+
+    manifest = create_manifest(
+        project_name="julia",
+        subject="julia",
+        trigger="julia",
+    )
+
+    summary = reconcile_raw(
+        manifest,
+        root=root,
+        raw_dir=raw,
+    )
+
+    assert summary.added == 1
+    record = next(iter(manifest.images.values()))
+    assert record.path == (raw / "001.jpg").resolve().as_posix()
