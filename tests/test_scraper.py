@@ -125,3 +125,26 @@ def test_downloader_rejects_non_image_content(tmp_path):
         assert "did not return an image" in str(exc)
     else:
         raise AssertionError("expected non-image content to fail")
+
+
+def test_google_decodes_escaped_json_urls():
+    body = r'''
+    <script>
+      var payload = "https:\/\/cdn.example.com\/photo.jpg?x\u003d1\u0026y\u003d2";
+    </script>
+    '''
+    urls = GoogleImagesScraper._extract_urls(body)
+    assert urls == [
+        "https://cdn.example.com/photo.jpg?x=1&y=2"
+    ]
+
+
+def test_google_detects_verification_page():
+    try:
+        GoogleImagesScraper._check_block_page(
+            "Our systems have detected unusual traffic from your computer network."
+        )
+    except Exception as exc:
+        assert "verification" in str(exc).lower()
+    else:
+        raise AssertionError("expected verification page to fail")
