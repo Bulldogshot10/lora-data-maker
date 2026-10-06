@@ -10,8 +10,10 @@ from .config import load_config, write_default_config
 from .dataset import DatasetProject
 from .exceptions import LoraDataMakerError
 from .logging import configure_logging
+from .images import iter_image_files, manifest_paths
 from .manifest import register_image
 from .paths import ProjectPaths, find_project_root
+from .processing import validate_image
 from .scrapers import ScraperError, ScraperManager
 
 
@@ -82,6 +84,15 @@ def build_parser() -> argparse.ArgumentParser:
         help="project directory (default: current directory)",
     )
 
+    validate_parser = subparsers.add_parser(
+        "validate", help="validate image files in the project's raw directory"
+    )
+    validate_parser.add_argument(
+        "--path",
+        default=".",
+        help="project directory (default: current directory)",
+    )
+
     return parser
 
 
@@ -139,6 +150,92 @@ def command_info(args: argparse.Namespace) -> int:
         raise LoraDataMakerError("config section [project] must be a table")
 
     return 0
+
+
+def command_validate(args: argparse.Namespace) -> int:
+    root = find_project_root(args.path)
+    config = load_config(root / "config.toml")
+    paths = ProjectPaths.from_root(root, config.get("paths", {}))
+    project = DatasetProject.open(paths)
+
+    validation_config = config.get("validation", {})
+    if not isinstance(validation_config, dict):
+        raise LoraDataMakerError("config section [validation] must be a table")
+
+    min_width = int(validation_config.get("min_width", 1))
+    min_height = int(validation_config.get("min_height", 1))
+    max_width = int(validation_config.get("max_width", 0)) or None
+    max_height = int(validation_config.get("max_height", 0)) or None
+    min_file_size = int(validation_config.get("min_file_size", 1))
+    max_file_size = int(validation_config.get("max_file_size", 0)) or None
+
+    existing = {
+        path: record
+        for path, record in (
+            (record.path.replace("\\\\", "/"), record)
+            for record in project.manifest.images.values()
+        )
+        if path
+    }
+
+    scanned = valid_count = rejected_count = 0
+    for image_path in iter_image_files(paths.raw):
+        relative_path = image_path.relative_to(root).as_posix()
+        scanned += 1
+
+        record = existing.get(relative_path)
+        if record is None:
+            record = register_image(
+                project.manifest,
+                path=relative_path,
+                status="discovered",
+            )
+            existing[relative_path] = record
+
+        result = validate_image(
+            image_path,
+            min_width=min_width,
+            min_height=min_height,
+            max_width=max_width,
+            max_height=max_height,
+            min_file_size=min_file_size,
+            max_file_size=max_file_size,
+        )
+
+        record.width = result.width
+        record.height = result.height
+        record.file_size = result.file_size
+        record.mime_type = result.mime_type
+        if result.metadata:
+            record.metadata.update(result.metadata)
+        if result.format:
+            record.metadata["format"] = result.format
+        if result.exif_orientation is not None:
+            record.metadata["exif_orientation"] = result.exif_orientation
+        record.metadata["has_exif"] = result.has_exif
+
+        if result.valid:
+            record.set_status("validated")
+            valid_count += 1
+        else:
+            record.set_status("rejected", reason=result.reason or "validation failed")
+            rejected_count += 1
+
+    project.manifest.source.update(
+        {
+            "last_validation_scanned": scanned,
+            "last_validation_valid": valid_count,
+            "last_validation_rejected": rejected_count,
+        }
+    )
+    project.save()
+
+    print(f"scanned: {scanned}")
+    print(f"valid: {valid_count}")
+    print(f"rejected: {rejected_count}")
+    print(f"raw: {paths.raw}")
+
+    return 0 if scanned else 1
 
 
 def command_scrape(args: argparse.Namespace) -> int:
@@ -227,6 +324,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return command_info(args)
         if args.command == "scrape":
             return command_scrape(args)
+        if args.command == "validate":
+            return command_validate(args)
     except (
         LoraDataMakerError,
         FileNotFoundError,
