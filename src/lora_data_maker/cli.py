@@ -19,7 +19,7 @@ from .pack import pack_dataset
 from .paths import ProjectPaths, find_project_root
 from .reconcile import reconcile_raw
 from .processing import ProcessConfig, clean_manifest, process_manifest, validate_image
-from .scrapers import ScraperError, ScraperManager
+from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
 from .taggers import (
     TaggerError,
     build_tagger,
@@ -75,13 +75,20 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scrape_parser.add_argument(
         "backend",
-        choices=("google", "duckduckgo", "chromium", "direct"),
-        help="scraper backend",
+        choices=SCRAPER_BACKENDS,
+        help="primary scraper backend",
     )
     scrape_parser.add_argument(
         "query",
         nargs="?",
         help="search query for google/duckduckgo/chromium, or a text file of URLs for direct",
+    )
+    scrape_parser.add_argument(
+        "--fallback",
+        dest="fallbacks",
+        action="append",
+        default=None,
+        help="fallback image-search backend; may be repeated",
     )
     scrape_parser.add_argument(
         "--count",
@@ -832,8 +839,24 @@ def command_scrape(args: argparse.Namespace) -> int:
     retries = int(scraper_config.get("retries", 3))
     delay = float(scraper_config.get("delay", 1.0))
 
+    configured_fallbacks = scraper_config.get("fallbacks", [])
+    if not isinstance(configured_fallbacks, list) or not all(
+        isinstance(item, str) for item in configured_fallbacks
+    ):
+        raise LoraDataMakerError(
+            "config field scraper.fallbacks must be an array of strings"
+        )
+
+    requested_fallbacks = getattr(args, "fallbacks", None)
+    fallbacks = (
+        requested_fallbacks
+        if requested_fallbacks is not None
+        else configured_fallbacks
+    )
+
     manager = ScraperManager(
         backend=args.backend,
+        fallbacks=fallbacks,
         output_dir=paths.raw,
         cache_dir=paths.cache,
         timeout=timeout,
@@ -871,6 +894,8 @@ def command_scrape(args: argparse.Namespace) -> int:
     project.manifest.source.update(
         {
             "backend": args.backend,
+            "backends": list(manager.backends),
+            "fallbacks": list(manager.fallbacks),
             "query": query,
             "last_scrape_requested": count,
             "last_scrape_downloaded": len(downloads),
@@ -880,7 +905,7 @@ def command_scrape(args: argparse.Namespace) -> int:
     )
     project.save()
 
-    print(f"scrape backend: {args.backend}")
+    print(f"scrape backends: {' -> '.join(manager.backends)}")
     print(f"query: {query}")
     print(f"requested: {count}")
     print(f"downloaded: {len(downloads)}")
