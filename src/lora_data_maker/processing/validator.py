@@ -183,7 +183,7 @@ def validate_image(
             path=image_path,
             valid=False,
             file_size=file_size,
-            reason="unidentified or corrupt image",
+            reason="unidentified image or corrupt image",
         )
     except (OSError, ValueError, SyntaxError, RuntimeError) as exc:
         return ImageValidationResult(
