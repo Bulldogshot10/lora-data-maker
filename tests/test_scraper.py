@@ -36,6 +36,12 @@ def test_google_rejects_obvious_navigation_urls():
     assert GoogleImagesScraper._looks_like_image_url(
         "https://example.com/profile/julia"
     ) is True
+    assert GoogleImagesScraper._looks_like_image_url(
+        "https://support.google.com/websearch"
+    ) is False
+    assert GoogleImagesScraper._looks_like_image_url(
+        "https://support.google.com/websearch/answer/134479"
+    ) is False
 
 
 class _FakeResponse:
