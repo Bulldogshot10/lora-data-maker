@@ -4,14 +4,17 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lora-data-maker"
-version = "0.1.0"
+version = "1.0.0"
 description = "Termux-first dataset preparation toolkit for LoRA image datasets."
+license = {text = "Apache-2.0"}
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
   "Pillow>=10,<13",
   "requests>=2.32,<3",
 ]
+
+# SPDX: Apache-2.0
 
 [project.scripts]
 lora-data-maker = "lora_data_maker.cli:main"
