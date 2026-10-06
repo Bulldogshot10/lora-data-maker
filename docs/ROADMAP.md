@@ -35,10 +35,12 @@ Phase 6 — image processing ✓ implemented
 - EXIF orientation handling without modifying `raw/`.
 - Optional face-aware processing behind a detector interface.
 
-Phase 7 — tagger engine
+Phase 7 — tagger engine ✓ implemented
 - Tagger interface and lazy optional runtime loading.
-- WD14-compatible ONNX backend.
+- WD14-compatible ONNX backend using the 448x448 model contract.
+- Pinned Hugging Face model revision with SHA-256 verification.
 - Model cache and batch inference.
+- Standalone `tag` stage writing tags and confidence/rating metadata to the manifest.
 
 Phase 8 — tag cleaning and subject injection
 - Normalize tags, blacklist unwanted tags, deduplicate tags.
