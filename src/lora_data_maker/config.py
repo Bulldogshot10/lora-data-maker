@@ -25,8 +25,6 @@ count = 300
 timeout = 20
 retries = 3
 delay = 1.0
-min_width = 512
-min_height = 512
 
 [validation]
 min_width = 1
