@@ -117,8 +117,7 @@ def test_pack_external_dataset_uses_safe_archive_prefix(tmp_path):
     dataset = tmp_path / "external-output" / "10_julia"
     dataset.mkdir(parents=True)
     (dataset / "abc.jpg").write_bytes(b"image")
-    (dataset / "abc.txt").write_text("julia
-", encoding="utf-8")
+    (dataset / "abc.txt").write_text("julia\\n", encoding="utf-8")
     (root / "manifest.json").parent.mkdir(parents=True)
     (root / "manifest.json").write_text("{"project_name": "julia"}
 ", encoding="utf-8")
