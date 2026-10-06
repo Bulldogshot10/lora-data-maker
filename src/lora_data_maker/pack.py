@@ -66,8 +66,13 @@ def pack_dataset(
         raise ValueError(f"exported dataset directory is empty: {dataset_root}")
 
     archive.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        archive_prefix = dataset_root.relative_to(root_path)
+    except ValueError:
+        archive_prefix = Path(dataset_root.name)
+
     archive_names = [
-        path.relative_to(root_path).as_posix()
+        (archive_prefix / path.relative_to(dataset_root)).as_posix()
         for path in files
     ]
 
