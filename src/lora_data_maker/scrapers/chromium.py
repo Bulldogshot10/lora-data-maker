@@ -351,7 +351,7 @@ class ChromiumImagesScraper:
 
         options = Options()
         options.binary_location = chromium_path
-        options.page_load_strategy = "eager"
+        options.page_load_strategy = "none"
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
