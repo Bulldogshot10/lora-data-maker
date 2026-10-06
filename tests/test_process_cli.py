@@ -8,9 +8,9 @@ from lora_data_maker.paths import ProjectPaths
 
 
 def _make_image(path):
-    image = Image.new("RGB", (800, 400), "white")
+    image = Image.new("RGB", (800, 640), "white")
     draw = ImageDraw.Draw(image)
-    draw.rectangle((200, 50, 600, 350), fill=(30, 120, 200))
+    draw.rectangle((200, 50, 600, 590), fill=(30, 120, 200))
     image.save(path, format="PNG")
 
 
