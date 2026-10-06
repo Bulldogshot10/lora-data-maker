@@ -390,6 +390,8 @@ def test_chromium_preserves_candidate_order(monkeypatch):
     class TimeoutException(Exception):
         pass
 
+    WebDriverException = type("WebDriverException", (Exception,), {})
+
     selenium = types.ModuleType("selenium")
     common = types.ModuleType("selenium.common")
     exceptions = types.ModuleType("selenium.common.exceptions")
@@ -452,6 +454,7 @@ def test_chromium_page_timeout_retries_and_falls_back_to_bing(monkeypatch):
     common = types.ModuleType("selenium.common")
     exceptions = types.ModuleType("selenium.common.exceptions")
     exceptions.TimeoutException = TimeoutException
+    exceptions.WebDriverException = WebDriverException
     common.exceptions = exceptions
 
     monkeypatch.setitem(
@@ -492,7 +495,18 @@ def test_chromium_page_timeout_retries_and_falls_back_to_bing(monkeypatch):
 
 
 def test_chromium_continues_to_bing_when_google_has_too_few_candidates(monkeypatch):
+    import sys
+    import types
+
     from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
+
+    WebDriverException = type("WebDriverException", (Exception,), {})
+    common = types.ModuleType("selenium.common")
+    exceptions = types.ModuleType("selenium.common.exceptions")
+    exceptions.WebDriverException = WebDriverException
+    common.exceptions = exceptions
+    monkeypatch.setitem(sys.modules, "selenium.common", common)
+    monkeypatch.setitem(sys.modules, "selenium.common.exceptions", exceptions)
 
     class FakeDriver:
         title = "Images"
