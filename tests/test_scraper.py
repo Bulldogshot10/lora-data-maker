@@ -187,3 +187,20 @@ def test_scraper_manager_skips_urls_already_in_manifest(tmp_path):
     assert downloads == []
     assert failures == []
     assert calls == []
+
+
+def test_downloader_prefers_ipv4_in_termux(monkeypatch):
+    import urllib3.util.connection as urllib3_connection
+    from lora_data_maker.scrapers.downloader import ImageDownloader
+
+    for key in ("TERMUX__ROOTFS", "TERMUX_VERSION", "PREFIX"):
+        monkeypatch.delenv(key, raising=False)
+    monkeypatch.setenv("TERMUX_VERSION", "test")
+
+    original = urllib3_connection.HAS_IPV6
+    try:
+        urllib3_connection.HAS_IPV6 = True
+        ImageDownloader(timeout=5, retries=0, delay=0, user_agent="test")
+        assert urllib3_connection.HAS_IPV6 is False
+    finally:
+        urllib3_connection.HAS_IPV6 = original
