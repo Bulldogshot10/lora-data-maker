@@ -86,3 +86,22 @@ jobs:
           test -d .smoke-project/output
           test -d .smoke-project/cache
           lora-data-maker info .smoke-project
+
+
+  face-smoke:
+    name: YuNet face smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install face runtime
+        run: python -m pip install ".[face,dev]"
+
+      - name: Run face detector smoke tests
+        run: pytest -q tests/test_face_detector.py -k real_model_smoke
