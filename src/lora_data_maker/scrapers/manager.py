@@ -7,7 +7,7 @@ from .archive import DownloadArchive
 from .base import ImageResult, Scraper, ScraperError
 from .direct import DirectURLScraper
 from .downloader import DownloadResult, ImageDownloader
-from .google import GoogleImagesScraper
+from .google import DEFAULT_USER_AGENT, GoogleImagesScraper
 
 
 class ScraperManager:
@@ -28,7 +28,7 @@ class ScraperManager:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
-        effective_user_agent = user_agent or GoogleImagesScraper.DEFAULT_USER_AGENT
+        effective_user_agent = user_agent or DEFAULT_USER_AGENT
 
         if backend == "google":
             self.scraper: Scraper = GoogleImagesScraper(
