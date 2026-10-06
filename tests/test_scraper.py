@@ -588,3 +588,78 @@ def test_downloader_extensionless_image_is_visible_to_validator(tmp_path):
     assert validation.valid is True
     assert validation.format == "PNG"
 
+
+
+def test_chromium_falls_back_when_google_verifies_mid_scroll(monkeypatch):
+    import sys
+    import types
+
+    from lora_data_maker.scrapers.base import ScraperError
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
+
+    TimeoutException = type("TimeoutException", (Exception,), {})
+    WebDriverException = type("WebDriverException", (Exception,), {})
+    common = types.ModuleType("selenium.common")
+    exceptions = types.ModuleType("selenium.common.exceptions")
+    exceptions.TimeoutException = TimeoutException
+    exceptions.WebDriverException = WebDriverException
+    common.exceptions = exceptions
+    monkeypatch.setitem(sys.modules, "selenium.common", common)
+    monkeypatch.setitem(sys.modules, "selenium.common.exceptions", exceptions)
+
+    class FakeDriver:
+        title = "Images"
+
+        def __init__(self):
+            self.get_urls = []
+            self.script_calls = 0
+            self.quit_called = False
+
+        def get(self, url):
+            self.get_urls.append(url)
+
+        def execute_script(self, script):
+            if "document.readyState" in script:
+                return "complete"
+            if "document.body" in script:
+                self.script_calls += 1
+                if self.script_calls >= 2:
+                    raise RuntimeError("not used")
+                return "normal results"
+            if "querySelectorAll" in script:
+                if len(self.get_urls) == 1:
+                    return [
+                        "https://www.google.com/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Fgoogle.jpg"
+                    ]
+                return ['{"murl":"https://cdn.example.com/bing.jpg"}']
+            if "window.scrollTo" in script:
+                return None
+            return None
+
+        def quit(self):
+            self.quit_called = True
+
+    driver = FakeDriver()
+    scraper = ChromiumImagesScraper(delay=0, retries=0, max_scrolls=2)
+
+    checks = {"calls": 0}
+
+    def check_page(_driver):
+        checks["calls"] += 1
+        if checks["calls"] >= 2:
+            raise ScraperError("Google returned a consent/verification page")
+
+    monkeypatch.setattr(scraper, "_start_driver", lambda: driver)
+    monkeypatch.setattr(scraper, "_check_page", check_page)
+
+    results = list(scraper.search("julia", limit=2))
+
+    assert [item.image_url for item in results] == [
+        "https://cdn.example.com/google.jpg",
+        "https://cdn.example.com/bing.jpg",
+    ]
+    assert [item.metadata["provider"] for item in results] == [
+        "google",
+        "bing",
+    ]
+    assert driver.quit_called is True
