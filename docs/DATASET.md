@@ -113,4 +113,4 @@ Create a portable bundle:
 lora-data-maker pack
 ~~~
 
-The ZIP contains the exported dataset and manifest.json.
+The ZIP contains the exported dataset and manifest.json. A full `build` performs export and pack automatically.
