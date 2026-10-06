@@ -288,3 +288,242 @@ def test_bing_extracts_original_image_urls():
         "https://cdn.example.com/a.jpg",
         "https://cdn.example.com/b.png",
     ]
+
+def test_manager_fallbacks_are_sequential_and_non_overlapping(tmp_path):
+    from lora_data_maker.scrapers.base import ImageResult
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    manager = ScraperManager(
+        backend="google",
+        fallbacks=["duckduckgo", "chromium"],
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        delay=0,
+    )
+
+    calls = []
+
+    class FakeScraper:
+        def __init__(self, name, results):
+            self.name = name
+            self.results = list(results)
+
+        def search(self, query, *, limit):
+            calls.append(self.name)
+            yield from self.results
+
+    manager.scrapers["google"] = FakeScraper("google", [
+        ImageResult("https://CDN.example.com/a.jpg#fragment"),
+    ])
+    manager.scrapers["duckduckgo"] = FakeScraper("duckduckgo", [
+        ImageResult("https://cdn.example.com/a.jpg"),
+        ImageResult("https://cdn.example.com/b.jpg"),
+    ])
+    manager.scrapers["chromium"] = FakeScraper("chromium", [
+        ImageResult("https://cdn.example.com/c.jpg"),
+    ])
+    manager.scraper = manager.scrapers["google"]
+
+    class FakeDownload:
+        def __init__(self, path, url):
+            self.path = path
+            self.url = url
+            self.sha256 = url
+            self.file_size = 1
+            self.content_type = "image/jpeg"
+
+    downloaded_urls = []
+
+    def fake_download(url, output_dir, *, index, archive):
+        downloaded_urls.append(url)
+        path = tmp_path / "raw" / f"{index:06d}.jpg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+        return FakeDownload(path, url)
+
+    manager.downloader.download = fake_download
+    downloads, failures = manager.run("julia", count=3)
+
+    assert failures == []
+    assert len(downloads) == 3
+    assert calls == ["google", "duckduckgo", "chromium"]
+    assert downloaded_urls == [
+        "https://cdn.example.com/a.jpg",
+        "https://cdn.example.com/b.jpg",
+        "https://cdn.example.com/c.jpg",
+    ]
+
+
+def test_manager_stops_before_fallback_when_target_is_reached(tmp_path):
+    from lora_data_maker.scrapers.base import ImageResult
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    manager = ScraperManager(
+        backend="google",
+        fallbacks=["duckduckgo"],
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        delay=0,
+    )
+    calls = []
+
+    class FakeScraper:
+        def __init__(self, name, results):
+            self.name = name
+            self.results = list(results)
+
+        def search(self, query, *, limit):
+            calls.append(self.name)
+            yield from self.results
+
+    manager.scrapers["google"] = FakeScraper("google", [
+        ImageResult("https://cdn.example.com/a.jpg"),
+        ImageResult("https://cdn.example.com/b.jpg"),
+    ])
+    manager.scrapers["duckduckgo"] = FakeScraper("duckduckgo", [])
+    manager.scraper = manager.scrapers["google"]
+
+    class FakeDownload:
+        def __init__(self, path, url):
+            self.path = path
+            self.url = url
+            self.sha256 = url
+            self.file_size = 1
+            self.content_type = "image/jpeg"
+
+    def fake_download(url, output_dir, *, index, archive):
+        path = tmp_path / "raw" / f"{index:06d}.jpg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+        return FakeDownload(path, url)
+
+    manager.downloader.download = fake_download
+    downloads, failures = manager.run("julia", count=2)
+
+    assert len(downloads) == 2
+    assert failures == []
+    assert calls == ["google"]
+
+
+def test_manager_discards_exact_content_overlap_between_engines(tmp_path):
+    from lora_data_maker.scrapers.base import ImageResult
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    manager = ScraperManager(
+        backend="google",
+        fallbacks=["duckduckgo"],
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        delay=0,
+    )
+
+    class FakeScraper:
+        def __init__(self, results):
+            self.results = list(results)
+
+        def search(self, query, *, limit):
+            yield from self.results
+
+    manager.scrapers["google"] = FakeScraper([
+        ImageResult("https://cdn.example.com/a.jpg"),
+    ])
+    manager.scrapers["duckduckgo"] = FakeScraper([
+        ImageResult("https://other.example.com/a.jpg"),
+        ImageResult("https://other.example.com/b.jpg"),
+    ])
+    manager.scraper = manager.scrapers["google"]
+
+    class FakeDownload:
+        def __init__(self, path, url, digest):
+            self.path = path
+            self.url = url
+            self.sha256 = digest
+            self.file_size = 1
+            self.content_type = "image/jpeg"
+
+    def fake_download(url, output_dir, *, index, archive):
+        path = tmp_path / "raw" / f"{index:06d}.jpg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+        digest = "same" if url.endswith("/a.jpg") else "unique"
+        return FakeDownload(path, url, digest)
+
+    manager.downloader.download = fake_download
+    downloads, failures = manager.run("julia", count=2)
+
+    assert failures == []
+    assert len(downloads) == 1
+    assert downloads[0].url == "https://cdn.example.com/a.jpg"
+    assert not (tmp_path / "raw" / "000002.jpg").exists()
+
+
+def test_manager_falls_back_after_search_error(tmp_path):
+    from lora_data_maker.scrapers.base import ImageResult, ScraperError
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    manager = ScraperManager(
+        backend="google",
+        fallbacks=["duckduckgo"],
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        delay=0,
+    )
+    calls = []
+
+    class FailingScraper:
+        def search(self, query, *, limit):
+            calls.append("google")
+            raise ScraperError("google search failed")
+            yield  # pragma: no cover
+
+    class WorkingScraper:
+        def search(self, query, *, limit):
+            calls.append("duckduckgo")
+            yield ImageResult("https://cdn.example.com/a.jpg")
+
+    manager.scrapers["google"] = FailingScraper()
+    manager.scrapers["duckduckgo"] = WorkingScraper()
+    manager.scraper = manager.scrapers["google"]
+
+    class FakeDownload:
+        def __init__(self, path, url):
+            self.path = path
+            self.url = url
+            self.sha256 = url
+            self.file_size = 1
+            self.content_type = "image/jpeg"
+
+    def fake_download(url, output_dir, *, index, archive):
+        path = tmp_path / "raw" / f"{index:06d}.jpg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"x")
+        return FakeDownload(path, url)
+
+    manager.downloader.download = fake_download
+    downloads, failures = manager.run("julia", count=1)
+
+    assert len(downloads) == 1
+    assert calls == ["google", "duckduckgo"]
+    assert len(failures) == 1
+    assert failures[0][1] == "google search failed"
+
+
+def test_manager_rejects_invalid_fallback_chain(tmp_path):
+    from lora_data_maker.scrapers.manager import ScraperManager
+    import pytest
+
+    with pytest.raises(Exception, match="duplicate scraper backend"):
+        ScraperManager(
+            backend="google",
+            fallbacks=["duckduckgo", "duckduckgo"],
+            output_dir=tmp_path / "raw",
+            cache_dir=tmp_path / "cache",
+        )
+
+    with pytest.raises(Exception, match="direct cannot have fallback"):
+        ScraperManager(
+            backend="direct",
+            fallbacks=["duckduckgo"],
+            output_dir=tmp_path / "raw",
+            cache_dir=tmp_path / "cache",
+        )
