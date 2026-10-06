@@ -12,7 +12,7 @@ Model training and image generation are intentionally outside this project.
 
 ## Current state
 
-Phase 8 is implemented. The CLI can initialize projects, inspect manifests, scrape/download images, validate, deduplicate, quality-filter, process images, tag with the configured WD14-compatible ONNX model, and clean/inject canonical dataset tags.
+Phase 9 is implemented. The CLI can initialize projects, inspect manifests, scrape/download images, validate, deduplicate, quality-filter, process images, tag with the configured WD14-compatible ONNX model, clean/inject canonical dataset tags, and write deterministic captions with trigger handling.
 
 ## Design goals
 
@@ -74,9 +74,15 @@ Normalize/filter tags and inject the canonical dataset subject:
 lora-data-maker clean-tags
 ```
 
+Write deterministic caption files from the cleaned tags:
+
+```bash
+lora-data-maker caption
+```
+
 The first tag run downloads the pinned WD14 model into `~/.cache/lora-data-maker/taggers/wd14/`. The core package does not import ONNX Runtime until the tagger is actually used.
 
-Downloaded images stay in `raw/`. The clean, process, and tag-clean stages never delete or rewrite source images. Processed outputs are written under `work/processed/` as RGB JPEGs. Tags, tagger scores, and canonical subject metadata are recorded in `manifest.json`.
+Downloaded images stay in `raw/`. The clean, process, tag-clean, and caption stages never delete or rewrite source images. Processed outputs are written under `work/processed/` as RGB JPEGs, while captions are written under `work/captions/`. Tags, tagger scores, canonical subject metadata, and caption metadata are recorded in `manifest.json`.
 
 Inspect project state:
 
@@ -104,4 +110,4 @@ lora-data-maker pack
 lora-data-maker info
 ```
 
-Upcoming stages build on the Phase 8 tag-cleaning stage.
+Upcoming stages build on the Phase 9 caption stage.
