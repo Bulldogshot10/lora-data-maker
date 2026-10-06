@@ -207,10 +207,31 @@ def _metadata(
     for key in ("dpi", "duration", "loop", "background", "transparency"):
         if key not in info:
             continue
-        value = info[key]
-        if isinstance(value, (str, int, float, bool)):
+        value = _json_safe(value=info[key])
+        if value is not None:
             metadata[key] = value
-        elif isinstance(value, (list, tuple)):
-            metadata[key] = list(value)
 
     return metadata
+
+
+def _json_safe(value: Any) -> Any:
+    """Convert Pillow metadata values into JSON-native types."""
+    if value is None or isinstance(value, (str, int, float, bool)):
+        return value
+
+    if isinstance(value, dict):
+        return {
+            str(key): safe_value
+            for key, item in value.items()
+            if (safe_value := _json_safe(item)) is not None
+        }
+
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+
+    # Pillow's IFDRational and similar numeric metadata types implement
+    # float conversion but are not JSON serializable.
+    try:
+        return float(value)
+    except (TypeError, ValueError, OverflowError):
+        return str(value)
