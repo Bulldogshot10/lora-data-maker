@@ -4,6 +4,7 @@ from PIL import Image
 
 from lora_data_maker.cli import command_init, command_reconcile, command_validate
 from lora_data_maker.dataset import DatasetProject
+from lora_data_maker.manifest import create_manifest
 from lora_data_maker.models import ImageRecord
 from lora_data_maker.paths import ProjectPaths
 from lora_data_maker.reconcile import reconcile_raw
@@ -17,14 +18,11 @@ def test_reconcile_adds_raw_files_without_touching_advanced_state(tmp_path):
     Image.new("RGB", (16, 16)).save(raw / "001.jpg")
     Image.new("RGB", (16, 16)).save(raw / "002.jpg")
 
-    manifest = DatasetProject(
-        ProjectPaths.from_root(root),
-        __import__("lora_data_maker.manifest", fromlist=["create_manifest"]).create_manifest(
-            project_name="julia",
-            subject="julia",
-            trigger="julia",
-        ),
-    ).manifest
+    manifest = create_manifest(
+        project_name="julia",
+        subject="julia",
+        trigger="julia",
+    )
     advanced = ImageRecord(
         path="raw/001.jpg",
         status="tagged",
@@ -50,7 +48,7 @@ def test_reconcile_adds_raw_files_without_touching_advanced_state(tmp_path):
 
 def test_reconcile_marks_missing_raw_without_deleting_record(tmp_path):
     root = tmp_path / "project"
-    manifest = __import__("lora_data_maker.manifest", fromlist=["create_manifest"]).create_manifest(
+    manifest = create_manifest(
         project_name="julia",
         subject="julia",
         trigger="julia",
