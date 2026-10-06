@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import Sequence
 
 from . import __version__
+from .build import BUILD_STAGES, run_build
 from .captions import CaptionConfig, caption_manifest
 from .config import load_config, write_default_config
 from .dataset import DatasetProject
@@ -143,6 +144,34 @@ def build_parser() -> argparse.ArgumentParser:
         "--path",
         default=".",
         help="project directory (default: current directory)",
+    )
+
+    build_parser = subparsers.add_parser(
+        "build", help="run the dataset preparation pipeline"
+    )
+    build_parser.add_argument(
+        "--path",
+        default=".",
+        help="project directory (default: current directory)",
+    )
+    build_parser.add_argument(
+        "--from-stage",
+        choices=BUILD_STAGES,
+        default=BUILD_STAGES[0],
+        help="first stage to run (default: scrape)",
+    )
+    build_parser.add_argument(
+        "--to-stage",
+        choices=BUILD_STAGES,
+        default=BUILD_STAGES[-1],
+        help="last stage to run (default: caption)",
+    )
+    build_parser.add_argument(
+        "--skip",
+        action="append",
+        choices=BUILD_STAGES,
+        default=[],
+        help="skip a stage; may be repeated",
     )
 
     return parser
@@ -657,6 +686,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             return command_clean_tags(args)
         if args.command == "caption":
             return command_caption(args)
+        if args.command == "build":
+            summary = run_build(
+                path=args.path,
+                from_stage=args.from_stage,
+                to_stage=args.to_stage,
+                skip=args.skip,
+            )
+            return 0 if summary.success else 1
     except (
         LoraDataMakerError,
         FileNotFoundError,
