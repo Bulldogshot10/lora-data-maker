@@ -34,6 +34,17 @@ lora-data-maker --help
 
 The core package uses Python standard library modules plus Pillow and requests.
 
+## Optional Chromium backend
+
+The Chromium scraper requires the Termux chromium package plus the Selenium extra:
+
+~~~bash
+pkg install chromium
+python -m pip install ".[chromium]"
+~~~
+
+The backend expects `chromium-browser` and `chromedriver` on PATH.
+
 ## Optional tagger runtime
 
 The WD14 tagger uses the optional tagger dependency set:
