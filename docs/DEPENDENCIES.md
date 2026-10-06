@@ -12,11 +12,9 @@ The default installation must be small enough for Termux.
 
 ## Optional runtime
 
-opencv: image processing and face detection backends that need OpenCV.
-
 tagger: ONNX Runtime for local WD14-compatible tagging.
 
-gallery: gallery-dl integration for supported external sources.
+gallery: gallery-dl integration for future/supported external sources.
 
 dev: pytest and future development tooling.
 
