@@ -18,7 +18,7 @@ When a project path is supplied, or when the command is run from a child directo
 
 ## init
 
-Create a project.
+Create a project. With `--force`, the config is replaced and `manifest.json` is recreated, resetting recorded dataset state.
 
 ~~~bash
 lora-data-maker init [path] [--name NAME] [--subject SUBJECT] [--trigger TRIGGER] [--force]
