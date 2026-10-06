@@ -663,3 +663,15 @@ def test_chromium_falls_back_when_google_verifies_mid_scroll(monkeypatch):
         "bing",
     ]
     assert driver.quit_called is True
+
+
+def test_download_archive_rejects_invalid_utf8(tmp_path):
+    from lora_data_maker.scrapers.archive import DownloadArchive
+    from lora_data_maker.scrapers.base import ScraperError
+
+    path = tmp_path / "downloads.txt"
+    path.write_bytes(b"valid-url\n\xff\xfe")
+
+    import pytest
+    with pytest.raises(ScraperError, match="could not read download archive"):
+        DownloadArchive(path)
