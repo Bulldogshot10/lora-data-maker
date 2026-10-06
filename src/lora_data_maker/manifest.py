@@ -111,3 +111,24 @@ def register_image(
     )
     image.set_status(status)
     return manifest.add_image(image)
+
+
+def find_image_by_path(
+    manifest: ProjectManifest,
+    path: str,
+) -> ImageRecord | None:
+    normalized = Path(path).as_posix()
+    for image in manifest.images.values():
+        if Path(image.path).as_posix() == normalized:
+            return image
+    return None
+
+
+def find_image_by_source_url(
+    manifest: ProjectManifest,
+    source_url: str,
+) -> ImageRecord | None:
+    for image in manifest.images.values():
+        if image.source_url == source_url:
+            return image
+    return None
