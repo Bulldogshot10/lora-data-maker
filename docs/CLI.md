@@ -39,10 +39,10 @@ lora-data-maker info [path]
 Download images through a built-in backend.
 
 ~~~bash
-lora-data-maker scrape {google,duckduckgo,direct} [query] [--count COUNT] [--path PATH]
+lora-data-maker scrape {google,duckduckgo,chromium,direct} [query] [--count COUNT] [--path PATH]
 ~~~
 
-Google uses query text. DuckDuckGo uses query text and its image JSON endpoint. Direct uses a text file containing source URLs.
+Google uses query text with the legacy HTTP parser. DuckDuckGo uses query text and its image JSON endpoint. Chromium drives a local headless Chromium browser, renders Google Images, auto-scrolls, and extracts original image URLs. Direct uses a text file containing source URLs.
 
 Scrape is add-only. Known manifest source URLs and archived URLs are skipped.
 
