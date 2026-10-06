@@ -12,7 +12,7 @@ Model training and image generation are intentionally outside this project.
 
 ## Current state
 
-Phase 10 is implemented. The CLI can initialize projects, inspect manifests, scrape/download images, validate, deduplicate, quality-filter, process images, tag with the configured WD14-compatible ONNX model, clean/inject canonical dataset tags, write deterministic captions, and orchestrate the full pipeline with resumable stage selection.
+Phase 11 is implemented. The CLI can initialize projects, inspect manifests, scrape/download images, validate, deduplicate, quality-filter, process images, tag with the configured WD14-compatible ONNX model, clean/inject canonical dataset tags, write deterministic captions, orchestrate the pipeline, export a Kohya-style dataset, and package the result with the manifest.
 
 ## Design goals
 
@@ -93,6 +93,18 @@ lora-data-maker build --from-stage process
 lora-data-maker build --skip scrape --skip tag
 ```
 
+Export the captioned dataset as matching image + `.txt` pairs:
+
+```bash
+lora-data-maker export --repeats 10
+```
+
+Package the exported dataset together with `manifest.json`:
+
+```bash
+lora-data-maker pack
+```
+
 The first tag run downloads the pinned WD14 model into `~/.cache/lora-data-maker/taggers/wd14/`. The core package does not import ONNX Runtime until the tagger is actually used.
 
 Downloaded images stay in `raw/`. The clean, process, tag-clean, and caption stages never delete or rewrite source images. Processed outputs are written under `work/processed/` as RGB JPEGs, while captions are written under `work/captions/`. Tags, tagger scores, canonical subject metadata, and caption metadata are recorded in `manifest.json`.
@@ -123,4 +135,4 @@ lora-data-maker pack
 lora-data-maker info
 ```
 
-Upcoming stages build on the Phase 10 build orchestration stage.
+Upcoming stages build on the Phase 11 export and packaging stage.
