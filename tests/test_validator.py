@@ -110,3 +110,15 @@ def test_reads_jpeg_dpi_as_json_safe_value(tmp_path):
     assert result.valid is True
     assert result.metadata["dpi"]
     json.dumps(result.metadata)
+
+
+def test_rejects_pillow_decompression_bomb(tmp_path, monkeypatch):
+    path = tmp_path / "large.png"
+    Image.new("RGB", (32, 32), (10, 20, 30)).save(path, format="PNG")
+
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100)
+
+    result = validate_image(path)
+
+    assert result.valid is False
+    assert "unsafe image dimensions" in (result.reason or "")
