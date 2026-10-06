@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import hashlib
+import os
+import tempfile
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,6 +49,8 @@ def pack_dataset(
         raise FileNotFoundError(f"exported dataset directory not found: {dataset_root}")
     if not manifest.is_file():
         raise FileNotFoundError(f"manifest file not found: {manifest}")
+    if archive == manifest:
+        raise ValueError("archive path must differ from manifest path")
 
     try:
         archive.relative_to(dataset_root)
@@ -77,16 +81,29 @@ def pack_dataset(
     ]
 
     manifest_name = manifest.relative_to(root_path).as_posix()
+    fd, temp_name = tempfile.mkstemp(
+        prefix=f".{archive.name}.",
+        suffix=".tmp",
+        dir=archive.parent,
+    )
+    os.close(fd)
+    temp_archive = Path(temp_name)
 
-    with zipfile.ZipFile(
-        archive,
-        mode="w",
-        compression=zipfile.ZIP_DEFLATED,
-        compresslevel=6,
-    ) as bundle:
-        for path, arcname in zip(files, archive_names):
-            bundle.write(path, arcname=arcname)
-        bundle.write(manifest, arcname=manifest_name)
+    try:
+        with zipfile.ZipFile(
+            temp_archive,
+            mode="w",
+            compression=zipfile.ZIP_DEFLATED,
+            compresslevel=6,
+        ) as bundle:
+            for path, arcname in zip(files, archive_names):
+                bundle.write(path, arcname=arcname)
+            bundle.write(manifest, arcname=manifest_name)
+
+        temp_archive.replace(archive)
+    except Exception:
+        temp_archive.unlink(missing_ok=True)
+        raise
 
     return PackSummary(
         archive_path=archive.as_posix(),
