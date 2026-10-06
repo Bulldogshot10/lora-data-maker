@@ -78,3 +78,18 @@ def test_rejects_truncated_jpeg(tmp_path):
 
     assert result.valid is False
     assert "decode failed" in (result.reason or "").lower()
+
+
+def test_reads_exif_orientation(tmp_path):
+    path = tmp_path / "oriented.jpg"
+    image = Image.new("RGB", (640, 480), (30, 40, 50))
+    exif = image.getexif()
+    exif[274] = 6
+    image.save(path, format="JPEG", exif=exif.tobytes())
+
+    result = validate_image(path)
+
+    assert result.valid is True
+    assert result.exif_orientation == 6
+    assert result.has_exif is True
+    assert result.metadata["exif_orientation"] == 6
