@@ -1,0 +1,63 @@
+from pathlib import Path
+
+from PIL import Image, ImageDraw, ImageFilter
+
+from lora_data_maker.models import ImageRecord, ProjectManifest
+from lora_data_maker.processing.clean import clean_manifest
+
+
+def _make_subject_image(path: Path, *, blur: float = 0.0):
+    image = Image.new("RGB", (640, 640), "white")
+    draw = ImageDraw.Draw(image)
+    draw.ellipse((100, 100, 540, 540), fill=(80, 120, 180))
+    draw.rectangle((240, 180, 400, 460), fill=(220, 80, 80))
+    if blur:
+        image = image.filter(ImageFilter.GaussianBlur(blur))
+    image.save(path, format="PNG")
+
+
+def _manifest_for(*paths: str) -> ProjectManifest:
+    manifest = ProjectManifest(project_name="example", subject="example", trigger="example")
+    for path in paths:
+        manifest.add_image(ImageRecord(path=path, status="validated"))
+    return manifest
+
+
+def test_clean_exact_duplicate_and_quality_filter(tmp_path):
+    raw = tmp_path / "raw"
+    raw.mkdir()
+
+    _make_subject_image(raw / "001.png")
+    (raw / "002.png").write_bytes((raw / "001.png").read_bytes())
+    _make_subject_image(raw / "003.png", blur=8)
+    _make_subject_image(raw / "004.png")
+
+    manifest = _manifest_for(
+        "raw/001.png",
+        "raw/002.png",
+        "raw/003.png",
+        "raw/004.png",
+    )
+
+    summary = clean_manifest(
+        manifest,
+        root=tmp_path,
+        exact=True,
+        perceptual=True,
+        perceptual_distance=6,
+        min_width=512,
+        min_height=512,
+        blur_threshold=1000,
+    )
+
+    records = {image.path: image for image in manifest.images.values()}
+
+    assert summary.scanned == 4
+    assert summary.exact_duplicates == 1
+    assert summary.quality_rejected == 1
+    assert records["raw/001.png"].status == "validated"
+    assert records["raw/002.png"].status == "duplicate"
+    assert records["raw/003.png"].status == "rejected"
+    assert records["raw/004.png"].status == "validated"
+    assert records["raw/002.png"].metadata["duplicate_kind"] == "exact"
+    assert records["raw/003.png"].metadata["quality_stage"] == "rejected"
