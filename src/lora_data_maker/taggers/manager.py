@@ -4,7 +4,9 @@ from pathlib import Path
 from typing import Any
 
 from .base import Tagger, TaggerError
+from .mobile import MobileWD14Tagger
 from .model import HuggingFaceModelCache
+from .presets import resolve_tagger_preset
 from .wd14 import WD14Tagger
 
 
@@ -12,6 +14,7 @@ def build_tagger(
     config: dict[str, Any],
     *,
     cache_root: Path | str | None = None,
+    preset: str | None = None,
 ) -> Tagger:
     backend = str(config.get("backend", "wd14")).strip().lower()
     if backend != "wd14":
@@ -19,18 +22,9 @@ def build_tagger(
             f"unsupported tagger backend {backend!r}; expected 'wd14'"
         )
 
-    repo_id = str(
-        config.get(
-            "model",
-            "SmilingWolf/wd-eva02-large-tagger-v3",
-        )
-    ).strip()
-    revision = str(
-        config.get(
-            "revision",
-            "b25b82a03f7282e41aa2f257a52c7583b710bd1c",
-        )
-    ).strip()
+    profile = resolve_tagger_preset(
+        preset if preset is not None else config.get("preset")
+    )
 
     configured_cache = config.get("cache_dir")
     if configured_cache:
@@ -48,18 +42,30 @@ def build_tagger(
 
     model_cache = HuggingFaceModelCache(
         cache_dir,
-        repo_id=repo_id,
-        revision=revision,
+        repo_id=profile.repo_id,
+        revision=profile.revision,
         timeout=float(config.get("download_timeout", 60.0)),
+        model_filename=profile.model_filename,
+        labels_filename=profile.labels_filename,
     )
 
-    return WD14Tagger(
-        model_cache=model_cache,
-        model_sha256=str(config.get("model_sha256", "")).strip() or None,
-        threshold=float(config.get("threshold", 0.35)),
-        character_threshold=float(
+    common = {
+        "model_cache": model_cache,
+        "model_sha256": profile.model_sha256,
+        "threshold": float(config.get("threshold", 0.35)),
+        "character_threshold": float(
             config.get("character_threshold", 0.85)
         ),
-        use_mcut=bool(config.get("use_mcut", False)),
-        batch_size=int(config.get("batch_size", 1)),
-    )
+    }
+
+    if profile.kind == "mobile":
+        return MobileWD14Tagger(**common)
+
+    if profile.kind == "wd14":
+        return WD14Tagger(
+            **common,
+            use_mcut=bool(config.get("use_mcut", False)),
+            batch_size=int(config.get("batch_size", 1)),
+        )
+
+    raise TaggerError(f"unsupported tagger preset kind {profile.kind!r}")
