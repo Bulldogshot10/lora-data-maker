@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from collections.abc import Iterable
 
 from .archive import DownloadArchive
 from .base import ImageResult, Scraper, ScraperError
@@ -56,12 +57,14 @@ class ScraperManager:
         query: str,
         *,
         count: int,
+        known_urls: Iterable[str] = (),
     ) -> tuple[list[DownloadResult], list[tuple[ImageResult, str]]]:
         if count <= 0:
             raise ScraperError("count must be greater than zero")
 
         downloads: list[DownloadResult] = []
         failures: list[tuple[ImageResult, str]] = []
+        known_url_set = set(known_urls)
         next_index = self._next_index()
 
         # Ask the source for more candidates than the target because some
@@ -69,7 +72,7 @@ class ScraperManager:
         search_limit = max(count, count * 3)
 
         for result in self.scraper.search(query, limit=search_limit):
-            if result.image_url in self.archive:
+            if result.image_url in self.archive or result.image_url in known_url_set:
                 continue
 
             try:
