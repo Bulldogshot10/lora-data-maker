@@ -71,6 +71,8 @@ class ScraperManager:
         # candidates can already be archived or fail to download.
         search_limit = max(count, count * 3)
 
+        print(f"scrape: searching for up to {search_limit} candidates...", flush=True)
+
         for result in self.scraper.search(query, limit=search_limit):
             if result.image_url in self.archive or result.image_url in known_url_set:
                 continue
@@ -86,6 +88,10 @@ class ScraperManager:
                     continue
                 downloads.append(downloaded)
                 next_index += 1
+                print(
+                    f"scrape: downloaded {len(downloads)}/{count}",
+                    flush=True,
+                )
             except ScraperError as exc:
                 failures.append((result, str(exc)))
                 continue
