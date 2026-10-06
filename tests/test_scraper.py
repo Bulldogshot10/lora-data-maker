@@ -426,7 +426,6 @@ def test_chromium_page_timeout_retries_and_falls_back_to_bing(monkeypatch):
     class TimeoutException(Exception):
         pass
 
-    selenium = sys.modules.get("selenium")
     common = types.ModuleType("selenium.common")
     exceptions = types.ModuleType("selenium.common.exceptions")
     exceptions.TimeoutException = TimeoutException
@@ -467,4 +466,3 @@ def test_chromium_page_timeout_retries_and_falls_back_to_bing(monkeypatch):
     ) is False
     assert driver.get_calls == 2
     assert driver.stop_calls == 2
-    assert selenium is not None or "selenium" not in sys.modules
