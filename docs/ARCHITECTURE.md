@@ -1,6 +1,6 @@
 # Architecture Contract
 
-Status: Phase 9 implemented
+Status: Phase 10 implemented
 
 ## Purpose
 
@@ -82,7 +82,11 @@ discovered → downloaded → validated → processed → tagged → captioned �
 
 Images can also enter duplicate or rejected states with an auditable reason. The clean stage records exact SHA-256 hashes, perceptual hashes, duplicate provenance, blur scores, aspect ratios, and quality rejection reasons.
 
-The manifest is the durable state used for resume and audit.
+The manifest is the durable state used for resume and audit. The build orchestrator runs the stages in pipeline order, supports stage ranges and explicit skips, stops on the first failed stage, and persists per-stage before/after status counts plus build timestamps and outcome metadata under `manifest.source`.
+
+## Build boundary
+
+The build orchestrator is a thin coordinator over the standalone stage commands. The default range is `scrape` through `caption`. `--from-stage` and `--to-stage` select a contiguous range, while repeated `--skip` values remove individual stages from that range. Stage implementations remain responsible for state-aware resume behavior, so already completed records are not reprocessed by earlier state-gated stages. A build stops on the first non-zero stage result and persists the completed stage summaries.
 
 ## Tagger boundary
 
