@@ -27,10 +27,15 @@ max_height = 0
 min_file_size = 1
 max_file_size = 0
 
+[quality]
+min_width = 512
+min_height = 512
+blur_threshold = 0.0
+max_aspect_ratio = 0.0
+
 [processing]
 target_size = 512
 face_crop = false
-blur_threshold = 0.0
 
 [dedup]
 exact = true
