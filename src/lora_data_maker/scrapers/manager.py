@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Iterator
 
 from .archive import DownloadArchive
 from .base import ImageResult, Scraper, ScraperError
@@ -28,12 +27,14 @@ class ScraperManager:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
+        effective_user_agent = user_agent or GoogleImagesScraper.DEFAULT_USER_AGENT
+
         if backend == "google":
             self.scraper: Scraper = GoogleImagesScraper(
                 timeout=timeout,
                 retries=retries,
                 delay=delay,
-                user_agent=user_agent or GoogleImagesScraper.DEFAULT_USER_AGENT,
+                user_agent=effective_user_agent,
             )
         elif backend == "direct":
             self.scraper = DirectURLScraper()
@@ -46,7 +47,7 @@ class ScraperManager:
             timeout=timeout,
             retries=retries,
             delay=delay,
-            user_agent=user_agent or GoogleImagesScraper.DEFAULT_USER_AGENT,
+            user_agent=effective_user_agent,
         )
         self.archive = DownloadArchive(self.cache_dir / "downloads.txt")
 
@@ -63,9 +64,14 @@ class ScraperManager:
         failures: list[tuple[ImageResult, str]] = []
         next_index = self._next_index()
 
-        for result in self.scraper.search(query, limit=count):
+        # Ask the source for more candidates than the target because some
+        # candidates can already be archived or fail to download.
+        search_limit = max(count, count * 3)
+
+        for result in self.scraper.search(query, limit=search_limit):
             if result.image_url in self.archive:
                 continue
+
             try:
                 downloaded = self.downloader.download(
                     result.image_url,
