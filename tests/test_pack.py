@@ -93,3 +93,20 @@ def test_pack_command_uses_last_export_and_records_archive(tmp_path):
     assert "manifest.json" in names
     assert f"output/10_julia/{image_id}.jpg" in names
     assert f"output/10_julia/{image_id}.txt" in names
+
+
+def test_pack_rejects_archive_inside_dataset(tmp_path):
+    import pytest
+
+    root = tmp_path / "project"
+    dataset = root / "output" / "10_julia"
+    dataset.mkdir(parents=True)
+    (dataset / "abc.jpg").write_bytes(b"image")
+    (root / "manifest.json").write_text("{}", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="outside the exported dataset"):
+        pack_dataset(
+            root=root,
+            dataset_dir=dataset,
+            archive_path=dataset / "bundle.zip",
+        )
