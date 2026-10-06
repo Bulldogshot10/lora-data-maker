@@ -68,6 +68,7 @@ class ImageDownloader:
             return None
 
         output_path: Path | None = None
+        response: requests.Response | None = None
         last_error: Exception | None = None
 
         for attempt in range(self.retries + 1):
@@ -132,6 +133,10 @@ class ImageDownloader:
                 if attempt >= self.retries:
                     break
                 time.sleep(min(max(self.delay, 0.25) * (2**attempt), 30.0))
+            finally:
+                if response is not None:
+                    response.close()
+                    response = None
 
         raise ScraperError(
             f"download failed after {self.retries + 1} attempts: {url}: {last_error}"
@@ -149,8 +154,28 @@ class ImageDownloader:
             return IMAGE_MIME_TYPES[content_type]
 
         suffix = Path(urlparse(url).path).suffix.lower()
-        if suffix in {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".avif"}:
+        if suffix in {
+            ".jpg",
+            ".jpeg",
+            ".png",
+            ".webp",
+            ".gif",
+            ".bmp",
+            ".tif",
+            ".tiff",
+            ".avif",
+        }:
             return ".jpg" if suffix == ".jpeg" else suffix
 
         guessed = mimetypes.guess_extension(content_type or "")
-        return guessed if guessed in {".jpg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff", ".avif"} else ".img"
+        allowed = {
+            ".jpg",
+            ".png",
+            ".webp",
+            ".gif",
+            ".bmp",
+            ".tif",
+            ".tiff",
+            ".avif",
+        }
+        return guessed if guessed in allowed else ".img"
