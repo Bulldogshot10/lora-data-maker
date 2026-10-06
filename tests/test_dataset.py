@@ -80,3 +80,23 @@ def test_project_paths_normalize_parent_segments_before_collision_check(tmp_path
                 "work": "work",
             },
         )
+
+
+def test_project_save_updates_manifest_timestamp(tmp_path):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    project.manifest.updated_at = "2000-01-01T00:00:00+00:00"
+    project.save()
+
+    refreshed = DatasetProject.open(ProjectPaths.from_root(root))
+    assert refreshed.manifest.updated_at != "2000-01-01T00:00:00+00:00"
