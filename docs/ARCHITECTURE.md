@@ -1,6 +1,6 @@
 # Architecture Contract
 
-Status: Phase 11 implemented
+Status: Phase 12 implemented
 
 ## Purpose
 
@@ -82,7 +82,11 @@ discovered → downloaded → validated → processed → tagged → captioned �
 
 Images can also enter duplicate or rejected states with an auditable reason. The clean stage records exact SHA-256 hashes, perceptual hashes, duplicate provenance, blur scores, aspect ratios, and quality rejection reasons.
 
-The manifest is the durable state used for resume and audit. The build orchestrator runs the stages in pipeline order, supports stage ranges and explicit skips, stops on the first failed stage, and persists per-stage before/after status counts plus build timestamps and outcome metadata under `manifest.source`.
+The manifest is the durable state used for resume and audit. Incremental stages preserve forward progress: raw reconciliation adds newly discovered files, scraper source URLs already present in the manifest are skipped, and state-gated stages only consume records eligible for their next transition. Existing advanced states are never regressed by a normal validation scan. The build orchestrator runs the stages in pipeline order, supports stage ranges and explicit skips, stops on the first failed stage, and persists per-stage before/after status counts plus build timestamps and outcome metadata under `manifest.source`.
+
+## Incremental processing boundary
+
+Incremental processing is add-only. New raw images are reconciled into the manifest as `discovered` records, while existing records retain their current state. Validation only processes `discovered` and `downloaded` records, preventing a completed record from being moved backward to `validated`. Scrape receives the manifest's known source URLs and skips them before download. Missing raw files are recorded as reconciliation metadata; manifest records are retained for audit and are never silently deleted.
 
 ## Build boundary
 
