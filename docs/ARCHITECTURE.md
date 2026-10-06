@@ -1,6 +1,6 @@
 # Architecture Contract
 
-Status: Phase 5 implemented
+Status: Phase 6 implemented
 
 ## Purpose
 
@@ -94,9 +94,9 @@ Tagger output is treated as visual metadata. The tagger is not responsible for d
 
 ## Processing boundary
 
-Image processing backends implement small interfaces where platform-specific or optional dependencies are involved.
+Image processing is implemented as a Pillow-only core stage that reads validated images from `raw/` and writes standardized RGB JPEGs under `work/processed/`. EXIF orientation is applied during processing without modifying the source file. Resize modes are `cover`, `fit`, and `stretch`.
 
-Face detection is optional. The base pipeline must work without a face detector.
+Face detection is optional. The processor consumes a small `FaceDetector` protocol and can perform padded square face crops when a detector is supplied. The base pipeline works without any face detector dependency.
 
 ## Scraper boundary
 
