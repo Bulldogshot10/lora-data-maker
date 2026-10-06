@@ -4,7 +4,7 @@ import html
 import re
 from html.parser import HTMLParser
 from typing import Iterator
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
 import requests
 
