@@ -185,31 +185,42 @@ class WD14Tagger:
                 "install the 'tagger' extra"
             ) from exc
 
-        files = self.model_cache.ensure(model_sha256=self.model_sha256)
-        session = session_factory(str(files.model_path))
-        inputs = session.get_inputs()
-        if not inputs:
-            raise TaggerError("WD14 ONNX model has no inputs")
+        try:
+            files = self.model_cache.ensure(
+                model_sha256=self.model_sha256,
+            )
+            session = session_factory(str(files.model_path))
+            inputs = session.get_inputs()
+            if not inputs:
+                raise TaggerError("WD14 ONNX model has no inputs")
 
-        shape = inputs[0].shape
-        if len(shape) != 4:
-            raise TaggerError(
-                f"unexpected WD14 ONNX input shape: {shape}"
-            )
+            shape = inputs[0].shape
+            if len(shape) != 4:
+                raise TaggerError(
+                    f"unexpected WD14 ONNX input shape: {shape}"
+                )
 
-        target_size = shape[1]
-        channels = shape[3]
-        if not isinstance(target_size, int) or target_size < 1:
+            target_size = shape[1]
+            channels = shape[3]
+            if not isinstance(target_size, int) or target_size < 1:
+                raise TaggerError(
+                    f"dynamic/invalid WD14 target height: {target_size}"
+                )
+            if channels != 3:
+                raise TaggerError(
+                    f"unexpected WD14 channel count: {channels}"
+                )
+
+            labels = WD14Labels.load(files.labels_path)
+        except TaggerError:
+            raise
+        except Exception as exc:
             raise TaggerError(
-                f"dynamic/invalid WD14 target height: {target_size}"
-            )
-        if channels != 3:
-            raise TaggerError(
-                f"unexpected WD14 channel count: {channels}"
-            )
+                f"could not load WD14 tagger model: {exc}"
+            ) from exc
 
         self._session = session
-        self._labels = WD14Labels.load(files.labels_path)
+        self._labels = labels
         self._target_size = target_size
 
     def tag_image(self, path: Path | str) -> TagResult:
