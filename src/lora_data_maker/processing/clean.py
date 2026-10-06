@@ -45,8 +45,50 @@ def clean_manifest(
         key=lambda image: image.path,
     )
 
+    quality_rejected = 0
+    quality_candidates = list(candidates)
+
+    for image in quality_candidates:
+        try:
+            result = evaluate_quality(
+                root_path / image.path,
+                min_width=min_width,
+                min_height=min_height,
+                blur_threshold=blur_threshold,
+                max_aspect_ratio=max_aspect_ratio,
+            )
+        except (OSError, ValueError, RuntimeError):
+            image.set_status(
+                "rejected",
+                reason="quality check could not read image",
+            )
+            image.metadata["quality_stage"] = "rejected"
+            quality_rejected += 1
+            continue
+
+        image.width = result.width
+        image.height = result.height
+        image.metadata["quality_blur_score"] = result.blur_score
+        image.metadata["quality_aspect_ratio"] = result.aspect_ratio
+
+        if result.valid:
+            continue
+
+        image.set_status(
+            "rejected",
+            reason=result.reason or "quality filter rejected image",
+        )
+        image.metadata["quality_stage"] = "rejected"
+        quality_rejected += 1
+
+    dedup_candidates = [
+        image
+        for image in candidates
+        if image.status == "validated"
+    ]
+
     exact_duplicates = _exact_deduplicate(
-        candidates,
+        dedup_candidates,
         root_path,
         enabled=exact,
     )
@@ -55,7 +97,7 @@ def clean_manifest(
     if perceptual:
         remaining = [
             image
-            for image in candidates
+            for image in dedup_candidates
             if image.status == "validated"
         ]
         hashes: list[tuple[str, str]] = []
@@ -90,41 +132,6 @@ def clean_manifest(
             image.metadata["perceptual_distance"] = match.distance
             perceptual_duplicates += 1
 
-    quality_rejected = 0
-    for image in candidates:
-        if image.status != "validated":
-            continue
-
-        try:
-            result = evaluate_quality(
-                root_path / image.path,
-                min_width=min_width,
-                min_height=min_height,
-                blur_threshold=blur_threshold,
-                max_aspect_ratio=max_aspect_ratio,
-            )
-        except (OSError, ValueError, RuntimeError):
-            image.set_status(
-                "rejected",
-                reason="quality check could not read image",
-            )
-            image.metadata["quality_stage"] = "rejected"
-            quality_rejected += 1
-            continue
-        image.width = result.width
-        image.height = result.height
-        image.metadata["quality_blur_score"] = result.blur_score
-        image.metadata["quality_aspect_ratio"] = result.aspect_ratio
-
-        if result.valid:
-            continue
-
-        image.set_status(
-            "rejected",
-            reason=result.reason or "quality filter rejected image",
-        )
-        image.metadata["quality_stage"] = "rejected"
-        quality_rejected += 1
 
     kept = sum(image.status == "validated" for image in candidates)
 
