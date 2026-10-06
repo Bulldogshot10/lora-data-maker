@@ -1,0 +1,48 @@
+[project]
+name = "julia"
+subject = "julia"
+trigger = "julia"
+
+[paths]
+raw = "raw"
+work = "work"
+output = "output"
+cache = "cache"
+
+[scraper]
+backend = "google"
+query = "julia"
+count = 300
+timeout = 20
+retries = 3
+delay = 1.0
+min_width = 512
+min_height = 512
+
+[processing]
+target_size = 512
+face_crop = false
+blur_threshold = 0.0
+
+[dedup]
+exact = true
+perceptual = true
+perceptual_distance = 6
+
+[tagger]
+backend = "wd14"
+threshold = 0.35
+model = "SmilingWolf/wd-eva02-large-tagger-v3"
+
+[tag_rules]
+remove = [
+  "watermark",
+  "signature",
+  "logo",
+  "text",
+]
+
+[caption]
+separator = ", "
+subject_position = "first"
+trigger_from_subject = true
