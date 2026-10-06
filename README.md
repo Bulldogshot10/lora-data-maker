@@ -12,7 +12,7 @@ Model training and image generation are intentionally outside this project.
 
 ## Current state
 
-Phase 12 is implemented. The CLI can initialize projects, inspect manifests, scrape/download images, validate and reconcile raw files, deduplicate, quality-filter, process images, tag with the configured WD14-compatible ONNX model, clean/inject canonical dataset tags, write deterministic captions, orchestrate the pipeline, export a Kohya-style dataset, and package the result with the manifest.
+Phase 15 is implemented. The CLI supports the full dataset-preparation pipeline through export and packaging, incremental processing, and a complete project documentation set for Termux installation, CLI usage, configuration, dataset layout, and troubleshooting.
 
 ## Design goals
 
@@ -142,4 +142,16 @@ lora-data-maker pack
 lora-data-maker info
 ```
 
-Upcoming stages build on the Phase 11 export and packaging stage.
+## Documentation
+
+~~~text
+docs/INSTALL_TERMUX.md
+docs/CLI.md
+docs/CONFIG.md
+docs/DATASET.md
+docs/TROUBLESHOOTING.md
+docs/ARCHITECTURE.md
+docs/ROADMAP.md
+~~~
+
+Start with INSTALL_TERMUX.md for Android/Termux setup, then CLI.md and CONFIG.md for daily use.
