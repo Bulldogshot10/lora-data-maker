@@ -57,6 +57,7 @@ def square_crop_around_face(
     side = max(face.width, face.height) * padding
     if side <= 0:
         raise ValueError("face bounding box has zero area")
+    side = min(side, float(width), float(height))
 
     center_x, center_y = face.center
     half = side / 2
