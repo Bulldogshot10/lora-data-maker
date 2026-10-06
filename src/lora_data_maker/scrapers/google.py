@@ -17,7 +17,7 @@ DEFAULT_USER_AGENT = (
     "Chrome/154.0.0.0 Mobile Safari/537.36"
 )
 
-_URL_RE = re.compile(r"https?://[^\s\"'<>]+", re.IGNORECASE)
+_URL_RE = re.compile(r"(?:https?://|https?:\\/\\/)[^\s\"'<>]+", re.IGNORECASE)
 
 
 class _ImageAttributeParser(HTMLParser):
