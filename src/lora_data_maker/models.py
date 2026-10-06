@@ -148,10 +148,24 @@ class ProjectManifest:
         if not isinstance(images_data, Mapping):
             raise ValueError("manifest field 'images' must be an object")
 
-        images = {
-            str(image_id): ImageRecord.from_dict(image_data)
-            for image_id, image_data in images_data.items()
-        }
+        images: dict[str, ImageRecord] = {}
+        for image_id, image_data in images_data.items():
+            if not isinstance(image_data, Mapping):
+                raise ValueError(
+                    f"manifest image {image_id!r} must be an object"
+                )
+            record = ImageRecord.from_dict(image_data)
+            key = str(image_id)
+            if record.image_id != key:
+                raise ValueError(
+                    f"manifest image key {key!r} does not match "
+                    f"record image_id {record.image_id!r}"
+                )
+            if key in images:
+                raise ValueError(
+                    f"duplicate manifest image id: {key!r}"
+                )
+            images[key] = record
 
         return cls(
             schema_version=int(data.get("schema_version", 1)),
