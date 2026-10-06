@@ -2,15 +2,30 @@ from __future__ import annotations
 
 import hashlib
 import mimetypes
+import os
 import time
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import urlparse
 
 import requests
+import urllib3.util.connection as urllib3_connection
 
 from .archive import DownloadArchive
 from .base import ScraperError
+
+
+def _is_termux_environment() -> bool:
+    """Return True when running inside a native Termux environment."""
+    if os.environ.get("TERMUX__ROOTFS") or os.environ.get("TERMUX_VERSION"):
+        return True
+    return "/data/data/com.termux/files/" in os.environ.get("PREFIX", "")
+
+
+def _configure_termux_network() -> None:
+    """Prefer IPv4 in Termux where IPv6 paths can stall HTTP connects."""
+    if _is_termux_environment():
+        urllib3_connection.HAS_IPV6 = False
 
 
 IMAGE_MIME_TYPES = {
@@ -55,6 +70,7 @@ class ImageDownloader:
         self.delay = delay
         self.session = session or requests.Session()
         self.session.headers.update({"User-Agent": user_agent})
+        _configure_termux_network()
 
     def download(
         self,
@@ -73,9 +89,15 @@ class ImageDownloader:
 
         for attempt in range(self.retries + 1):
             try:
+                request_timeout: float | tuple[float, float]
+                if _is_termux_environment():
+                    request_timeout = (min(self.timeout, 8.0), self.timeout)
+                else:
+                    request_timeout = self.timeout
+
                 response = self.session.get(
                     url,
-                    timeout=self.timeout,
+                    timeout=request_timeout,
                     allow_redirects=True,
                     stream=True,
                 )
