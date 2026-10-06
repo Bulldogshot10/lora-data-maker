@@ -551,13 +551,21 @@ def test_chromium_continues_to_bing_when_google_has_too_few_candidates(monkeypat
 
 
 def test_downloader_extensionless_image_is_visible_to_validator(tmp_path):
-    from lora_data_maker.scrapers.downloader import ImageDownloader
-    from lora_data_maker.scrapers.archive import DownloadArchive
+    from PIL import Image
     from lora_data_maker.processing.validator import validate_image
+    from lora_data_maker.scrapers.archive import DownloadArchive
+    from lora_data_maker.scrapers.downloader import ImageDownloader
+
+    fixture = tmp_path / "fixture.png"
+    Image.new("RGB", (32, 32), (20, 30, 40)).save(fixture, format="PNG")
 
     session = _FakeSession()
     session.responses = [
-        _FakeResponse("", content=b"not-real-jpeg", content_type="")
+        _FakeResponse(
+            "",
+            content=fixture.read_bytes(),
+            content_type="",
+        )
     ]
     downloader = ImageDownloader(
         timeout=5,
@@ -575,4 +583,8 @@ def test_downloader_extensionless_image_is_visible_to_validator(tmp_path):
 
     assert result is not None
     assert result.path.suffix == ".img"
-    result.path.write_bytes((tmp_path / "fixture.jpg").read_bytes()) if (tmp_path / "fixture.jpg").exists() else None
+
+    validation = validate_image(result.path, min_width=16, min_height=16)
+    assert validation.valid is True
+    assert validation.format == "PNG"
+
