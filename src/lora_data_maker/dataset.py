@@ -35,6 +35,10 @@ class DatasetProject:
         if not isinstance(project, dict):
             raise ProjectError("config section [project] must be a table")
 
+        scraper = config.get("scraper", {})
+        if not isinstance(scraper, dict):
+            raise ProjectError("config section [scraper] must be a table")
+
         name = _required_text(project, "name")
         subject = _required_text(project, "subject")
         trigger = str(project.get("trigger") or subject)
@@ -44,8 +48,8 @@ class DatasetProject:
             subject=subject,
             trigger=trigger,
             source={
-                "backend": config.get("scraper", {}).get("backend"),
-                "query": config.get("scraper", {}).get("query"),
+                "backend": scraper.get("backend"),
+                "query": scraper.get("query"),
             },
             config_snapshot=config,
         )
