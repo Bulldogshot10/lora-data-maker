@@ -137,3 +137,14 @@ def test_exif_orientation_is_transposed(tmp_path):
     assert result.source_size == (80, 40)
     assert result.output_size == (512, 512)
     assert result.source_orientation == 6
+
+
+def test_face_crop_stays_square_when_requested_crop_exceeds_image(tmp_path):
+    from lora_data_maker.processing.faces import FaceBox, square_crop_around_face
+    image = Image.new("RGB", (400, 800), "white")
+    face = FaceBox(100, 300, 300, 500)
+
+    cropped = square_crop_around_face(image, face, padding=4.0)
+
+    assert cropped.width == cropped.height
+    assert cropped.size == (400, 400)
