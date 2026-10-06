@@ -153,6 +153,8 @@ docs/CLI.md
 docs/CONFIG.md
 docs/DATASET.md
 docs/TROUBLESHOOTING.md
+docs/RESPONSIBLE_USE.md
+docs/TERMUX_TEST_PLAN.md
 docs/ARCHITECTURE.md
 docs/ROADMAP.md
 ~~~
