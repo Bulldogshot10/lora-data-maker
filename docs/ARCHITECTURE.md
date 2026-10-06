@@ -1,6 +1,6 @@
 # Architecture Contract
 
-Status: Phase 12 implemented
+Status: current v1.3 architecture
 
 ## Purpose
 
@@ -82,7 +82,7 @@ discovered → downloaded → validated → processed → tagged → captioned �
 
 Images can also enter duplicate or rejected states with an auditable reason. The clean stage records exact SHA-256 hashes, perceptual hashes, duplicate provenance, blur scores, aspect ratios, and quality rejection reasons.
 
-The manifest is the durable state used for resume and audit. Incremental stages preserve forward progress: raw reconciliation adds newly discovered files, scraper source URLs already present in the manifest are skipped, and state-gated stages only consume records eligible for their next transition. Existing advanced states are never regressed by a normal validation scan. The build orchestrator runs the stages in pipeline order, supports stage ranges and explicit skips, stops on the first failed stage, and persists per-stage before/after status counts plus build timestamps and outcome metadata under `manifest.source`.
+The manifest is the durable state used for resume and audit. Incremental stages preserve forward progress: raw reconciliation adds newly discovered files, scraper source URLs already present in the manifest are skipped, and state-gated stages only consume records eligible for their next transition. Existing advanced states are never regressed by a normal validation scan. The build orchestrator runs the stages in pipeline order through export and pack, supports stage ranges and explicit skips, stops on the first failed stage, and persists per-stage before/after status counts plus build timestamps and outcome metadata under `manifest.source`.
 
 ## Incremental processing boundary
 
@@ -90,13 +90,13 @@ Incremental processing is add-only. New raw images are reconciled into the manif
 
 ## Build boundary
 
-The build orchestrator is a thin coordinator over the standalone stage commands. The default range is `scrape` through `caption`. `--from-stage` and `--to-stage` select a contiguous range, while repeated `--skip` values remove individual stages from that range. Stage implementations remain responsible for state-aware resume behavior, so already completed records are not reprocessed by earlier state-gated stages. A build stops on the first non-zero stage result and persists the completed stage summaries.
+The build orchestrator is a thin coordinator over the standalone stage commands. The default range is `scrape` through `pack`. `--from-stage` and `--to-stage` select a contiguous range, while repeated `--skip` values remove individual stages from that range. Stage implementations remain responsible for state-aware resume behavior, so already completed records are not reprocessed by earlier state-gated stages. A build stops on the first non-zero stage result and persists the completed stage summaries.
 
 ## Tagger boundary
 
 Taggers implement a common interface and are optional dependencies.
 
-The first backend is a WD14-compatible ONNX tagger. The implementation uses the model's 448x448 image input and selected_tags.csv category mapping, with lazy imports of NumPy and ONNX Runtime. Model files are cached by repository and revision, and the configured model SHA-256 is verified before use.
+The built-in backends are WD14-compatible ONNX taggers exposed as pinned presets. Sweetspot uses the standard 448x448 WD ViT model contract. Potato uses the mobile SwinV2 ONNX model with embedded preprocessing that accepts RGB uint8 image tensors. Model files are cached by repository and revision, and the pinned model SHA-256 is verified before use.
 
 Tagger output is treated as visual metadata. General tags, character tags, confidence scores, and rating scores are persisted in the image manifest. The tag-cleaning stage normalizes tags, removes configured blacklist entries, deduplicates while preserving order, and injects the canonical `subject` exactly once at the front. The tagger is not responsible for dataset identity or caption-file trigger handling.
 
