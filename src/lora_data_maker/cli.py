@@ -381,7 +381,7 @@ def command_validate(args: argparse.Namespace) -> int:
     print(f"skipped: {skipped_count}")
     print(f"raw: {paths.raw}")
 
-    return 0 if scanned else 1
+    return 0 if scanned or skipped_count else 1
 
 
 def command_reconcile(args: argparse.Namespace) -> int:
@@ -893,6 +893,9 @@ def command_scrape(args: argparse.Namespace) -> int:
         print(f"... and {len(failures) - 10} more failures")
 
     if not downloads:
+        if known_urls and not failures:
+            print("no new images downloaded")
+            return 0
         return 1
     return 0
 
