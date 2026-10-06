@@ -15,6 +15,8 @@ BUILD_STAGES: tuple[str, ...] = (
     "tag",
     "clean-tags",
     "caption",
+    "export",
+    "pack",
 )
 
 
@@ -115,6 +117,8 @@ def run_build(
         command_scrape,
         command_tag,
         command_validate,
+        command_export,
+        command_pack,
     )
     from .config import load_config
     from .dataset import DatasetProject
@@ -138,6 +142,8 @@ def run_build(
         "tag": command_tag,
         "clean-tags": command_clean_tags,
         "caption": command_caption,
+        "export": command_export,
+        "pack": command_pack,
     }
 
     scraper_config = config.get("scraper", {})
@@ -183,10 +189,28 @@ def run_build(
                 count=None,
                 path=str(root),
             )
+        elif stage == "export":
+            args = argparse.Namespace(
+                path=str(root),
+                repeats=None,
+                folder_name=None,
+            )
+        elif stage == "pack":
+            args = argparse.Namespace(
+                path=str(root),
+                archive=None,
+                dataset_dir=None,
+            )
         else:
             args = argparse.Namespace(path=str(root))
 
-        exit_code = int(commands[stage](args))
+        stage_error = None
+        try:
+            exit_code = int(commands[stage](args))
+        except Exception as exc:
+            stage_error = str(exc)
+            print(f"build stage error: {stage}: {exc}")
+            exit_code = 1
 
         try:
             project = DatasetProject.open(paths)
@@ -218,6 +242,10 @@ def run_build(
         ]
         project.manifest.source["last_build_finished_at"] = utc_now()
         project.manifest.source["last_build_success"] = exit_code == 0
+        if stage_error is not None:
+            project.manifest.source["last_build_stage_error"] = stage_error
+        elif exit_code == 0:
+            project.manifest.source.pop("last_build_stage_error", None)
         if exit_code != 0:
             project.manifest.source["last_build_failed_stage"] = stage
         elif "last_build_failed_stage" in project.manifest.source:
