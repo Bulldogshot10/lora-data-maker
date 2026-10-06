@@ -57,6 +57,13 @@ jobs:
       - name: Pack help
         run: lora-data-maker pack --help
 
+      - name: License and release smoke
+        run: |
+          test -f LICENSE
+          test -f NOTICE
+          test -f docs/RESPONSIBLE_USE.md
+          test -f RELEASE_NOTES.md
+
       - name: Documentation smoke
         run: |
           test -f docs/INSTALL_TERMUX.md
