@@ -675,3 +675,29 @@ def test_download_archive_rejects_invalid_utf8(tmp_path):
     import pytest
     with pytest.raises(ScraperError, match="could not read download archive"):
         DownloadArchive(path)
+
+
+def test_google_stops_when_page_has_only_seen_urls(monkeypatch):
+    from lora_data_maker.scrapers.google import GoogleImagesScraper
+
+    scraper = GoogleImagesScraper(retries=0, delay=0)
+
+    bodies = [
+        "https://cdn.example.com/a.jpg",
+        "https://cdn.example.com/a.jpg",
+    ]
+
+    calls = {"count": 0}
+
+    def fetch_page(_query, _page):
+        calls["count"] += 1
+        return bodies[min(calls["count"] - 1, len(bodies) - 1)]
+
+    monkeypatch.setattr(scraper, "_fetch_page", fetch_page)
+
+    results = list(scraper.search("julia", limit=5))
+
+    assert [item.image_url for item in results] == [
+        "https://cdn.example.com/a.jpg"
+    ]
+    assert calls["count"] == 2
