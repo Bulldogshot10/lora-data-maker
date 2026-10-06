@@ -4,6 +4,7 @@ from PIL import Image, ImageDraw
 
 from lora_data_maker.cli import command_clean, command_init, command_process, command_validate
 from lora_data_maker.dataset import DatasetProject
+from lora_data_maker.exceptions import LoraDataMakerError
 from lora_data_maker.paths import ProjectPaths
 
 
@@ -67,8 +68,8 @@ def test_process_command_rejects_unavailable_cli_face_crop(tmp_path):
     )
 
     config = (root / "config.toml").read_text(encoding="utf-8")
-    config = config.replace("[processing]\ntarget_width", "[processing]\nface_crop = true\ntarget_width")
+    config = config.replace("[processing]\n", "[processing]\nface_crop = true\n", 1)
     (root / "config.toml").write_text(config, encoding="utf-8")
 
-    with pytest.raises(Exception, match="face_crop"):
+    with pytest.raises(LoraDataMakerError, match="face_crop"):
         command_process(Namespace(path=str(root)))
