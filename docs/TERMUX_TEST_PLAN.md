@@ -16,10 +16,10 @@ python -m pip install .
 lora-data-maker --version
 ~~~
 
-Expected version for v1.0.0:
+Current release line:
 
 ~~~text
-1.0.0
+1.3.x
 ~~~
 
 ## Core CLI smoke
@@ -46,7 +46,7 @@ lora-data-maker clean
 lora-data-maker process
 ~~~
 
-Install the tagger extra only when testing the WD14 backend:
+For Chromium backend testing, install the Termux Chromium package and the `.[chromium]` extra. For WD14 tagging, install the `tagger` extra:
 
 ~~~bash
 python -m pip install ".[tagger]"
