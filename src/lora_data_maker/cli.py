@@ -8,7 +8,7 @@ from typing import Sequence
 from . import __version__
 from .build import BUILD_STAGES, run_build
 from .captions import CaptionConfig, caption_manifest
-from .export import export_manifest, kohya_folder_name
+from .export import export_manifest, kohya_folder_name, safe_component
 from .config import load_config, write_default_config
 from .dataset import DatasetProject
 from .exceptions import LoraDataMakerError
@@ -789,7 +789,7 @@ def command_pack(args: argparse.Namespace) -> int:
     archive = (
         Path(args.archive).expanduser()
         if args.archive
-        else paths.output / f"{project.manifest.project_name}.zip"
+        else paths.output / f"{safe_component(project.manifest.project_name)}.zip"
     )
     archive = archive if archive.is_absolute() else root / archive
     archive = archive.resolve()
