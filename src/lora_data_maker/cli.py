@@ -18,11 +18,15 @@ def build_parser() -> argparse.ArgumentParser:
         description="Termux-first toolkit for LoRA image dataset preparation.",
     )
     parser.add_argument("--version", action="version", version=__version__)
-    parser.add_argument("-v", "--verbose", action="store_true", help="enable debug logging")
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="enable debug logging"
+    )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    init_parser = subparsers.add_parser("init", help="initialize a dataset project")
+    init_parser = subparsers.add_parser(
+        "init", help="initialize a dataset project"
+    )
     init_parser.add_argument(
         "path",
         nargs="?",
@@ -31,19 +35,23 @@ def build_parser() -> argparse.ArgumentParser:
     )
     init_parser.add_argument("--name", help="dataset/project name")
     init_parser.add_argument("--subject", help="dataset subject/identity")
-    init_parser.add_argument("--trigger", help="trigger token; defaults to subject")
+    init_parser.add_argument(
+        "--trigger", help="trigger token; defaults to subject"
+    )
     init_parser.add_argument(
         "--force",
         action="store_true",
         help="replace an existing config.toml",
     )
 
-    info_parser = subparsers.add_parser("info", help="show project information")
+    info_parser = subparsers.add_parser(
+        "info", help="show project information"
+    )
     info_parser.add_argument(
         "path",
         nargs="?",
         default=".",
-        help="project directory or child path (default: current directory)",
+        help="project directory or child path (default to current directory)",
     )
 
     return parser
@@ -55,7 +63,8 @@ def command_init(args: argparse.Namespace) -> int:
 
     if paths.config.exists() and not args.force:
         raise LoraDataMakerError(
-            f"project already initialized at {root}; use --force to replace config.toml"
+            f"project already initialized at {root}; "
+            "use --force to replace config.toml"
         )
 
     paths.create_directories()
@@ -74,20 +83,21 @@ def command_init(args: argparse.Namespace) -> int:
 
 def command_info(args: argparse.Namespace) -> int:
     root = find_project_root(args.path)
-    paths = ProjectPaths.from_root(root)
-    config = load_config(paths.config)
+    config_path = root / "config.toml"
+    config = load_config(config_path)
 
     project = config.get("project", {})
     paths_config = config.get("paths", {})
+    paths = ProjectPaths.from_root(root, paths_config)
 
     print(f"name: {project.get('name', '(unset)')}")
     print(f"subject: {project.get('subject', '(unset)')}")
     print(f"trigger: {project.get('trigger', '(unset)')}")
     print(f"root: {root}")
-
-    for key in ("raw", "work", "output", "cache"):
-        configured = paths_config.get(key, key)
-        print(f"{key}: {(root / configured).resolve()}")
+    print(f"raw: {paths.raw}")
+    print(f"work: {paths.work}")
+    print(f"output: {paths.output}")
+    print(f"cache: {paths.cache}")
 
     return 0
 
