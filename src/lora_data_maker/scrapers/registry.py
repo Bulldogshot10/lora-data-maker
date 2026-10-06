@@ -52,6 +52,16 @@ def validate_backend_chain(
             raise ScraperError(
                 f"duplicate scraper backend in fallback chain: {name!r}"
             )
+        if name == "google" and "chromium" in seen:
+            raise ScraperError(
+                "google cannot be used with chromium in the same fallback chain "
+                "because chromium already uses Google Images"
+            )
+        if name == "chromium" and "google" in seen:
+            raise ScraperError(
+                "chromium cannot be used with google in the same fallback chain "
+                "because chromium already uses Google Images"
+            )
         seen.add(name)
         chain.append(name)
 
