@@ -32,7 +32,6 @@ class ChromiumImagesScraper:
         chromium_binary: str = "chromium-browser",
         chromedriver_binary: str = "chromedriver",
         max_scrolls: int = 30,
-        profile_root: Path | str | None = None,
     ) -> None:
         if timeout <= 0:
             raise ValueError("timeout must be greater than zero")
@@ -50,14 +49,6 @@ class ChromiumImagesScraper:
         self.chromium_binary = chromium_binary
         self.chromedriver_binary = chromedriver_binary
         self.max_scrolls = max_scrolls
-        # Kept for backwards compatibility. Selenium manages its own temporary
-        # browser profile; forcing --user-data-dir breaks Chromium/ChromeDriver
-        # startup on some Termux/Android installations.
-        self.profile_root = (
-            Path(profile_root).expanduser().resolve()
-            if profile_root is not None
-            else None
-        )
 
     def search(self, query: str, *, limit: int) -> Iterator[ImageResult]:
         if not query.strip():
