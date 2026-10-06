@@ -250,7 +250,7 @@ def test_duckduckgo_extracts_image_results():
 
 
 def test_chromium_extracts_google_original_urls():
-    from lora_data_maker.scrapers.chromium import ChromiumGoogleImagesScraper
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
 
     hrefs = [
         "https://www.google.com/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Fa.jpg&imgrefurl=https%3A%2F%2Fexample.com%2Fa",
@@ -258,17 +258,33 @@ def test_chromium_extracts_google_original_urls():
         "https://www.google.com/search?q=not-an-image",
     ]
 
-    assert ChromiumGoogleImagesScraper._extract_image_urls(hrefs) == [
+    assert ChromiumImagesScraper._extract_image_urls(hrefs) == [
         "https://cdn.example.com/a.jpg",
         "https://cdn.example.com/b.png",
     ]
 
 
 def test_chromium_rejects_google_thumbnail_urls():
-    from lora_data_maker.scrapers.chromium import ChromiumGoogleImagesScraper
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
 
     hrefs = [
         "https://www.google.com/imgres?imgurl=https%3A%2F%2Fencrypted-tbn0.gstatic.com%2Fimages%2Fthumb.jpg"
     ]
 
-    assert ChromiumGoogleImagesScraper._extract_image_urls(hrefs) == []
+    assert ChromiumImagesScraper._extract_image_urls(hrefs) == []
+
+
+def test_bing_extracts_original_image_urls():
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
+
+    payloads = [
+        '{"murl":"https://cdn.example.com/a.jpg","turl":"https://tse1.mm.bing.net/thumb.jpg"}',
+        '{"murl":"https://cdn.example.com/b.png"}',
+        '{"murl":"https://tse1.mm.bing.net/thumb.jpg"}',
+        '{"murl":"https://cdn.example.com/a.jpg"}',
+    ]
+
+    assert ChromiumImagesScraper._extract_bing_image_urls(payloads) == [
+        "https://cdn.example.com/a.jpg",
+        "https://cdn.example.com/b.png",
+    ]
