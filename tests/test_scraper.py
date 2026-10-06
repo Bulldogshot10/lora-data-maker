@@ -527,3 +527,23 @@ def test_manager_rejects_invalid_fallback_chain(tmp_path):
             output_dir=tmp_path / "raw",
             cache_dir=tmp_path / "cache",
         )
+
+def test_manager_rejects_provider_overlap_in_fallback_chain(tmp_path):
+    from lora_data_maker.scrapers.manager import ScraperManager
+    import pytest
+
+    with pytest.raises(Exception, match="because chromium already uses Google"):
+        ScraperManager(
+            backend="google",
+            fallbacks=["chromium"],
+            output_dir=tmp_path / "raw",
+            cache_dir=tmp_path / "cache",
+        )
+
+    with pytest.raises(Exception, match="because chromium already uses Google"):
+        ScraperManager(
+            backend="chromium",
+            fallbacks=["google"],
+            output_dir=tmp_path / "raw",
+            cache_dir=tmp_path / "cache",
+        )
