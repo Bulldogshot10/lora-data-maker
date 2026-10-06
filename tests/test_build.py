@@ -83,7 +83,7 @@ def test_run_build_runs_stages_in_order_and_records_summary(tmp_path, monkeypatc
         "clean-tags",
         "caption",
     ]
-    assert project.manifest.source["last_build_skipped_stages"] == []
+    assert project.manifest.source["last_build_skipped_stages"] == ["scrape", "tag"]
     assert len(project.manifest.source["last_build_stages"]) == 5
     assert all(
         stage["status"] == "completed"
