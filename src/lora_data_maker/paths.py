@@ -21,7 +21,10 @@ class ProjectPaths:
         configured: Mapping[str, str] | None = None,
     ) -> "ProjectPaths":
         root_path = Path(root).expanduser().resolve()
-        configured = configured or {}
+        if configured is None:
+            configured = {}
+        elif not isinstance(configured, Mapping):
+            raise ValueError("config section [paths] must be a table")
 
         def resolve_dir(key: str, default: str) -> Path:
             value = configured.get(key, default)
@@ -35,8 +38,6 @@ class ProjectPaths:
             "cache": resolve_dir("cache", "cache"),
         }
 
-        if not isinstance(configured, Mapping):
-            raise ValueError("config section [paths] must be a table")
 
         labels = list(paths.items())
         for index, (left_name, left_path) in enumerate(labels):
