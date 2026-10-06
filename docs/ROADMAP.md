@@ -14,9 +14,10 @@ Phase 2 — dataset/project model
 - Dataset, image record, processing result, tag record, and manifest models.
 - Durable per-image state and resume support.
 
-Phase 3 — scraper engine
+Phase 3 — scraper engine ✓ implemented
 - Scraper interface and manager.
 - Google Images backend, direct URL backend, retries, timeout, delay, archive, resume.
+- Project manifest records successful downloads and scrape summary.
 
 Phase 4 — image validation
 - Decode validation, format handling, dimensions, file size, orientation, metadata.
