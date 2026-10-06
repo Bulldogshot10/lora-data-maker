@@ -45,6 +45,9 @@ jobs:
       - name: Caption help
         run: lora-data-maker caption --help
 
+      - name: Reconcile help
+        run: lora-data-maker reconcile --help
+
       - name: Build help
         run: lora-data-maker build --help
 
