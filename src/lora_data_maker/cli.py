@@ -59,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
     init_parser.add_argument(
         "--force",
         action="store_true",
-        help="replace an existing config.toml",
+        help="replace config.toml and recreate manifest.json",
     )
 
     info_parser = subparsers.add_parser(
@@ -243,7 +243,7 @@ def command_init(args: argparse.Namespace) -> int:
     if paths.config.exists() and not args.force:
         raise LoraDataMakerError(
             f"project already initialized at {root}; "
-            "use --force to replace config.toml"
+            "use --force to replace config.toml and recreate manifest.json"
         )
 
     paths.create_directories()
