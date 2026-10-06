@@ -910,12 +910,17 @@ def command_scrape(args: argparse.Namespace) -> int:
     if len(failures) > 10:
         print(f"... and {len(failures) - 10} more failures")
 
-    if not downloads:
-        if known_urls and not failures:
-            print("no new images downloaded")
-            return 0
-        return 1
-    return 0
+    if len(downloads) >= count:
+        return 0
+
+    if not downloads and known_urls and not failures:
+        print("no new images downloaded")
+        return 0
+
+    print(
+        f"scrape incomplete: downloaded {len(downloads)}/{count} requested",
+    )
+    return 1
 
 
 def main(argv: Sequence[str] | None = None) -> int:
