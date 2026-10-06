@@ -7,6 +7,7 @@ from typing import Sequence
 
 from . import __version__
 from .config import load_config, write_default_config
+from .dataset import DatasetProject
 from .exceptions import LoraDataMakerError
 from .logging import configure_logging
 from .paths import ProjectPaths, find_project_root
@@ -75,8 +76,11 @@ def command_init(args: argparse.Namespace) -> int:
         trigger=args.trigger,
     )
 
+    project = DatasetProject.create(paths)
+
     print(f"initialized project: {root}")
     print(f"config: {paths.config}")
+    print(f"manifest: {project.manifest_path}")
     print("directories: raw/ work/ output/ cache/")
     return 0
 
@@ -86,18 +90,26 @@ def command_info(args: argparse.Namespace) -> int:
     config_path = root / "config.toml"
     config = load_config(config_path)
 
-    project = config.get("project", {})
+    project_config = config.get("project", {})
     paths_config = config.get("paths", {})
     paths = ProjectPaths.from_root(root, paths_config)
+    project = DatasetProject.open(paths)
+    counts = project.counts()
 
-    print(f"name: {project.get('name', '(unset)')}")
-    print(f"subject: {project.get('subject', '(unset)')}")
-    print(f"trigger: {project.get('trigger', '(unset)')}")
+    print(f"name: {project.manifest.project_name}")
+    print(f"subject: {project.manifest.subject}")
+    print(f"trigger: {project.manifest.trigger}")
     print(f"root: {root}")
+    print(f"manifest: {project.manifest_path}")
+    print(f"images: {len(project.manifest.images)}")
+    print(f"status: {counts}")
     print(f"raw: {paths.raw}")
     print(f"work: {paths.work}")
     print(f"output: {paths.output}")
     print(f"cache: {paths.cache}")
+
+    if project_config and not isinstance(project_config, dict):
+        raise LoraDataMakerError("config section [project] must be a table")
 
     return 0
 
@@ -112,7 +124,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return command_init(args)
         if args.command == "info":
             return command_info(args)
-    except (LoraDataMakerError, FileNotFoundError, OSError) as exc:
+    except (LoraDataMakerError, FileNotFoundError, OSError, ValueError, KeyError) as exc:
         logger.error(str(exc))
         return 1
 
