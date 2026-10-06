@@ -100,3 +100,43 @@ def test_project_save_updates_manifest_timestamp(tmp_path):
 
     refreshed = DatasetProject.open(ProjectPaths.from_root(root))
     assert refreshed.manifest.updated_at != "2000-01-01T00:00:00+00:00"
+
+
+def test_force_init_recreates_manifest_state(tmp_path):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="old",
+            subject="old",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    project.manifest.add_image(
+        __import__("lora_data_maker.models", fromlist=["ImageRecord"]).ImageRecord(
+            path="raw/a.jpg",
+            status="validated",
+        )
+    )
+    project.save()
+
+    assert (
+        command_init(
+            Namespace(
+                path=str(root),
+                name="new",
+                subject="new",
+                trigger=None,
+                force=True,
+            )
+        )
+        == 0
+    )
+
+    refreshed = DatasetProject.open(ProjectPaths.from_root(root))
+    assert refreshed.manifest.project_name == "new"
+    assert refreshed.manifest.subject == "new"
+    assert refreshed.manifest.images == {}
