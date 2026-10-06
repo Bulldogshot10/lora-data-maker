@@ -1,6 +1,6 @@
 # Architecture Contract
 
-Status: Phase 0 locked
+Status: Phase 2 implemented
 
 ## Purpose
 
@@ -59,6 +59,31 @@ julia, blonde hair, blue eyes, portrait
 
 Trigger injection must be idempotent. Re-running the caption stage must not produce repeated subject tokens.
 
+## Manifest and state
+
+Each project has a root-level manifest.json.
+
+The manifest is versioned, JSON-serializable, atomically replaced on save, and contains:
+
+- project name
+- subject
+- trigger
+- source metadata
+- configuration snapshot
+- per-image records
+- per-image status
+- rejection reason where applicable
+- hashes and file metadata when available
+- timestamps
+
+Current image states:
+
+discovered → downloaded → validated → processed → tagged → captioned → exported
+
+Images can also enter duplicate or rejected states with an auditable reason.
+
+The manifest is the durable state used for resume and audit.
+
 ## Tagger boundary
 
 Taggers implement a common interface and are optional dependencies.
@@ -78,22 +103,6 @@ Face detection is optional. The base pipeline must work without a face detector.
 Scrapers implement a common interface and produce download records plus source metadata.
 
 Google Images is its own backend. External downloaders such as gallery-dl may be integrated as optional backends for sources they support, but the Google backend must not depend on them.
-
-## Manifest
-
-Every project maintains a manifest containing at least:
-
-- project/dataset name
-- subject
-- trigger
-- source query/backend
-- processing configuration
-- tagger configuration
-- per-image status
-- rejection reason where applicable
-- timestamps
-
-The manifest is the durable state used for resume and audit.
 
 ## Non-goals
 
