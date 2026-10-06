@@ -100,3 +100,86 @@ def test_tag_manifest_no_candidates():
 
     assert summary.scanned == 0
     assert summary.tagged == 0
+
+
+class FakeInput:
+    shape = [1, 448, 448, 3]
+    name = "input"
+
+
+class FakeOutput:
+    name = "output"
+
+
+class FakeSession:
+    def get_inputs(self):
+        return [FakeInput()]
+
+    def get_outputs(self):
+        return [FakeOutput()]
+
+    def run(self, output_names, inputs):
+        batch = next(iter(inputs.values()))
+        import numpy as np
+
+        predictions = np.zeros((len(batch), 5), dtype=np.float32)
+        predictions[:, 0] = 0.99
+        predictions[:, 1] = 0.92
+        predictions[:, 2] = 0.87
+        predictions[:, 3] = 0.80
+        predictions[:, 4] = 0.70
+        return [predictions]
+
+
+class FakeCache:
+    def __init__(self, model_path, labels_path):
+        from lora_data_maker.taggers.model import ModelFiles
+
+        self.files = ModelFiles(
+            model_path=model_path,
+            labels_path=labels_path,
+        )
+
+    def ensure(self, *, model_sha256=None):
+        return self.files
+
+
+def test_wd14_fake_inference_runs_preprocess_and_decode(tmp_path):
+    import numpy as np
+
+    model_path = tmp_path / "model.onnx"
+    labels_path = tmp_path / "selected_tags.csv"
+    model_path.write_bytes(b"fake")
+
+    labels_path.write_text(
+        "tag_id,name,category,count\n"
+        "0,safe,9,1\n"
+        "1,blue_eyes,0,10\n"
+        "2,julia,4,10\n"
+        "3,smile,0,10\n"
+        "4,watermark,0,10\n",
+        encoding="utf-8",
+    )
+
+    first = tmp_path / "first.jpg"
+    second = tmp_path / "second.jpg"
+    from PIL import Image
+
+    Image.new("RGB", (800, 600), (20, 30, 40)).save(first, format="JPEG")
+    Image.new("RGB", (400, 800), (40, 30, 20)).save(second, format="JPEG")
+
+    from lora_data_maker.taggers.wd14 import WD14Tagger
+
+    tagger = WD14Tagger(
+        model_cache=FakeCache(model_path, labels_path),
+        threshold=0.75,
+        character_threshold=0.85,
+        batch_size=2,
+        session_factory=lambda _path: FakeSession(),
+    )
+
+    results = tagger.tag_images([first, second])
+
+    assert len(results) == 2
+    assert results[0].tags == ["blue eyes", "julia", "smile"]
+    assert results[0].ratings["safe"] == 0.99
