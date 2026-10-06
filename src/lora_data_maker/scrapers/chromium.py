@@ -138,7 +138,17 @@ class ChromiumImagesScraper:
                     time.sleep(max(self.delay, 0.5))
 
                     if provider == "google":
-                        self._check_page(driver)
+                        try:
+                            self._check_page(driver)
+                        except ScraperError as exc:
+                            if "verification" in str(exc).lower():
+                                print(
+                                    "scrape: google verification detected during scroll; "
+                                    "falling back to Bing Images",
+                                    flush=True,
+                                )
+                                break
+                            raise
 
                 if len(ordered_candidates) >= limit:
                     break
