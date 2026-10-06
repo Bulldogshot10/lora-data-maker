@@ -296,3 +296,35 @@ def test_build_tagger_presets():
     assert potato.model_cache.repo_id == POTATO.repo_id
     assert potato.model_cache.model_filename == POTATO.model_filename
     assert isinstance(potato, MobileWD14Tagger)
+
+
+def test_wd14_model_load_failure_becomes_tagger_error(tmp_path):
+    from lora_data_maker.taggers.wd14 import WD14Tagger
+
+    class BrokenCache:
+        def ensure(self, *, model_sha256=None):
+            raise RuntimeError("download exploded")
+
+    tagger = WD14Tagger(
+        model_cache=BrokenCache(),
+    )
+
+    import pytest
+    with pytest.raises(TaggerError, match="could not load WD14 tagger model"):
+        tagger.tag_image(tmp_path / "missing.jpg")
+
+
+def test_mobile_model_load_failure_becomes_tagger_error(tmp_path):
+    from lora_data_maker.taggers.mobile import MobileWD14Tagger
+
+    class BrokenCache:
+        def ensure(self, *, model_sha256=None):
+            raise RuntimeError("download exploded")
+
+    tagger = MobileWD14Tagger(
+        model_cache=BrokenCache(),
+    )
+
+    import pytest
+    with pytest.raises(TaggerError, match="could not load mobile WD14 tagger model"):
+        tagger.tag_image(tmp_path / "missing.jpg")
