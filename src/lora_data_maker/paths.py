@@ -29,7 +29,8 @@ class ProjectPaths:
         def resolve_dir(key: str, default: str) -> Path:
             value = configured.get(key, default)
             candidate = Path(str(value)).expanduser()
-            return candidate if candidate.is_absolute() else root_path / candidate
+            target = candidate if candidate.is_absolute() else root_path / candidate
+            return target.resolve()
 
         paths = {
             "raw": resolve_dir("raw", "raw"),
@@ -38,6 +39,13 @@ class ProjectPaths:
             "cache": resolve_dir("cache", "cache"),
         }
 
+
+        for name, path in paths.items():
+            if _paths_overlap(root_path, path):
+                raise ValueError(
+                    f"configured path overlaps project root: "
+                    f"{name}={path} and root={root_path}"
+                )
 
         labels = list(paths.items())
         for index, (left_name, left_path) in enumerate(labels):
