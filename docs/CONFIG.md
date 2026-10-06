@@ -30,7 +30,7 @@ Relative paths are resolved from the project root. Absolute paths are accepted.
 
 ~~~toml
 [scraper]
-backend = "google"
+backend = "duckduckgo"
 query = "my-dataset"
 count = 300
 timeout = 20
