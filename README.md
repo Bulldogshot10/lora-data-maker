@@ -12,7 +12,7 @@ Model training and image generation are intentionally outside this project.
 
 ## Current state
 
-Phase 3 is implemented. The core CLI can initialize projects, inspect their manifest, scrape Google Images, download from a plain URL list, retry failed requests, resume through a persistent download archive, and record successful downloads in the project manifest.
+Phase 5 is implemented. The CLI can initialize projects, inspect manifests, scrape/download images, validate image files, deduplicate exact and near-duplicate images, and apply resolution/blur quality filters with auditable manifest reasons.
 
 ## Design goals
 
@@ -44,13 +44,27 @@ Or download a prepared URL list:
 lora-data-maker scrape direct urls.txt --count 300
 ```
 
+Validate the downloaded images:
+
+```bash
+lora-data-maker validate
+```
+
+Deduplicate and quality-filter the validated set:
+
+```bash
+lora-data-maker clean
+```
+
+Downloaded images stay in `raw/`. The clean stage never deletes or rewrites them. Duplicate and quality decisions are recorded in `manifest.json`, including SHA-256, perceptual hashes, blur scores, and rejection reasons.
+
 Inspect project state:
 
 ```bash
 lora-data-maker info
 ```
 
-Downloaded images go to `raw/`. Persistent download URLs are stored in `cache/downloads.txt`, and successful downloads are recorded in `manifest.json`.
+Persistent download URLs are stored in `cache/downloads.txt`, and successful downloads plus stage metadata are recorded in `manifest.json`.
 
 The scraper does not attempt CAPTCHA, login, or provider-verification bypasses.
 
@@ -69,4 +83,4 @@ lora-data-maker pack
 lora-data-maker info
 ```
 
-Upcoming stages build on the Phase 3 scraper engine.
+Upcoming stages build on the Phase 5 cleaning stage.
