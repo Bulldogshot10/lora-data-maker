@@ -247,3 +247,28 @@ def test_duckduckgo_extracts_image_results():
         "https://cdn.example.com/a.jpg",
         "https://cdn.example.com/b.webp",
     ]
+
+
+def test_chromium_extracts_google_original_urls():
+    from lora_data_maker.scrapers.chromium import ChromiumGoogleImagesScraper
+
+    hrefs = [
+        "https://www.google.com/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Fa.jpg&imgrefurl=https%3A%2F%2Fexample.com%2Fa",
+        "/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Fb.png",
+        "https://www.google.com/search?q=not-an-image",
+    ]
+
+    assert ChromiumGoogleImagesScraper._extract_image_urls(hrefs) == [
+        "https://cdn.example.com/a.jpg",
+        "https://cdn.example.com/b.png",
+    ]
+
+
+def test_chromium_rejects_google_thumbnail_urls():
+    from lora_data_maker.scrapers.chromium import ChromiumGoogleImagesScraper
+
+    hrefs = [
+        "https://www.google.com/imgres?imgurl=https%3A%2F%2Fencrypted-tbn0.gstatic.com%2Fimages%2Fthumb.jpg"
+    ]
+
+    assert ChromiumGoogleImagesScraper._extract_image_urls(hrefs) == []
