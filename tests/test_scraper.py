@@ -302,6 +302,7 @@ def test_chromium_does_not_force_custom_user_data_dir(monkeypatch, tmp_path):
         def __init__(self):
             self.arguments = []
             self.binary_location = None
+            self.page_load_strategy = None
 
         def add_argument(self, value):
             self.arguments.append(value)
@@ -372,6 +373,7 @@ def test_chromium_does_not_force_custom_user_data_dir(monkeypatch, tmp_path):
     assert driver.timeout == 7
     assert captured["service"].executable_path == "/fake/chromedriver"
     assert captured["options"].binary_location == "/fake/chromium-browser"
+    assert captured["options"].page_load_strategy == "eager"
     assert not any(
         argument.startswith("--user-data-dir=")
         for argument in captured["options"].arguments
@@ -408,6 +410,8 @@ def test_chromium_preserves_candidate_order(monkeypatch):
             return None
 
         def execute_script(self, script):
+            if "document.readyState" in script:
+                return "complete"
             if "document.body" in script:
                 return "normal results"
             if "querySelectorAll" in script:
