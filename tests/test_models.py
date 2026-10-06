@@ -24,3 +24,49 @@ def test_manifest_round_trip():
     assert restored.project_name == "julia"
     assert restored.images[image.image_id].sha256 == "abc"
     assert restored.counts()["discovered"] == 1
+
+
+def test_manifest_rejects_invalid_image_status():
+    import pytest
+
+    manifest = {
+        "schema_version": 1,
+        "project_name": "julia",
+        "subject": "julia",
+        "trigger": "julia",
+        "images": {
+            "abc": {
+                "image_id": "abc",
+                "path": "raw/a.jpg",
+                "status": "bogus",
+                "tags": [],
+                "metadata": {},
+            }
+        },
+    }
+
+    with pytest.raises(ValueError, match="invalid image status"):
+        ProjectManifest.from_dict(manifest)
+
+
+def test_manifest_rejects_non_string_tags():
+    import pytest
+
+    manifest = {
+        "schema_version": 1,
+        "project_name": "julia",
+        "subject": "julia",
+        "trigger": "julia",
+        "images": {
+            "abc": {
+                "image_id": "abc",
+                "path": "raw/a.jpg",
+                "status": "discovered",
+                "tags": ["ok", 123],
+                "metadata": {},
+            }
+        },
+    }
+
+    with pytest.raises(ValueError, match="tags must be a list of strings"):
+        ProjectManifest.from_dict(manifest)
