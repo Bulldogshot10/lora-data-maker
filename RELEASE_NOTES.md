@@ -1,3 +1,12 @@
+# Unreleased
+
+## Face crop
+
+- Added an optional OpenCV YuNet face detector for CLI processing.
+- Pinned the YuNet 2023mar model revision and SHA-256 checksum.
+- Added a separate face runtime dependency tier so core Termux installs stay lightweight.
+- Added CI coverage for the real detector runtime.
+
 # v1.3.0
 
 ## Tagger presets
