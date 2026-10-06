@@ -10,7 +10,7 @@ from .config import load_config, write_default_config
 from .dataset import DatasetProject
 from .exceptions import LoraDataMakerError
 from .logging import configure_logging
-from .images import iter_image_files, manifest_paths
+from .images import iter_image_files
 from .manifest import register_image
 from .paths import ProjectPaths, find_project_root
 from .processing import validate_image
@@ -172,7 +172,7 @@ def command_validate(args: argparse.Namespace) -> int:
     existing = {
         path: record
         for path, record in (
-            (record.path.replace("\\\\", "/"), record)
+            (record.path.replace("\\", "/"), record)
             for record in project.manifest.images.values()
         )
         if path
