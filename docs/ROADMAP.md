@@ -42,9 +42,10 @@ Phase 7 — tagger engine ✓ implemented
 - Model cache and batch inference.
 - Standalone `tag` stage writing tags and confidence/rating metadata to the manifest.
 
-Phase 8 — tag cleaning and subject injection
-- Normalize tags, blacklist unwanted tags, deduplicate tags.
-- Treat subject as canonical dataset identity.
+Phase 8 — tag cleaning and subject injection ✓ implemented
+- Normalize tags, blacklist unwanted tags, deduplicate tags deterministically.
+- Inject canonical `subject` exactly once at the front of each tagged image's tag list.
+- Persist tag-cleaning metadata and expose standalone `clean-tags` stage.
 
 Phase 9 — caption and trigger system
 - Deterministic caption writer.
