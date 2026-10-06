@@ -534,7 +534,7 @@ def command_process(args: argparse.Namespace) -> int:
     print(f"skipped: {skipped}")
     print(f"work: {paths.work / 'processed'}")
 
-    return 0 if processed or skipped else 1
+    return 0 if failed == 0 and (processed or skipped) else 1
 
 
 def command_tag(args: argparse.Namespace) -> int:
@@ -750,7 +750,7 @@ def command_export(args: argparse.Namespace) -> int:
     print(f"skipped: {summary.skipped}")
     print(f"dataset: {summary.output_dir}")
 
-    return 0 if summary.exported or summary.skipped else 1
+    return 0 if summary.failed == 0 and (summary.exported or summary.skipped) else 1
 
 
 def command_pack(args: argparse.Namespace) -> int:
