@@ -163,6 +163,8 @@ class ImageDownloader:
                         pass
                 if attempt >= self.retries:
                     break
+                if isinstance(exc, ScraperError):
+                    break
                 if isinstance(exc, requests.RequestException) and not _retryable_request_error(exc):
                     break
                 time.sleep(min(max(self.delay, 0.25) * (2**attempt), 30.0))
