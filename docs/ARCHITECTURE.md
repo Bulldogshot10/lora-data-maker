@@ -1,6 +1,6 @@
 # Architecture Contract
 
-Status: Phase 10 implemented
+Status: Phase 11 implemented
 
 ## Purpose
 
@@ -99,6 +99,26 @@ Tagger output is treated as visual metadata. General tags, character tags, confi
 ## Caption boundary
 
 Caption generation consumes tagged records after tag cleaning and writes deterministic UTF-8 `.txt` files under `work/captions/`, one file per image record. Caption text is built from normalized, deduplicated tags using the configured separator. The resolved trigger is derived from `subject` when `caption.trigger_from_subject = true`; otherwise the manifest trigger is used. The trigger is removed from its previous position before being prepended, making re-runs idempotent. Captioned records retain their caption path and caption metadata in the manifest.
+
+## Export boundary
+
+
+
+The export stage consumes `captioned` records and writes matched image + caption files into `output/<repeats>_<subject>/` by default. Each pair shares the same image-record basename, so a file such as `abc123.jpg` is paired with `abc123.txt`. The directory naming convention follows the legacy Kohya-style repeat/identifier layout; current sd-scripts also supports image directories with same-basename `.txt` captions and explicit repeat counts. citeturn825645search0turn825645search2 Export copies from `work/` and never rewrites `raw/` or the processed/caption source files.
+
+
+
+Export is idempotent. Re-running the stage overwrites the deterministic destination pair and leaves already-exported records in the `exported` state. Export failures are recorded in per-image metadata without marking the source record as exported.
+
+
+
+## Packaging boundary
+
+
+
+The pack stage creates a ZIP containing the exported dataset tree plus the project-level `manifest.json`. It deliberately excludes `raw/`, `work/`, caches, and other project directories unless they are inside the explicitly selected exported dataset. The archive path defaults to `output/<project-name>.zip` and can be overridden on the CLI. Pack metadata is recorded in `manifest.source`.
+
+
 
 ## Processing boundary
 
