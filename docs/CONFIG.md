@@ -38,7 +38,7 @@ retries = 3
 delay = 1.0
 ~~~
 
-Built-in backends are google, duckduckgo, chromium, and direct.
+Built-in backends are google, duckduckgo, chromium, and direct. The chromium backend falls back from Google Images to Bing Images when Google presents a consent/verification page.
 
 ## validation
 
