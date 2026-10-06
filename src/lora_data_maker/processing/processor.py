@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Literal
 
 from PIL import Image, ImageOps
 
+from ..paths import manifest_path
 from .faces import FaceDetector, largest_face, square_crop_around_face
 
 if TYPE_CHECKING:
@@ -216,7 +217,7 @@ def process_manifest(
             failed_count += 1
             continue
 
-        image.processed_path = result.output_path.relative_to(root_path).as_posix()
+        image.processed_path = manifest_path(root_path, result.output_path)
         image.metadata.update(
             {
                 "processing_stage": "processed",
