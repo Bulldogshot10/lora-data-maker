@@ -36,9 +36,10 @@ count = 300
 timeout = 20
 retries = 3
 delay = 1.0
+fallbacks = ["duckduckgo", "google"]
 ~~~
 
-Built-in backends are google, duckduckgo, chromium, and direct. The chromium backend falls back from Google Images to Bing Images when Google presents a consent/verification page.
+Built-in backends are google, duckduckgo, chromium, and direct. `fallbacks` is an ordered list of image-search backends. A fallback runs only when the requested count has not been reached. `direct` cannot be used as a fallback.
 
 ## validation
 
@@ -154,3 +155,5 @@ folder_name = ""
 
 With an empty folder_name, the output directory is repeats_subject, for example 10_julia.
 A non-empty folder_name overrides the generated directory name.
+
+Fallbacks are sequential, never parallel. The manager maintains one global URL set for the entire scrape run, and exact duplicate image content is discarded when a downloaded SHA-256 repeats within that run.
