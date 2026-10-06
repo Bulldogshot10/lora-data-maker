@@ -84,6 +84,13 @@ cd lora-data-maker
 python -m pip install .
 ~~~
 
+For Chromium scraping support:
+
+~~~bash
+pkg install chromium
+python -m pip install ".[chromium]"
+~~~
+
 For tagging support:
 
 ~~~bash
