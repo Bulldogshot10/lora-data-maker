@@ -1,6 +1,6 @@
 # Architecture Contract
 
-Status: Phase 3 implemented
+Status: Phase 5 implemented
 
 ## Purpose
 
@@ -80,7 +80,7 @@ Current image states:
 
 discovered → downloaded → validated → processed → tagged → captioned → exported
 
-Images can also enter duplicate or rejected states with an auditable reason.
+Images can also enter duplicate or rejected states with an auditable reason. The clean stage records exact SHA-256 hashes, perceptual hashes, duplicate provenance, blur scores, aspect ratios, and quality rejection reasons.
 
 The manifest is the durable state used for resume and audit.
 
