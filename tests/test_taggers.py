@@ -278,7 +278,7 @@ def test_mobile_wd14_fake_inference_uses_uint8_input(tmp_path):
     result = tagger.tag_image(image)
 
     assert result.tags == ["blue eyes", "julia", "smile"]
-    assert result.characters == {"julia": 0.87}
+    assert abs(result.characters["julia"] - 0.87) < 1e-6
     assert abs(result.ratings["safe"] - 0.99) < 1e-6
 
 
