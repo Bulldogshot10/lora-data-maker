@@ -496,6 +496,12 @@ def command_process(args: argparse.Namespace) -> int:
     face_crop = bool(processing_config.get("face_crop", False))
     face_padding = float(processing_config.get("face_padding", 1.75))
 
+    if face_crop:
+        raise LoraDataMakerError(
+            "processing.face_crop is not available from the CLI yet; "
+            "the programmatic processing API requires a FaceDetector"
+        )
+
     settings = ProcessConfig(
         target_width=target_width,
         target_height=target_height,
