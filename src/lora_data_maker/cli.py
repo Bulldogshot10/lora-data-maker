@@ -14,9 +14,10 @@ from .dataset import DatasetProject
 from .exceptions import LoraDataMakerError
 from .logging import configure_logging
 from .images import iter_image_files
-from .manifest import register_image
+from .manifest import find_image_by_source_url, register_image
 from .pack import pack_dataset
 from .paths import ProjectPaths, find_project_root
+from .reconcile import reconcile_raw
 from .processing import ProcessConfig, clean_manifest, process_manifest, validate_image
 from .scrapers import ScraperError, ScraperManager
 from .taggers import (
@@ -98,6 +99,15 @@ def build_parser() -> argparse.ArgumentParser:
         "validate", help="validate image files in the project's raw directory"
     )
     validate_parser.add_argument(
+        "--path",
+        default=".",
+        help="project directory (default: current directory)",
+    )
+
+    reconcile_parser = subparsers.add_parser(
+        "reconcile", help="reconcile raw image files into the manifest"
+    )
+    reconcile_parser.add_argument(
         "--path",
         default=".",
         help="project directory (default: current directory)",
@@ -291,6 +301,12 @@ def command_validate(args: argparse.Namespace) -> int:
     min_file_size = int(validation_config.get("min_file_size", 1))
     max_file_size = int(validation_config.get("max_file_size", 0)) or None
 
+    reconcile = reconcile_raw(
+        project.manifest,
+        root=root,
+        raw_dir=paths.raw,
+    )
+
     existing = {
         path: record
         for path, record in (
@@ -300,11 +316,9 @@ def command_validate(args: argparse.Namespace) -> int:
         if path
     }
 
-    scanned = valid_count = rejected_count = 0
+    scanned = valid_count = rejected_count = skipped_count = 0
     for image_path in iter_image_files(paths.raw):
         relative_path = image_path.relative_to(root).as_posix()
-        scanned += 1
-
         record = existing.get(relative_path)
         if record is None:
             record = register_image(
@@ -313,6 +327,12 @@ def command_validate(args: argparse.Namespace) -> int:
                 status="discovered",
             )
             existing[relative_path] = record
+
+        if record.status not in {"discovered", "downloaded"}:
+            skipped_count += 1
+            continue
+
+        scanned += 1
 
         result = validate_image(
             image_path,
@@ -348,6 +368,9 @@ def command_validate(args: argparse.Namespace) -> int:
             "last_validation_scanned": scanned,
             "last_validation_valid": valid_count,
             "last_validation_rejected": rejected_count,
+            "last_validation_skipped": skipped_count,
+            "last_validation_reconcile_added": reconcile.added,
+            "last_validation_reconcile_missing": reconcile.missing,
         }
     )
     project.save()
@@ -355,9 +378,41 @@ def command_validate(args: argparse.Namespace) -> int:
     print(f"scanned: {scanned}")
     print(f"valid: {valid_count}")
     print(f"rejected: {rejected_count}")
+    print(f"skipped: {skipped_count}")
     print(f"raw: {paths.raw}")
 
     return 0 if scanned else 1
+
+
+def command_reconcile(args: argparse.Namespace) -> int:
+    root = find_project_root(args.path)
+    config = load_config(root / "config.toml")
+    paths = ProjectPaths.from_root(root, config.get("paths", {}))
+    project = DatasetProject.open(paths)
+
+    summary = reconcile_raw(
+        project.manifest,
+        root=root,
+        raw_dir=paths.raw,
+    )
+
+    project.manifest.source.update(
+        {
+            "last_reconcile_scanned": summary.scanned,
+            "last_reconcile_added": summary.added,
+            "last_reconcile_existing": summary.existing,
+            "last_reconcile_missing": summary.missing,
+        }
+    )
+    project.save()
+
+    print(f"scanned: {summary.scanned}")
+    print(f"added: {summary.added}")
+    print(f"existing: {summary.existing}")
+    print(f"missing: {summary.missing}")
+    print(f"raw: {paths.raw}")
+
+    return 0 if summary.scanned or summary.missing else 1
 
 
 def command_clean(args: argparse.Namespace) -> int:
@@ -785,17 +840,30 @@ def command_scrape(args: argparse.Namespace) -> int:
         retries=retries,
         delay=delay,
     )
-    downloads, failures = manager.run(query, count=count)
+    known_urls = {
+        record.source_url
+        for record in project.manifest.images.values()
+        if record.source_url
+    }
+    downloads, failures = manager.run(
+        query,
+        count=count,
+        known_urls=known_urls,
+    )
 
+    added_records = 0
     for result in downloads:
         relative_path = result.path.relative_to(root).as_posix()
-        record = register_image(
-            project.manifest,
-            path=relative_path,
-            source_url=result.url,
-            source_query=query,
-            status="downloaded",
-        )
+        record = find_image_by_source_url(project.manifest, result.url)
+        if record is None:
+            record = register_image(
+                project.manifest,
+                path=relative_path,
+                source_url=result.url,
+                source_query=query,
+                status="downloaded",
+            )
+            added_records += 1
         record.sha256 = result.sha256
         record.file_size = result.file_size
         record.mime_type = result.content_type
@@ -806,6 +874,7 @@ def command_scrape(args: argparse.Namespace) -> int:
             "query": query,
             "last_scrape_requested": count,
             "last_scrape_downloaded": len(downloads),
+            "last_scrape_added_records": added_records,
             "last_scrape_failed": len(failures),
         }
     )
@@ -842,6 +911,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return command_scrape(args)
         if args.command == "validate":
             return command_validate(args)
+        if args.command == "reconcile":
+            return command_reconcile(args)
         if args.command == "clean":
             return command_clean(args)
         if args.command == "process":
