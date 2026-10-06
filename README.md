@@ -12,7 +12,7 @@ Model training and image generation are intentionally outside this project.
 
 ## Current state
 
-v1.0.1 is the latest patch release. The CLI supports the full dataset-preparation pipeline through export and packaging, incremental processing, and a complete project documentation set for Termux installation, CLI usage, configuration, dataset layout, troubleshooting, licensing, and responsible use.
+v1.1.0 adds a DuckDuckGo Images scraper for current image-search environments where Google no longer exposes static image-result markup. The CLI supports the full dataset-preparation pipeline through export and packaging, incremental processing, and a complete project documentation set for Termux installation, CLI usage, configuration, dataset layout, troubleshooting, licensing, and responsible use.
 
 ## Design goals
 
