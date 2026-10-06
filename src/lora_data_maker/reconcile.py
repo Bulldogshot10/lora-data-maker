@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 
 from .images import iter_image_files
 from .manifest import find_image_by_path, register_image
+from .paths import manifest_path
 
 if TYPE_CHECKING:
     from .models import ProjectManifest
@@ -33,7 +34,7 @@ def reconcile_raw(
     present_paths: set[str] = set()
 
     for image_path in iter_image_files(raw_root):
-        relative_path = image_path.relative_to(root_path).as_posix()
+        relative_path = manifest_path(root_path, image_path)
         present_paths.add(relative_path)
         scanned += 1
 
