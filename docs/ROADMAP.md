@@ -84,7 +84,7 @@ Phase 15 — documentation ✓ implemented
 - Tag rules and trigger behavior documentation.
 - Troubleshooting guide.
 
-Phase 16 — v1.0 release
-- Freeze the supported feature set.
-- Run clean-install and end-to-end acceptance tests.
-- Publish release notes and known platform constraints.
+Phase 16 — v1.0 release ✓ implemented
+- Freeze the supported feature set at v1.0.0.
+- Run clean-install and offline end-to-end acceptance tests.
+- Publish release notes, Apache 2.0 license, third-party NOTICE, responsible-use policy, and known platform constraints.
