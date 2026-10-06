@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from PIL import Image, ImageOps
 
 from .faces import FaceDetector, largest_face, square_crop_around_face
+
+if TYPE_CHECKING:
+    from ..models import ProjectManifest
 
 
 ResizeMode = Literal["cover", "fit", "stretch"]
@@ -169,3 +172,67 @@ def resize_and_crop(
 
     cropped = resized.crop((left, top, right, bottom))
     return cropped, (left, top, right, bottom)
+
+
+def process_manifest(
+    manifest: "ProjectManifest",
+    *,
+    root: Path | str,
+    output_dir: Path | str,
+    config: ProcessConfig | None = None,
+    face_detector: FaceDetector | None = None,
+) -> tuple[int, int, int]:
+    settings = config or ProcessConfig()
+    root_path = Path(root).expanduser().resolve()
+    output_root = Path(output_dir).expanduser().resolve()
+    processed_root = output_root / "processed"
+
+    processed_count = failed_count = skipped_count = 0
+
+    for image in sorted(
+        manifest.images.values(),
+        key=lambda item: item.path,
+    ):
+        if image.status != "validated":
+            skipped_count += 1
+            continue
+
+        source = root_path / image.path
+        destination = processed_root / f"{image.image_id}.jpg"
+
+        try:
+            result = process_image(
+                source,
+                destination,
+                config=settings,
+                face_detector=face_detector,
+            )
+        except (OSError, ValueError, RuntimeError, SyntaxError) as exc:
+            image.set_status(
+                "rejected",
+                reason=f"processing failed: {exc}",
+            )
+            image.metadata["processing_stage"] = "rejected"
+            failed_count += 1
+            continue
+
+        image.processed_path = result.output_path.relative_to(root_path).as_posix()
+        image.metadata.update(
+            {
+                "processing_stage": "processed",
+                "processing_mode": settings.resize_mode,
+                "processing_output_format": "JPEG",
+                "processing_output_size": list(result.output_size),
+                "processing_source_size": list(result.source_size),
+                "processing_face_detected": result.face_detected,
+            }
+        )
+        if result.crop_box is not None:
+            image.metadata["processing_crop_box"] = list(result.crop_box)
+        if result.source_orientation is not None:
+            image.metadata["processing_source_orientation"] = result.source_orientation
+
+        image.set_status("processed")
+        processed_count += 1
+
+    return processed_count, failed_count, skipped_count
