@@ -19,7 +19,7 @@ output = "output"
 cache = "cache"
 
 [scraper]
-backend = "google"
+backend = "duckduckgo"
 query = "my-dataset"
 count = 300
 timeout = 20
