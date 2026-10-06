@@ -57,6 +57,16 @@ jobs:
       - name: Pack help
         run: lora-data-maker pack --help
 
+      - name: Documentation smoke
+        run: |
+          test -f docs/INSTALL_TERMUX.md
+          test -f docs/CLI.md
+          test -f docs/CONFIG.md
+          test -f docs/DATASET.md
+          test -f docs/TROUBLESHOOTING.md
+          test -f docs/ARCHITECTURE.md
+          test -f docs/ROADMAP.md
+
       - name: Init and inspect project
         run: |
           rm -rf .smoke-project
