@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Mapping
 
 
 @dataclass(frozen=True)
@@ -14,15 +15,26 @@ class ProjectPaths:
     cache: Path
 
     @classmethod
-    def from_root(cls, root: Path | str) -> "ProjectPaths":
+    def from_root(
+        cls,
+        root: Path | str,
+        configured: Mapping[str, str] | None = None,
+    ) -> "ProjectPaths":
         root_path = Path(root).expanduser().resolve()
+        configured = configured or {}
+
+        def resolve_dir(key: str, default: str) -> Path:
+            value = configured.get(key, default)
+            candidate = Path(str(value)).expanduser()
+            return candidate if candidate.is_absolute() else root_path / candidate
+
         return cls(
             root=root_path,
             config=root_path / "config.toml",
-            raw=root_path / "raw",
-            work=root_path / "work",
-            output=root_path / "output",
-            cache=root_path / "cache",
+            raw=resolve_dir("raw", "raw"),
+            work=resolve_dir("work", "work"),
+            output=resolve_dir("output", "output"),
+            cache=resolve_dir("cache", "cache"),
         )
 
     def create_directories(self) -> None:
