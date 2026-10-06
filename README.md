@@ -12,7 +12,9 @@ Model training and image generation are intentionally outside this project.
 
 ## Current state
 
-v1.1.0 adds a DuckDuckGo Images scraper for current image-search environments where Google no longer exposes static image-result markup. The CLI supports the full dataset-preparation pipeline through export and packaging, incremental processing, and a complete project documentation set for Termux installation, CLI usage, configuration, dataset layout, troubleshooting, licensing, and responsible use.
+v1.3.0 adds a configurable sequential scraper fallback chain. The CLI supports the full dataset-preparation pipeline through export and packaging, incremental processing, and a complete project documentation set for Termux installation, CLI usage, configuration, dataset layout, troubleshooting, licensing, and responsible use.
+
+Fallbacks are sequential, never parallel. The chain stops as soon as the requested download count is reached. URLs already known, archived, or seen earlier in the same run are excluded across all engines, and exact duplicate image content is discarded.
 
 ## Design goals
 
