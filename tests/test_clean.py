@@ -97,3 +97,32 @@ def test_clean_command_is_successful_when_all_records_are_already_advanced(tmp_p
     project.save()
 
     assert command_clean(Namespace(path=str(root))) == 0
+
+
+def test_clean_quality_rejection_happens_before_perceptual_dedup(tmp_path):
+    raw = tmp_path / "raw"
+    raw.mkdir()
+
+    sharp = raw / "001.png"
+    blurry = raw / "002.png"
+    _make_subject_image(sharp)
+    _make_subject_image(blurry, blur=8)
+
+    manifest = _manifest_for("raw/001.png", "raw/002.png")
+
+    summary = clean_manifest(
+        manifest,
+        root=tmp_path,
+        exact=False,
+        perceptual=True,
+        perceptual_distance=6,
+        min_width=512,
+        min_height=512,
+        blur_threshold=1000,
+    )
+
+    records = {image.path: image for image in manifest.images.values()}
+    assert records["raw/001.png"].status == "validated"
+    assert records["raw/002.png"].status == "rejected"
+    assert summary.perceptual_duplicates == 0
+    assert summary.quality_rejected == 1
