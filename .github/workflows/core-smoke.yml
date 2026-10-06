@@ -25,7 +25,7 @@ jobs:
         run: python -m pip install .
 
       - name: Install test tooling
-        run: python -m pip install "pytest>=8,<9"
+        run: python -m pip install "numpy>=1.26,<3" "pytest>=8,<9"
 
       - name: Compile
         run: python -m compileall -q src tests
@@ -38,6 +38,9 @@ jobs:
 
       - name: CLI help
         run: lora-data-maker --help
+
+      - name: Tag help
+        run: lora-data-maker tag --help
 
       - name: Init and inspect project
         run: |
