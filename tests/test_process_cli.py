@@ -73,3 +73,32 @@ def test_process_command_rejects_unavailable_cli_face_crop(tmp_path):
 
     with pytest.raises(LoraDataMakerError, match="face_crop"):
         command_process(Namespace(path=str(root)))
+
+
+def test_process_command_returns_failure_when_any_image_fails(tmp_path):
+    from lora_data_maker.models import ImageRecord
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="example",
+            subject="example",
+            trigger=None,
+            force=False,
+        )
+    )
+    Image.new("RGB", (640, 640)).save(root / "raw" / "valid.jpg")
+    assert command_validate(Namespace(path=str(root))) == 0
+    assert command_clean(Namespace(path=str(root))) == 0
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    project.manifest.add_image(
+        ImageRecord(
+            path="raw/missing.jpg",
+            status="validated",
+        )
+    )
+    project.save()
+
+    assert command_process(Namespace(path=str(root))) == 1
