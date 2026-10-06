@@ -48,8 +48,12 @@ perceptual_distance = 6
 
 [tagger]
 backend = "wd14"
+preset = "sweetspot"
 threshold = 0.35
-model = "SmilingWolf/wd-eva02-large-tagger-v3"
+character_threshold = 0.85
+use_mcut = false
+batch_size = 1
+download_timeout = 60
 
 [tag_rules]
 remove = [
