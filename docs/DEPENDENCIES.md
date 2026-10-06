@@ -14,6 +14,8 @@ The default installation must be small enough for Termux.
 
 tagger: ONNX Runtime for local WD14-compatible tagging.
 
+face: NumPy and OpenCV headless for the built-in YuNet face detector on regular Linux/Python.
+
 dev: pytest and future development tooling.
 
 ## Rules
@@ -27,4 +29,4 @@ dev: pytest and future development tooling.
 
 ## Important Termux constraint
 
-Do not make opencv-python a hard dependency. Termux users may prefer the native Termux package for OpenCV. The package specification keeps OpenCV optional so installation strategy can be chosen per platform.
+Do not make opencv-python a hard dependency. Termux users should prefer the native Termux OpenCV package. The face extra is intended for regular Linux/Python environments; Termux can keep using the core package and install its native cv2 package separately.
