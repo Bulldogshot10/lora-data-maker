@@ -57,8 +57,14 @@ perceptual_distance = 6
 
 [tagger]
 backend = "wd14"
-threshold = 0.35
 model = "SmilingWolf/wd-eva02-large-tagger-v3"
+revision = "b25b82a03f7282e41aa2f257a52c7583b710bd1c"
+model_sha256 = "9e768793060c7939b277ccb382783e8670e8a042d29d77aa736be0c8cc898bfc"
+threshold = 0.35
+character_threshold = 0.85
+use_mcut = false
+batch_size = 1
+download_timeout = 60
 
 [tag_rules]
 remove = [
