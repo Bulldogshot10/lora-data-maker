@@ -68,7 +68,7 @@ def test_process_command_rejects_unavailable_cli_face_crop(tmp_path):
     )
 
     config = (root / "config.toml").read_text(encoding="utf-8")
-    config = config.replace("[processing]\n", "[processing]\nface_crop = true\n", 1)
+    config = config.replace("face_crop = false", "face_crop = true", 1)
     (root / "config.toml").write_text(config, encoding="utf-8")
 
     with pytest.raises(LoraDataMakerError, match="face_crop"):
