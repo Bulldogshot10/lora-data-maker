@@ -474,7 +474,7 @@ def command_clean(args: argparse.Namespace) -> int:
     print(f"quality rejected: {summary.quality_rejected}")
     print(f"kept: {summary.kept}")
 
-    return 0 if summary.scanned else 1
+    return 0 if summary.scanned or bool(project.manifest.images) else 1
 
 
 def command_process(args: argparse.Namespace) -> int:
