@@ -137,3 +137,44 @@ def test_pack_external_dataset_uses_safe_archive_prefix(tmp_path):
     assert "10_julia/abc.jpg" in names
     assert "10_julia/abc.txt" in names
     assert "manifest.json" in names
+
+
+def test_pack_default_archive_filename_sanitizes_project_name(tmp_path):
+    root = tmp_path / "project"
+    root.mkdir()
+    command_init(
+        Namespace(
+            path=str(root),
+            name="../evil",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    dataset = root / "output" / "1_julia"
+    dataset.mkdir(parents=True)
+    (dataset / "abc.jpg").write_bytes(b"image")
+    (dataset / "abc.txt").write_text("julia\n", encoding="utf-8")
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    project.manifest.add_image(
+        ImageRecord(
+            image_id="abc",
+            path="raw/abc.jpg",
+            status="captioned",
+            processed_path="work/processed/abc.jpg",
+            caption_path="work/captions/abc.txt",
+        )
+    )
+    project.save()
+
+    # Seed the export location metadata so pack can use it directly.
+    project.manifest.source["last_export_dir"] = "output/1_julia"
+    project.save()
+
+    assert command_pack(
+        Namespace(path=str(root), archive=None, dataset_dir=None)
+    ) == 0
+    assert (root / "output" / "evil.zip").is_file()
+    assert not (root / "evil.zip").is_file()
