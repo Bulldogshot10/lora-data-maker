@@ -489,3 +489,50 @@ def test_chromium_page_timeout_retries_and_falls_back_to_bing(monkeypatch):
     ) is False
     assert driver.get_calls == 2
     assert driver.stop_calls == 2
+
+
+def test_chromium_continues_to_bing_when_google_has_too_few_candidates(monkeypatch):
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
+
+    class FakeDriver:
+        title = "Images"
+
+        def __init__(self):
+            self.provider_calls = 0
+            self.quit_called = False
+
+        def get(self, url):
+            self.provider_calls += 1
+            self.last_url = url
+
+        def execute_script(self, script):
+            if "document.body" in script:
+                return "normal results"
+            if "querySelectorAll" in script:
+                if "a[href]" in script and "i.iusc" not in script:
+                    return [
+                        "https://www.google.com/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Fgoogle.jpg"
+                    ]
+                return [
+                    '{"murl":"https://cdn.example.com/bing.jpg"}'
+                ]
+            return "complete"
+
+        def quit(self):
+            self.quit_called = True
+
+    driver = FakeDriver()
+    scraper = ChromiumImagesScraper(delay=0, retries=0, max_scrolls=1)
+    monkeypatch.setattr(scraper, "_start_driver", lambda: driver)
+
+    results = list(scraper.search("julia", limit=2))
+
+    assert [item.image_url for item in results] == [
+        "https://cdn.example.com/google.jpg",
+        "https://cdn.example.com/bing.jpg",
+    ]
+    assert [item.metadata["provider"] for item in results] == [
+        "google",
+        "bing",
+    ]
+    assert driver.quit_called is True
