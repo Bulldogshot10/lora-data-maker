@@ -14,8 +14,6 @@ class TaggerPreset:
     model_sha256: str
     default_threshold: float = 0.35
     default_character_threshold: float = 0.85
-    default_threshold: float = 0.35
-    default_character_threshold: float = 0.85
 
 
 SWEETSPOT = TaggerPreset(
@@ -58,7 +56,6 @@ JOYTAG = TaggerPreset(
 TAGGER_PRESETS = {
     SWEETSPOT.name: SWEETSPOT,
     POTATO.name: POTATO,
-    JOYTAG.name: JOYTAG,
     JOYTAG.name: JOYTAG,
 }
 
