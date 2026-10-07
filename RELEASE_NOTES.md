@@ -3,6 +3,7 @@
 ## Playwright image search
 
 - Added separate `playwright-bing` and `playwright-google` backends using Termux-native Chromium through CDP.
+- Added authenticated `playwright-google` attachment to an existing local Chromium profile via `CHROME_USER_DATA_DIR` and `CHROME_DEBUG_PORT`.
 - Pinned `playwright-termux==2.0.0` for deterministic Termux compatibility.
 - Added bounded direct-CDP navigation to avoid the adapter's lifecycle waiter race.
 - Added original-image URL extraction, Google verification detection, retry handling, and parser/config regression coverage.
