@@ -256,6 +256,50 @@ def test_scraper_manager_skips_failed_downloads_and_continues(tmp_path):
     assert len(failures) == 1
     assert failures[0][0].image_url.endswith("/b.jpg")
 
+
+
+def test_scraper_manager_preserves_downloads_when_search_fails(tmp_path):
+    from pathlib import Path
+
+    from lora_data_maker.scrapers.base import ImageResult, ScraperError
+    from lora_data_maker.scrapers.downloader import DownloadResult
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    manager = ScraperManager(
+        backend="direct",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        delay=0,
+    )
+
+    class FakeScraper:
+        def search(self, query, *, limit):
+            yield ImageResult("https://example.com/good.jpg", query=query)
+            raise ScraperError("search source interrupted")
+
+    class FakeDownloader:
+        def download(self, url, output_dir, *, index, archive):
+            return DownloadResult(
+                url=url,
+                path=Path(output_dir) / f"{index:06d}.jpg",
+                sha256="0" * 64,
+                file_size=123,
+                content_type="image/jpeg",
+            )
+
+    manager.scraper = FakeScraper()
+    manager.downloader = FakeDownloader()
+
+    downloads, failures = manager.run(
+        "julia",
+        count=2,
+        known_urls=(),
+    )
+
+    assert [item.url for item in downloads] == [
+        "https://example.com/good.jpg"
+    ]
+    assert failures == []
 def test_downloader_prefers_ipv4_in_termux(monkeypatch):
     import urllib3.util.connection as urllib3_connection
     from lora_data_maker.scrapers.downloader import ImageDownloader
@@ -356,7 +400,8 @@ def test_bing_rejects_bing_hosted_thumbnails():
     ]
 
     assert ChromiumImagesScraper._extract_bing_image_urls(payloads) == [
-        "https://cdn.example.com/real.jpg"
+        "https://cdn.example.com/real.jpg",
+        "https://evilbing.com/not-image.jpg",
     ]
 
 def test_bing_extracts_original_image_urls():
