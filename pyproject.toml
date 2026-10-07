@@ -28,7 +28,7 @@ chromium = [
   "selenium>=4.37,<5",
 ]
 playwright = [
-  "playwright-termux>=2,<3",
+  "playwright-termux==2.0.0",
 ]
 dev = [
   "numpy>=1.26,<3",
