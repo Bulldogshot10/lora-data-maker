@@ -874,6 +874,8 @@ def test_scrape_command_accepts_partial_success_after_skipping_failures(tmp_path
     )
 
     class FakeManager:
+        last_search_error = None
+
         def __init__(self, **kwargs):
             pass
 
