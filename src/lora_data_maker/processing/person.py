@@ -318,12 +318,11 @@ class YOLOXNanoPersonDetector:
             input_width / max(1, width),
             input_height / max(1, height),
         )
-        pad_x = (input_width - width * ratio) / 2
-        pad_y = (input_height - height * ratio) / 2
-
+        # YOLOX preproc places the resized image at the top-left of the
+        # 416x416 canvas, so there is no centering offset to undo.
         boxes = np.empty((count, 5), dtype=np.float32)
-        boxes[:, :2] = (x1y1 - (pad_x, pad_y)) / ratio
-        boxes[:, 2:4] = (x2y2 - (pad_x, pad_y)) / ratio
+        boxes[:, :2] = x1y1 / ratio
+        boxes[:, 2:4] = x2y2 / ratio
         boxes[:, :4] = boxes[:, :4].clip(
             (0, 0, 0, 0),
             (width, height, width, height),
