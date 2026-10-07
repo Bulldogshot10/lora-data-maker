@@ -36,7 +36,7 @@ The core package uses Python standard library modules plus Pillow and requests.
 
 ## Optional Chromium backend
 
-The Chromium scraper requires the Termux chromium package plus the Selenium extra:
+The existing Chromium scraper requires the Termux chromium package plus the Selenium extra:
 
 ~~~bash
 pkg install chromium
@@ -44,6 +44,33 @@ python -m pip install ".[chromium]"
 ~~~
 
 The backend expects `chromium-browser` and `chromedriver` on PATH.
+
+## Optional Playwright image-search backend
+
+Termux does not use the upstream Playwright browser bundle directly. The upstream Python package publishes Linux glibc wheels, while Termux uses Android/Bionic. The project therefore uses the Termux-specific `playwright-termux` adapter, which drives the native Termux Chromium through CDP.
+
+Install it with:
+
+~~~bash
+pkg install x11-repo chromium
+python -m pip install ".[playwright]"
+~~~
+
+Do not run `playwright install` for this backend.
+
+Test Bing:
+
+~~~bash
+lora-data-maker scrape playwright-bing "julia russian woman" --count 10
+~~~
+
+Test Google:
+
+~~~bash
+lora-data-maker scrape playwright-google "julia russian woman" --count 10
+~~~
+
+Google verification/consent pages are treated as a source failure. The scraper does not attempt to bypass them.
 
 ## Optional tagger runtime
 
