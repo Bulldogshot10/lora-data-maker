@@ -220,7 +220,7 @@ class PlaywrightImagesScraper(Scraper):
             if not image_url.startswith(("http://", "https://")):
                 continue
             host = image_url.lower()
-            if "bing.com" in host:
+            if "bing.com" in host or "bing.net" in host:
                 continue
             if image_url in seen:
                 continue
