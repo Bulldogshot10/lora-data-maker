@@ -31,7 +31,7 @@ jobs:
           python -c "import playwright_termux; print('playwright-termux:', getattr(playwright_termux, '__version__', 'installed'))"
 
       - name: Install test tooling and optional runtimes
-        run: python -m pip install ".[web,tagger,dev]"
+        run: python -m pip install ".[web,tagger,quality,dev]"
 
       - name: Compile
         run: python -m compileall -q src tests
