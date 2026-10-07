@@ -86,12 +86,12 @@ class LlamaCppCaptioner(Captioner):
                 max_tokens=self.max_tokens,
                 seed=self.seed,
             )
-        except LlamaCppError as exc:
-            raise RuntimeError(str(exc)) from exc
+        except LlamaCppError:
+            raise
 
         caption = _sanitize_caption(generated)
         if not caption:
-            raise RuntimeError("llama.cpp captioner returned an empty caption")
+            raise LlamaCppError("llama.cpp captioner returned an empty caption")
 
         return _ensure_trigger_prefix(
             caption,
