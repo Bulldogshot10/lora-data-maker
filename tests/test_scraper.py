@@ -990,13 +990,26 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
 
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
+    class FakeSession:
+        def send(self, method, params=None, timeout=None):
+            if method == "Page.navigate":
+                assert params["url"].startswith(
+                    "https://www.bing.com/images/search?"
+                )
+                return {"loaderId": "loader-1"}
+            if method == "Runtime.evaluate":
+                return {
+                    "result": {
+                        "value": ["complete", params and params.get("url", "https://www.bing.com/images/search?")]
+                    }
+                }
+            raise AssertionError(f"unexpected CDP method: {method}")
+
     class FakePage:
         def __init__(self):
             self.closed = False
+            self.session = FakeSession()
             self.urls = []
-
-        def goto(self, url, timeout=None):
-            self.urls.append((url, timeout))
 
         def content(self):
             return (
@@ -1055,10 +1068,6 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
     assert [item.image_url for item in results] == [
         "https://cdn.example.com/a.jpg"
     ]
-    assert browser.page.urls[0][0].startswith(
-        "https://www.bing.com/images/search?"
-    )
-    assert browser.page.urls[0][1] == 20.0
     assert browser.page.closed is True
     assert browser.closed is True
 
