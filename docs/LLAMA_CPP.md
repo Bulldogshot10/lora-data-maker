@@ -2,7 +2,7 @@
 
 The project can run a local multimodal GGUF model directly inside the Python process through `llama-cpp-python`. The tagger and captioner do not connect to `llama-server` and do not require an HTTP endpoint.
 
-`llama-cpp-python` builds and installs llama.cpp alongside its Python bindings. Its current multimodal support exposes `MTMDChatHandler`, which loads an external `mmproj` and feeds image content into the same in-process Llama context. citeturn596160search0turn270397search0
+`llama-cpp-python` builds and installs llama.cpp alongside its Python bindings. Its current multimodal support exposes `MTMDChatHandler`, which loads an external `mmproj` and feeds image content into the same in-process Llama context.
 
 Install the optional dependency:
 
@@ -10,7 +10,7 @@ Install the optional dependency:
 python -m pip install ".[llama_cpp]"
 ~~~
 
-For Termux, the upstream llama.cpp project supports building its native runtime directly on Android/Termux. The Python binding is a separate packaging layer, so the most portable GUI architecture is to keep the runtime behind a small Python adapter. citeturn974045search0turn596160search5
+For Termux, the upstream llama.cpp project supports building its native runtime directly on Android/Termux. The Python binding is a separate packaging layer, so the most portable GUI architecture is to keep the runtime behind a small Python adapter.
 
 Configure a local model and multimodal projector:
 
@@ -71,4 +71,4 @@ The tagger returns structured JSON internally and maps it into the existing `Tag
 
 The captioner receives the processed image and existing tag hints, then enforces the dataset trigger as the first caption fragment after generation.
 
-No `llama-server`, localhost port, REST client, or Python server extra is needed for this backend. The actual native runtime is loaded in-process by `llama-cpp-python`. citeturn596160search0turn270397search0
+No `llama-server`, localhost port, REST client, or Python server extra is needed for this backend. The actual native runtime is loaded in-process by `llama-cpp-python`.
