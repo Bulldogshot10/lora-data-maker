@@ -1048,6 +1048,104 @@ def test_playwright_google_rejects_verification_page():
         )
 
 
+def test_existing_chromium_reads_google_profile_environment(monkeypatch, tmp_path):
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+    monkeypatch.setenv("CHROME_USER_DATA_DIR", str(profile))
+    monkeypatch.delenv("CHROME_DEBUG_PORT", raising=False)
+
+    browser = ExistingChromium.from_environment(timeout=20)
+
+    assert browser.user_data_dir == profile.resolve()
+    assert browser.port == 9222
+    assert browser.timeout == 5.0
+
+
+def test_existing_chromium_discovers_local_cdp_endpoint(monkeypatch, tmp_path):
+    from lora_data_maker.scrapers import existing_chromium as module
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def read(self):
+            return b'{"webSocketDebuggerUrl":"ws://127.0.0.1:9222/devtools/browser/test"}'
+
+    def fake_urlopen(url, timeout):
+        assert url == "http://127.0.0.1:9222/json/version"
+        assert 0 < timeout <= 5.0
+        return FakeResponse()
+
+    monkeypatch.setattr(module, "urlopen", fake_urlopen)
+
+    browser = ExistingChromium(
+        user_data_dir=profile,
+        port=9222,
+        timeout=20,
+    )
+    assert (
+        browser._discover_websocket_url()
+        == "ws://127.0.0.1:9222/devtools/browser/test"
+    )
+
+
+def test_existing_chromium_rejects_non_local_cdp_host(tmp_path):
+    import pytest
+
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    with pytest.raises(ValueError, match="CDP host must be local"):
+        ExistingChromium(
+            user_data_dir=tmp_path,
+            host="192.168.1.10",
+        )
+
+
+def test_existing_chromium_rejects_invalid_debug_port(monkeypatch, tmp_path):
+    import pytest
+
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+    monkeypatch.setenv("CHROME_USER_DATA_DIR", str(profile))
+    monkeypatch.setenv("CHROME_DEBUG_PORT", "not-a-port")
+
+    with pytest.raises(ValueError, match="CHROME_DEBUG_PORT"):
+        ExistingChromium.from_environment(timeout=20)
+
+
+def test_playwright_google_uses_existing_profile_when_configured(monkeypatch, tmp_path):
+    from lora_data_maker.scrapers import playwright as playwright_module
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+    monkeypatch.setenv("CHROME_USER_DATA_DIR", str(profile))
+
+    scraper = playwright_module.PlaywrightImagesScraper(
+        provider="google",
+        delay=0,
+        retries=0,
+        max_scrolls=1,
+    )
+
+    browser = scraper._create_browser()
+
+    assert isinstance(browser, ExistingChromium)
+    assert browser.user_data_dir == profile.resolve()
+    browser.close()
+
+
 def test_playwright_scraper_uses_termux_chromium(monkeypatch):
     import sys
     import types
