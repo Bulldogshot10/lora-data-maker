@@ -145,26 +145,31 @@ def evaluate_quality(
                 f"multiple people: detected {person_count}, maximum {max_persons}"
             )
 
-        primary = max(detected, key=lambda item: (item.area, item.confidence))
-        person_confidence = float(primary.confidence)
-        subject_area_ratio = _clamp(
-            primary.area / max(1, width * height)
-        )
-        subject_visibility = _subject_visibility(
-            primary,
-            width=width,
-            height=height,
-            area_ratio=subject_area_ratio,
-        )
-        if subject_area_ratio < min_subject_area:
-            reasons.append(
-                f"subject too small: area {subject_area_ratio:.3f} < {min_subject_area:.3f}"
+        if person_count > 0:
+            primary = max(
+                detected,
+                key=lambda item: (item.area, item.confidence),
             )
-        elif subject_visibility < min_subject_visibility:
-            reasons.append(
-                "subject not visible: bounding box visibility "
-                f"{subject_visibility:.3f} < {min_subject_visibility:.3f}"
+            person_confidence = float(primary.confidence)
+        if person_count > 0:
+            subject_area_ratio = _clamp(
+                primary.area / max(1, width * height)
             )
+            subject_visibility = _subject_visibility(
+                primary,
+                width=width,
+                height=height,
+                area_ratio=subject_area_ratio,
+            )
+            if subject_area_ratio < min_subject_area:
+                reasons.append(
+                    f"subject too small: area {subject_area_ratio:.3f} < {min_subject_area:.3f}"
+                )
+            elif subject_visibility < min_subject_visibility:
+                reasons.append(
+                    "subject not visible: bounding box visibility "
+                    f"{subject_visibility:.3f} < {min_subject_visibility:.3f}"
+                )
 
     sharpness_score = _sigmoid_score(blur_score, scale=120.0)
     subject_score = (
