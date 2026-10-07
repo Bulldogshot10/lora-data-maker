@@ -7,7 +7,7 @@ from typing import Sequence
 
 from . import __version__
 from .build import BUILD_STAGES, run_build
-from .captions import CaptionConfig, caption_manifest
+from .captions import CaptionConfig, build_captioner, caption_manifest
 from .export import export_manifest, kohya_folder_name, safe_component
 from .config import load_config, write_default_config
 from .dataset import DatasetProject
@@ -148,10 +148,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="project directory (default: current directory)",
     )
     tag_parser.add_argument(
+        "--backend",
+        choices=("wd14", "llama_cpp"),
+        default=None,
+        help="tagger backend (default: config)",
+    )
+    tag_parser.add_argument(
         "--preset",
         choices=tuple(TAGGER_PRESETS),
         default=None,
-        help="tagger preset (default: config, otherwise sweetspot)",
+        help="WD14 tagger preset (default: config, otherwise sweetspot)",
     )
 
     clean_tags_parser = subparsers.add_parser(
@@ -164,12 +170,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     caption_parser = subparsers.add_parser(
-        "caption", help="write deterministic caption files from cleaned tags"
+        "caption", help="generate caption files from tagged images"
     )
     caption_parser.add_argument(
         "--path",
         default=".",
         help="project directory (default: current directory)",
+    )
+    caption_parser.add_argument(
+        "--backend",
+        choices=("deterministic", "llama_cpp"),
+        default=None,
+        help="caption backend (default: config)",
     )
 
     build_parser = subparsers.add_parser(
