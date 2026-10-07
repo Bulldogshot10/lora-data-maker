@@ -624,7 +624,10 @@ def command_tag(args: argparse.Namespace) -> int:
         source.update(
             {
                 "last_tag_model": getattr(tagger, "model", ""),
-                "last_tag_endpoint": getattr(tagger, "base_url", ""),
+                "last_tag_runtime": "llama.cpp",
+                "last_tag_mmproj": str(
+                    getattr(getattr(tagger, "runtime", None), "mmproj_path", "")
+                ),
             }
         )
     project.manifest.source.update(source)
@@ -747,7 +750,10 @@ def command_caption(args: argparse.Namespace) -> int:
         source.update(
             {
                 "last_caption_model": getattr(captioner, "model", ""),
-                "last_caption_endpoint": getattr(captioner, "base_url", ""),
+                "last_caption_runtime": "llama.cpp",
+                "last_caption_mmproj": str(
+                    getattr(getattr(captioner, "runtime", None), "mmproj_path", "")
+                ),
             }
         )
     project.manifest.source.update(source)
