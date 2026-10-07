@@ -83,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scrape_parser.add_argument(
         "backend",
-        choices=("google", "duckduckgo", "chromium", "direct"),
+        choices=("google", "duckduckgo", "chromium", "playwright-bing", "playwright-google", "direct"),
         help="scraper backend",
     )
     scrape_parser.add_argument(
