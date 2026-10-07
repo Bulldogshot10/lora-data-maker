@@ -900,3 +900,41 @@ def test_scrape_command_accepts_partial_success_after_skipping_failures(tmp_path
         )
     ) == 0
 
+
+
+
+def test_scrape_command_fails_when_search_source_fails_without_downloads(tmp_path, monkeypatch):
+    from argparse import Namespace
+
+    from lora_data_maker.cli import command_init, command_scrape
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    class FakeManager:
+        last_search_error = "provider unavailable"
+
+        def __init__(self, **kwargs):
+            pass
+
+        def run(self, query, *, count, known_urls):
+            return [], []
+
+    monkeypatch.setattr("lora_data_maker.cli.ScraperManager", FakeManager)
+
+    assert command_scrape(
+        Namespace(
+            backend="direct",
+            query="unused.txt",
+            count=3,
+            path=str(root),
+        )
+    ) == 1
