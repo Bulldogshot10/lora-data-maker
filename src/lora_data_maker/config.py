@@ -64,9 +64,12 @@ batch_size = 1
 download_timeout = 60
 
 [tagger.llama_cpp]
-base_url = "http://127.0.0.1:8080/v1"
-model = "local-model"
-timeout = 120
+model_path = ""
+mmproj_path = ""
+n_ctx = 4096
+n_threads = 4
+n_gpu_layers = -1
+verbose = false
 temperature = 0.0
 max_tokens = 256
 max_tags = 64
@@ -87,9 +90,12 @@ subject_position = "first"
 trigger_from_subject = true
 
 [caption.llama_cpp]
-base_url = "http://127.0.0.1:8080/v1"
-model = "local-model"
-timeout = 120
+model_path = ""
+mmproj_path = ""
+n_ctx = 4096
+n_threads = 4
+n_gpu_layers = -1
+verbose = false
 temperature = 0.2
 max_tokens = 128
 seed = 0
