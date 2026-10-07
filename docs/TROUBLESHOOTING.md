@@ -24,7 +24,7 @@ Check the query and backend:
 
 ~~~bash
 lora-data-maker info
-lora-data-maker scrape google "julia" --count 20
+lora-data-maker scrape chromium "julia" --count 20
 ~~~
 
 For direct scraping, provide a text file with one URL per line.
