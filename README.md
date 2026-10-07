@@ -141,6 +141,38 @@ lora-data-maker export
 lora-data-maker pack
 ~~~
 
+## llama.cpp VLM backends
+
+A local llama.cpp server can be used for both image tagging and image captioning. The project talks to the OpenAI-compatible /v1/chat/completions API and sends processed images as image_url content.
+
+Configure:
+
+~~~toml
+[tagger]
+backend = "llama_cpp"
+
+[tagger.llama_cpp]
+base_url = "http://127.0.0.1:8080/v1"
+model = "local-model"
+
+[caption]
+backend = "llama_cpp"
+
+[caption.llama_cpp]
+base_url = "http://127.0.0.1:8080/v1"
+model = "local-model"
+~~~
+
+Then run:
+
+~~~bash
+lora-data-maker tag
+lora-data-maker clean-tags
+lora-data-maker caption
+~~~
+
+See docs/LLAMA_CPP.md for server setup and backend details.
+
 ## Face cropping
 
 Set `processing.face_crop = true` to enable the built-in YuNet face detector during processing. The small YuNet 2023mar ONNX model is downloaded once into the project's configured `cache/face/` directory and checksum-verified before use.
