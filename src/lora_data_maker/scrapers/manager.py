@@ -4,7 +4,7 @@ from pathlib import Path
 from collections.abc import Iterable
 
 from .archive import DownloadArchive
-from .base import ImageResult, Scraper, ScraperError
+from .base import SCRAPER_BACKENDS, ImageResult, Scraper, ScraperError
 from .chromium import ChromiumImagesScraper
 from .direct import DirectURLScraper
 from .duckduckgo import DuckDuckGoImagesScraper
@@ -75,7 +75,8 @@ class ScraperManager:
             self.scraper = DirectURLScraper()
         else:
             raise ScraperError(
-                f"unknown scraper backend {backend!r}; expected google, duckduckgo, chromium, playwright-bing, playwright-google, or direct"
+                f"unknown scraper backend {backend!r}; expected "
+                + ", ".join(SCRAPER_BACKENDS)
             )
 
         self.downloader = ImageDownloader(
