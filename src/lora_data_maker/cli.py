@@ -860,6 +860,7 @@ def command_scrape(args: argparse.Namespace) -> int:
     timeout = float(scraper_config.get("timeout", 20))
     retries = int(scraper_config.get("retries", 3))
     delay = float(scraper_config.get("delay", 1.0))
+    max_scrolls = int(scraper_config.get("max_scrolls", 30))
 
     manager = ScraperManager(
         backend=args.backend,
@@ -868,6 +869,7 @@ def command_scrape(args: argparse.Namespace) -> int:
         timeout=timeout,
         retries=retries,
         delay=delay,
+        max_scrolls=max_scrolls,
     )
     known_urls = {
         record.source_url
@@ -996,6 +998,9 @@ def main(argv: Sequence[str] | None = None) -> int:
             return command_export(args)
         if args.command == "pack":
             return command_pack(args)
+    except KeyboardInterrupt:
+        logger.error("operation cancelled by user")
+        return 130
     except (
         LoraDataMakerError,
         FileNotFoundError,
