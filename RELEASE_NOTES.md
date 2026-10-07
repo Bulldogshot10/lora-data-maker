@@ -1,5 +1,13 @@
 # Unreleased
 
+## Scraper resilience
+
+- Failed individual image downloads are skipped and the scraper continues with later candidates.
+- Partial scrape completion now exits successfully when at least one new image was downloaded; all-failed runs still fail.
+- Chromium mode replaces its Google provider with a DuckDuckGo-first, Bing-fallback chain.
+- Bing candidates remain usable when the Bing browser stage fails after another provider already supplied candidates.
+- Added regression tests for failed-download continuation and multi-provider fallback.
+
 ## Face crop
 
 - Added an optional OpenCV YuNet face detector for CLI processing.
