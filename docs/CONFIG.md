@@ -43,6 +43,19 @@ Built-in backends are google, duckduckgo, chromium, playwright-bing, playwright-
 
 The existing `chromium` backend uses Selenium, DuckDuckGo first, and Bing Images as its browser fallback. The Playwright backends use Termux-native Chromium through the `playwright-termux` CDP adapter.
 
+For authenticated Google Playwright scraping, set these Termux environment
+variables before running `playwright-google`:
+
+~~~bash
+export DISPLAY=:1
+export CHROME_USER_DATA_DIR="$HOME/.local/share/lora-data-maker/google-profile"
+export CHROME_DEBUG_PORT=9222
+~~~
+
+`CHROME_USER_DATA_DIR` enables attachment to the existing logged-in Chromium
+profile. `CHROME_DEBUG_PORT` defaults to 9222. Chromium must already be
+running with that profile and local remote debugging enabled.
+
 ## validation
 
 ~~~toml
