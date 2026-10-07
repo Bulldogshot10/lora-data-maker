@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import os
 import re
 import time
 from html.parser import HTMLParser
@@ -8,7 +9,7 @@ from typing import Iterator
 from urllib.parse import urlencode, urlparse
 
 from .base import ImageResult, Scraper, ScraperError
-
+from .existing_chromium import ExistingChromium
 
 
 class _BingResultParser(HTMLParser):
@@ -114,7 +115,18 @@ class PlaywrightImagesScraper(Scraper):
             f"{self.retries + 1} attempts: {last_error}"
         ) from last_error
 
-    def _search_once(self, query: str, limit: int) -> list[ImageResult]:
+    def _create_browser(self):
+        if self.provider == "google" and os.environ.get(
+            "CHROME_USER_DATA_DIR",
+            "",
+        ).strip():
+            try:
+                return ExistingChromium.from_environment(
+                    timeout=self.timeout,
+                )
+            except ValueError as exc:
+                raise ScraperError(str(exc)) from exc
+
         try:
             from playwright_termux import Chromium
         except ImportError as exc:
@@ -123,6 +135,9 @@ class PlaywrightImagesScraper(Scraper):
                 'install with python -m pip install ".[playwright]"'
             ) from exc
 
+        return Chromium(headless=True)
+
+    def _search_once(self, query: str, limit: int) -> list[ImageResult]:
         search_url = self._build_url(query)
         print(
             f"scrape: playwright provider={self.provider} query={query}",
@@ -130,7 +145,8 @@ class PlaywrightImagesScraper(Scraper):
         )
 
         try:
-            with Chromium(headless=True) as browser:
+            browser = self._create_browser()
+            with browser as browser:
                 page = browser.new_page()
                 try:
                     self._goto(page, search_url)
