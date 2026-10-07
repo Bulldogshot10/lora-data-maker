@@ -3,9 +3,11 @@ from .mobile import MobileWD14Labels, MobileWD14Tagger
 from .clean_stage import TagCleanSummary, clean_tag_manifest
 from .filters import clean_tags, normalize_tag, normalize_tags, tag_set
 from .joytag import JOYTAG_DEFAULT_THRESHOLD, JoyTagLabels, JoyTagTagger
+from .joytag import JOYTAG_DEFAULT_THRESHOLD, JoyTagLabels, JoyTagTagger
 from .manager import build_tagger
 from .model import HuggingFaceModelCache, ModelDownloadError, ModelFiles
 from .presets import (
+    JOYTAG,
     JOYTAG,
     POTATO,
     SWEETSPOT,
@@ -18,6 +20,10 @@ from .wd14 import WD14Labels, WD14Tagger, mcut_threshold
 
 __all__ = [
     "HuggingFaceModelCache",
+    "JOYTAG_DEFAULT_THRESHOLD",
+    "JOYTAG",
+    "JoyTagLabels",
+    "JoyTagTagger",
     "JOYTAG_DEFAULT_THRESHOLD",
     "JOYTAG",
     "JoyTagLabels",
