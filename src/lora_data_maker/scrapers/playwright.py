@@ -3,10 +3,41 @@ from __future__ import annotations
 import html
 import re
 import time
+from html.parser import HTMLParser
 from typing import Iterator
 from urllib.parse import urlencode, urlparse
 
 from .base import ImageResult, Scraper, ScraperError
+
+
+
+class _BingResultParser(HTMLParser):
+    """Extract Bing Images result metadata from rendered HTML."""
+
+    def __init__(self) -> None:
+        super().__init__(convert_charrefs=True)
+        self.payloads: list[str] = []
+
+    def handle_starttag(
+        self,
+        tag: str,
+        attrs: list[tuple[str, str | None]],
+    ) -> None:
+        if tag.lower() != "a":
+            return
+
+        attr_map = {
+            key.lower(): value
+            for key, value in attrs
+            if value is not None
+        }
+        classes = attr_map.get("class", "").split()
+        if "iusc" not in classes:
+            return
+
+        payload = attr_map.get("m")
+        if payload:
+            self.payloads.append(payload)
 
 
 class PlaywrightImagesScraper(Scraper):
@@ -240,27 +271,20 @@ class PlaywrightImagesScraper(Scraper):
 
     @staticmethod
     def _extract_bing_urls(page_html: str) -> list[str]:
-        # Bing image results expose original URLs in the JSON stored in murl.
-        tag_pattern = re.compile(
-            r"""<a\b[^>]*\bclass=["'][^"']*\biusc\b[^"']*["'][^>]*>""",
-            re.IGNORECASE | re.DOTALL,
-        )
-        murl_pattern = re.compile(
-            r"""\bm=(["'])(.*?)\1""",
-            re.IGNORECASE | re.DOTALL,
-        )
+        parser = _BingResultParser()
+        try:
+            parser.feed(page_html)
+        except Exception:
+            return []
+
         urls: list[str] = []
         seen: set[str] = set()
 
-        for tag in tag_pattern.findall(page_html):
-            match = murl_pattern.search(tag)
-            if match is None:
-                continue
-            payload = html.unescape(match.group(2))
-            try:
-                import json
+        import json
 
-                data = json.loads(payload)
+        for raw_payload in parser.payloads:
+            try:
+                data = json.loads(html.unescape(raw_payload))
             except (TypeError, ValueError):
                 continue
 
