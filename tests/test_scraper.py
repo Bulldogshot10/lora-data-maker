@@ -953,7 +953,8 @@ def test_playwright_bing_extracts_original_urls():
     """
 
     assert PlaywrightImagesScraper._extract_bing_urls(body) == [
-        "https://cdn.example.com/a.jpg"
+        "https://cdn.example.com/a.jpg",
+        "https://cdn.example.com/b.jpg",
     ]
 
 
