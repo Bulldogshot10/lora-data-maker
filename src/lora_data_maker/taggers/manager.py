@@ -26,6 +26,12 @@ def build_tagger(
     profile = resolve_tagger_preset(
         preset if preset is not None else config.get("preset")
     )
+    expected_backend = "joytag" if profile.kind == "joytag" else "wd14"
+    if backend != expected_backend:
+        raise TaggerError(
+            f"tagger backend {backend!r} does not match preset "
+            f"{profile.name!r} (expected {expected_backend!r})"
+        )
 
     configured_cache = config.get("cache_dir")
     if configured_cache:
