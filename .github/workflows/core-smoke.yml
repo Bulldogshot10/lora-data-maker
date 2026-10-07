@@ -25,6 +25,11 @@ jobs:
       - name: Install package
         run: python -m pip install .
 
+      - name: Install Playwright extra
+        run: |
+          python -m pip install ".[playwright]"
+          python -c "import playwright_termux; print('playwright-termux:', getattr(playwright_termux, '__version__', 'installed'))"
+
       - name: Install test tooling
         run: python -m pip install "numpy>=1.26,<3" "pytest>=8,<9"
 
