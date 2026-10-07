@@ -14,6 +14,8 @@ The default installation must be small enough for Termux.
 
 tagger: ONNX Runtime for local WD14-compatible tagging.
 
+llama_cpp: llama-cpp-python for the embedded llama.cpp GGUF/VLM runtime.
+
 face: NumPy and OpenCV headless for the built-in YuNet face detector on regular Linux/Python.
 
 dev: pytest and future development tooling.
@@ -25,7 +27,8 @@ dev: pytest and future development tooling.
 3. A missing optional dependency must produce an actionable error instead of a package-wide import failure.
 4. No dependency should be added only for cosmetic CLI behavior.
 5. Termux-native packages are preferred when they avoid fragile source builds.
-6. Version constraints must be conservative and tested on the supported Python version before release.
+6. The embedded llama.cpp extra is optional and must remain lazy-loaded; the core package must not require a native llama.cpp build.
+7. Version constraints must be conservative and tested on the supported Python version before release.
 
 ## Important Termux constraint
 
