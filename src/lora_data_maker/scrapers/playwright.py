@@ -98,81 +98,80 @@ class PlaywrightImagesScraper(Scraper):
             flush=True,
         )
 
-        page = None
         try:
             with Chromium(headless=True) as browser:
                 page = browser.new_page()
-            page.goto(search_url, timeout=self.timeout)
+                try:
+                    page.goto(search_url, timeout=self.timeout)
 
-            seen: set[str] = set()
-            results: list[ImageResult] = []
-            stagnant_rounds = 0
-            previous_count = 0
-
-            for scroll_no in range(1, self.max_scrolls + 1):
-                page_html = page.content()
-                if self.provider == "bing":
-                    candidates = self._extract_bing_urls(page_html)
-                else:
-                    candidates = self._extract_google_urls(page_html)
-
-                for image_url in candidates:
-                    if image_url in seen:
-                        continue
-                    seen.add(image_url)
-                    results.append(
-                        ImageResult(
-                            image_url=image_url,
-                            query=query,
-                            page_url=search_url,
-                            rank=len(results) + 1,
-                            metadata={
-                                "provider": self.provider,
-                                "playwright": True,
-                                "scroll": scroll_no,
-                            },
-                        )
-                    )
-                    if len(results) >= limit:
-                        return results
-
-                print(
-                    f"scrape: playwright provider={self.provider} "
-                    f"scroll={scroll_no}/{self.max_scrolls} "
-                    f"candidates={len(results)}",
-                    flush=True,
-                )
-
-                if len(results) == previous_count:
-                    stagnant_rounds += 1
-                else:
+                    seen: set[str] = set()
+                    results: list[ImageResult] = []
                     stagnant_rounds = 0
-                previous_count = len(results)
+                    previous_count = 0
 
-                if stagnant_rounds >= 4:
-                    break
+                    for scroll_no in range(1, self.max_scrolls + 1):
+                        page_html = page.content()
+                        if self.provider == "bing":
+                            candidates = self._extract_bing_urls(page_html)
+                        else:
+                            candidates = self._extract_google_urls(page_html)
 
-                page.evaluate(
-                    "window.scrollTo(0, document.body.scrollHeight)"
-                )
-                if self.delay:
-                    page.wait_for_timeout(
-                        int(max(self.delay, 0.5) * 1000)
-                    )
+                        for image_url in candidates:
+                            if image_url in seen:
+                                continue
+                            seen.add(image_url)
+                            results.append(
+                                ImageResult(
+                                    image_url=image_url,
+                                    query=query,
+                                    page_url=search_url,
+                                    rank=len(results) + 1,
+                                    metadata={
+                                        "provider": self.provider,
+                                        "playwright": True,
+                                        "scroll": scroll_no,
+                                    },
+                                )
+                            )
+                            if len(results) >= limit:
+                                return results
 
-                return results
+                        print(
+                            f"scrape: playwright provider={self.provider} "
+                            f"scroll={scroll_no}/{self.max_scrolls} "
+                            f"candidates={len(results)}",
+                            flush=True,
+                        )
+
+                        if len(results) == previous_count:
+                            stagnant_rounds += 1
+                        else:
+                            stagnant_rounds = 0
+                        previous_count = len(results)
+
+                        if stagnant_rounds >= 4:
+                            break
+
+                        page.evaluate(
+                            "window.scrollTo(0, document.body.scrollHeight)"
+                        )
+                        if self.delay:
+                            page.wait_for_timeout(
+                                int(max(self.delay, 0.5) * 1000)
+                            )
+
+                    return results
+                finally:
+                    try:
+                        page.close()
+                    except Exception:
+                        pass
         except ScraperError:
             raise
         except Exception as exc:
             raise ScraperError(
                 f"Playwright {self.provider} browser error: {exc}"
             ) from exc
-        finally:
-            if page is not None:
-                try:
-                    page.close()
-                except Exception:
-                    pass
 
     def _build_url(self, query: str) -> str:
         if self.provider == "bing":
