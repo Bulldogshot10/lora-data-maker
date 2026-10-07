@@ -35,6 +35,18 @@ Zero new downloads during an incremental run can simply mean every returned sour
 
 Chromium mode tries DuckDuckGo Images first and Bing Images second. The Playwright backends target Bing or Google directly through Termux-native Chromium. A provider can still return a temporary block, challenge, or empty result set. Google verification pages are treated as source failures. For repeated failures, retry later, reduce request volume, or use a prepared direct URL list.
 
+For authenticated `playwright-google`, check that the logged-in Chromium
+profile is the same value as `CHROME_USER_DATA_DIR` and that Chromium was
+started with a local `--remote-debugging-port`. The default port is 9222:
+
+~~~bash
+export CHROME_DEBUG_PORT=9222
+~~~
+
+A message saying that Chromium CDP is unavailable means the browser is not
+currently exposing its DevTools endpoint at that port. Restart the same
+`CHROME_USER_DATA_DIR` profile with the documented CDP flags.
+
 ## Validation rejects images
 
 Inspect the manifest state and validation configuration:
