@@ -38,7 +38,7 @@ def build_tagger(
             / ".cache"
             / "lora-data-maker"
             / "taggers"
-            / "wd14"
+            / ("joytag" if profile.kind == "joytag" else "wd14")
         )
 
     model_cache = HuggingFaceModelCache(
@@ -56,12 +56,6 @@ def build_tagger(
         "threshold": float(
             config.get("threshold", profile.default_threshold)
         ),
-        "character_threshold": float(
-            config.get(
-                "character_threshold",
-                profile.default_character_threshold,
-            )
-        ),
     }
 
     if profile.kind == "joytag":
@@ -69,6 +63,13 @@ def build_tagger(
             **common,
             batch_size=int(config.get("batch_size", 1)),
         )
+
+    common["character_threshold"] = float(
+        config.get(
+            "character_threshold",
+            profile.default_character_threshold,
+        )
+    )
 
     if profile.kind == "mobile":
         return MobileWD14Tagger(**common)
