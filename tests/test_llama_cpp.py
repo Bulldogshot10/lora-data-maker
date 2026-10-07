@@ -183,6 +183,90 @@ def test_caption_manifest_uses_llama_cpp_captioner(tmp_path):
     assert runtime.calls[0][0] == image_path
 
 
+def test_runtime_loads_gguf_and_mtmd_in_process(tmp_path, monkeypatch):
+    model = tmp_path / "vision.gguf"
+    mmproj = tmp_path / "mmproj.gguf"
+    model.write_bytes(b"model")
+    mmproj.write_bytes(b"mmproj")
+
+    import sys
+    import types
+
+    captured = {}
+
+    class FakeHandler:
+        def __init__(self, **kwargs):
+            captured["handler"] = kwargs
+
+    class FakeLlama:
+        def __init__(self, **kwargs):
+            captured["llama"] = kwargs
+
+        def create_chat_completion(self, **kwargs):
+            captured["completion"] = kwargs
+            return {
+                "choices": [
+                    {
+                        "message": {
+                            "content": "hello",
+                        }
+                    }
+                ]
+            }
+
+        def close(self):
+            captured["closed"] = True
+
+    fake_chat_format = types.SimpleNamespace(MTMDChatHandler=FakeHandler)
+    fake_llama_cpp = types.ModuleType("llama_cpp")
+    fake_llama_cpp.Llama = FakeLlama
+    fake_llama_cpp.llama_chat_format = fake_chat_format
+
+    monkeypatch.setitem(sys.modules, "llama_cpp", fake_llama_cpp)
+    monkeypatch.setitem(
+        sys.modules,
+        "llama_cpp.llama_chat_format",
+        fake_chat_format,
+    )
+
+    runtime = LlamaCppRuntime(
+        model_path=model,
+        mmproj_path=mmproj,
+        n_ctx=2048,
+        n_threads=3,
+        n_gpu_layers=-1,
+        seed=7,
+    )
+
+    assert runtime.load() is runtime
+    assert runtime.loaded is True
+    assert captured["handler"] == {
+        "clip_model_path": str(mmproj.resolve()),
+        "verbose": False,
+        "use_gpu": True,
+    }
+    assert captured["llama"] == {
+        "model_path": str(model.resolve()),
+        "n_ctx": 2048,
+        "n_gpu_layers": -1,
+        "verbose": False,
+        "n_threads": 3,
+        "chat_handler": captured.get("llama", {}).get("chat_handler"),
+    }
+
+    assert runtime.chat(
+        [{"role": "user", "content": "hello"}],
+        temperature=0.0,
+        max_tokens=16,
+    ) == "hello"
+    assert captured["completion"]["messages"] == [
+        {"role": "user", "content": "hello"}
+    ]
+    runtime.close()
+    assert captured["closed"] is True
+    assert runtime.loaded is False
+
+
 def test_runtime_import_is_lazy(tmp_path, monkeypatch):
     model = tmp_path / "model.gguf"
     model.write_bytes(b"model")
