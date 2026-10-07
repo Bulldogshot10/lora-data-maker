@@ -20,6 +20,7 @@ from .paths import ProjectPaths, find_project_root, manifest_path
 from .reconcile import reconcile_raw
 from .processing import (
     ProcessConfig,
+    YOLOXNanoPersonDetector,
     YuNetFaceDetector,
     clean_manifest,
     process_manifest,
@@ -456,11 +457,35 @@ def command_clean(args: argparse.Namespace) -> int:
         raise LoraDataMakerError("config section [quality] must be a table")
     if not isinstance(processing_config, dict):
         raise LoraDataMakerError("config section [processing] must be a table")
+    if "person_check" in quality_config and not isinstance(
+        quality_config["person_check"], bool
+    ):
+        raise LoraDataMakerError(
+            "config field quality.person_check must be a boolean"
+        )
     for key in ("exact", "perceptual"):
         if key in dedup_config and not isinstance(dedup_config[key], bool):
             raise LoraDataMakerError(
                 f"config field dedup.{key} must be a boolean"
             )
+
+    person_check = bool(quality_config.get("person_check", True))
+    person_detector = None
+    has_quality_candidates = any(
+        image.status == "validated"
+        for image in project.manifest.images.values()
+    )
+    if person_check and has_quality_candidates:
+        try:
+            person_detector = YOLOXNanoPersonDetector(
+                cache_dir=paths.cache / "person",
+                confidence_threshold=float(
+                    quality_config.get("person_threshold", 0.35)
+                ),
+            )
+        except (RuntimeError, ValueError) as exc:
+            raise LoraDataMakerError(str(exc)) from exc
+        print("person detector: YOLOX-Nano ONNX")
 
     summary = clean_manifest(
         project.manifest,
@@ -477,6 +502,12 @@ def command_clean(args: argparse.Namespace) -> int:
             )
         ),
         max_aspect_ratio=float(quality_config.get("max_aspect_ratio", 0.0)),
+        person_detector=person_detector,
+        max_persons=int(quality_config.get("max_persons", 1)),
+        min_subject_area=float(quality_config.get("min_subject_area", 0.12)),
+        min_subject_visibility=float(
+            quality_config.get("min_subject_visibility", 0.35)
+        ),
     )
 
     project.manifest.source.update(
@@ -485,6 +516,19 @@ def command_clean(args: argparse.Namespace) -> int:
             "last_clean_exact_duplicates": summary.exact_duplicates,
             "last_clean_perceptual_duplicates": summary.perceptual_duplicates,
             "last_clean_quality_rejected": summary.quality_rejected,
+            "last_clean_person_check": person_check,
+            "last_clean_person_threshold": float(
+                quality_config.get("person_threshold", 0.35)
+            ),
+            "last_clean_max_persons": int(
+                quality_config.get("max_persons", 1)
+            ),
+            "last_clean_min_subject_area": float(
+                quality_config.get("min_subject_area", 0.12)
+            ),
+            "last_clean_min_subject_visibility": float(
+                quality_config.get("min_subject_visibility", 0.35)
+            ),
             "last_clean_kept": summary.kept,
         }
     )

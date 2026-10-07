@@ -9,6 +9,7 @@ from .dedup import (
     sha256_file,
 )
 from .quality import evaluate_quality
+from .person import PersonDetector
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,10 @@ def clean_manifest(
     min_height: int = 512,
     blur_threshold: float = 0.0,
     max_aspect_ratio: float = 0.0,
+    person_detector: PersonDetector | None = None,
+    max_persons: int = 1,
+    min_subject_area: float = 0.12,
+    min_subject_visibility: float = 0.35,
 ) -> CleanSummary:
     if perceptual_distance < 0:
         raise ValueError("perceptual_distance cannot be negative")
@@ -56,6 +61,10 @@ def clean_manifest(
                 min_height=min_height,
                 blur_threshold=blur_threshold,
                 max_aspect_ratio=max_aspect_ratio,
+                person_detector=person_detector,
+                max_persons=max_persons,
+                min_subject_area=min_subject_area,
+                min_subject_visibility=min_subject_visibility,
             )
         except (OSError, ValueError, RuntimeError):
             image.set_status(
@@ -70,6 +79,15 @@ def clean_manifest(
         image.height = result.height
         image.metadata["quality_blur_score"] = result.blur_score
         image.metadata["quality_aspect_ratio"] = result.aspect_ratio
+        image.metadata["quality_score"] = result.quality_score
+        image.metadata["quality_contrast_score"] = result.contrast_score
+        image.metadata["quality_exposure_score"] = result.exposure_score
+        image.metadata["quality_reasons"] = list(result.reasons)
+        if result.person_count is not None:
+            image.metadata["quality_person_count"] = result.person_count
+            image.metadata["quality_person_confidence"] = result.person_confidence
+            image.metadata["quality_subject_area_ratio"] = result.subject_area_ratio
+            image.metadata["quality_subject_visibility"] = result.subject_visibility
 
         if result.valid:
             continue

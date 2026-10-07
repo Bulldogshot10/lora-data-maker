@@ -18,7 +18,7 @@ from .export import export_manifest, safe_component
 from .manifest import register_image
 from .pack import pack_dataset
 from .paths import ProjectPaths, manifest_path
-from .processing import ProcessConfig, YuNetFaceDetector, clean_manifest, process_manifest, validate_image
+from .processing import ProcessConfig, YOLOXNanoPersonDetector, YuNetFaceDetector, clean_manifest, process_manifest, validate_image
 from .reconcile import reconcile_raw
 from .taggers import build_tagger, clean_tag_manifest, resolve_tagger_preset, tag_manifest
 
@@ -212,6 +212,15 @@ a.download{
       <div><label>face crop</label><label class="check"><input id="face_crop" type="checkbox"> enable</label></div>
       <div><label>face padding</label><input id="face_padding" type="number" min="0.1" step="0.05"></div>
     </div>
+    <div class="grid-3" style="margin-top:12px">
+      <div><label>person quality gate</label><label class="check"><input id="person_check" type="checkbox"> enable</label></div>
+      <div><label>max people</label><input id="max_persons" type="number" min="1" step="1"></div>
+      <div><label>person confidence</label><input id="person_threshold" type="number" min="0.01" max="1" step="0.01"></div>
+    </div>
+    <div class="grid-2" style="margin-top:12px">
+      <div><label>min subject area</label><input id="min_subject_area" type="number" min="0" max="1" step="0.01"></div>
+      <div><label>min subject visibility</label><input id="min_subject_visibility" type="number" min="0" max="1" step="0.01"></div>
+    </div>
     <div class="row save"><button onclick="saveSettings()">save settings</button><span class="note">settings are written back to config.toml</span></div>
   </section>
 
@@ -277,6 +286,11 @@ function applySettings(s){
   $("qv").textContent=s.processing.quality;
   $("face_crop").checked=!!s.processing.face_crop;
   $("face_padding").value=s.processing.face_padding;
+  $("person_check").checked=!!s.quality.person_check;
+  $("max_persons").value=s.quality.max_persons;
+  $("person_threshold").value=s.quality.person_threshold;
+  $("min_subject_area").value=s.quality.min_subject_area;
+  $("min_subject_visibility").value=s.quality.min_subject_visibility;
 }
 function renderStats(counts){
   const keys=["discovered","validated","processed","tagged","captioned","exported"];
@@ -321,7 +335,12 @@ async function saveSettings(){
         height:+$("height").value,
         quality:+$("quality").value,
         face_crop:$("face_crop").checked,
-        face_padding:+$("face_padding").value
+        face_padding:+$("face_padding").value,
+        person_check:$("person_check").checked,
+        max_persons:+$("max_persons").value,
+        person_threshold:+$("person_threshold").value,
+        min_subject_area:+$("min_subject_area").value,
+        min_subject_visibility:+$("min_subject_visibility").value
       })
     });
     setStatus("settings saved","ok");
@@ -470,6 +489,13 @@ def create_app(root: Path | str = ".") -> FastAPI:
             "project": {"name": p.manifest.project_name, "subject": p.manifest.subject, "trigger": p.manifest.trigger},
             "processing": {"mode": str(processing.get("resize_mode", "cover")), "width": int(processing.get("target_width", 512)), "height": int(processing.get("target_height", 512)), "quality": int(processing.get("jpeg_quality", 95)), "face_crop": bool(processing.get("face_crop", False)), "face_padding": float(processing.get("face_padding", 1.75))},
             "tagger": {"backend": str(tagger.get("backend", "wd14")), "preset": str(tagger.get("preset", "sweetspot"))},
+            "quality": {
+                "person_check": bool(cfg.get("quality", {}).get("person_check", True)),
+                "person_threshold": float(cfg.get("quality", {}).get("person_threshold", 0.35)),
+                "max_persons": int(cfg.get("quality", {}).get("max_persons", 1)),
+                "min_subject_area": float(cfg.get("quality", {}).get("min_subject_area", 0.12)),
+                "min_subject_visibility": float(cfg.get("quality", {}).get("min_subject_visibility", 0.35)),
+            },
             "counts": p.counts(),
             "images": [{"id": x.image_id, "path": x.processed_path or x.path, "status": x.status} for x in sorted(p.manifest.images.values(), key=lambda x: x.path) if x.status != "rejected"],
             "archive": Path(str(p.manifest.source.get("last_pack_archive", ""))).name if p.manifest.source.get("last_pack_archive") else None,
@@ -487,11 +513,38 @@ def create_app(root: Path | str = ".") -> FastAPI:
         width, height, quality = int(payload.get("width", 512)), int(payload.get("height", 512)), int(payload.get("quality", 95))
         face_crop = bool(payload.get("face_crop", False))
         face_padding = float(payload.get("face_padding", 1.75))
-        if not name or not subject or mode not in {"cover", "fit", "stretch"} or width < 1 or height < 1 or not 1 <= quality <= 100 or face_padding <= 0:
+        person_check = bool(payload.get("person_check", True))
+        max_persons = int(payload.get("max_persons", 1))
+        person_threshold = float(payload.get("person_threshold", 0.35))
+        min_subject_area = float(payload.get("min_subject_area", 0.12))
+        min_subject_visibility = float(payload.get("min_subject_visibility", 0.35))
+        if (
+            not name
+            or not subject
+            or mode not in {"cover", "fit", "stretch"}
+            or width < 1
+            or height < 1
+            or not 1 <= quality <= 100
+            or face_padding <= 0
+            or max_persons < 1
+            or not 0 < person_threshold <= 1
+            or not 0 <= min_subject_area <= 1
+            or not 0 <= min_subject_visibility <= 1
+        ):
             raise HTTPException(400, "invalid settings")
         set_config("project", {"name": name, "subject": subject, "trigger": trigger})
         set_config("processing", {"resize_mode": mode, "target_width": width, "target_height": height, "jpeg_quality": quality, "face_crop": face_crop, "face_padding": face_padding})
         set_config("tagger", {"backend": "joytag" if resolved_preset.kind == "joytag" else "wd14", "preset": preset})
+        set_config(
+            "quality",
+            {
+                "person_check": person_check,
+                "person_threshold": person_threshold,
+                "max_persons": max_persons,
+                "min_subject_area": min_subject_area,
+                "min_subject_visibility": min_subject_visibility,
+            },
+        )
         p = project()
         p.manifest.project_name, p.manifest.subject, p.manifest.trigger = name, subject, trigger
         p.save()
@@ -549,9 +602,30 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 return "validated " + str(valid) + ", rejected " + str(rejected) + ", skipped " + str(skipped)
             if stage == "clean":
                 c, q, proc = cfg.get("dedup", {}), cfg.get("quality", {}), cfg.get("processing", {})
-                s = clean_manifest(p.manifest, root=project_root, exact=bool(c.get("exact", True)), perceptual=bool(c.get("perceptual", True)), perceptual_distance=int(c.get("perceptual_distance", 6)), min_width=int(q.get("min_width", 512)), min_height=int(q.get("min_height", 512)), blur_threshold=float(q.get("blur_threshold", proc.get("blur_threshold", 0.0))), max_aspect_ratio=float(q.get("max_aspect_ratio", 0.0)))
+                person_check = bool(q.get("person_check", True))
+                person_detector = None
+                if person_check:
+                    person_detector = YOLOXNanoPersonDetector(
+                        cache_dir=ps.cache / "person",
+                        confidence_threshold=float(q.get("person_threshold", 0.35)),
+                    )
+                s = clean_manifest(
+                    p.manifest,
+                    root=project_root,
+                    exact=bool(c.get("exact", True)),
+                    perceptual=bool(c.get("perceptual", True)),
+                    perceptual_distance=int(c.get("perceptual_distance", 6)),
+                    min_width=int(q.get("min_width", 512)),
+                    min_height=int(q.get("min_height", 512)),
+                    blur_threshold=float(q.get("blur_threshold", proc.get("blur_threshold", 0.0))),
+                    max_aspect_ratio=float(q.get("max_aspect_ratio", 0.0)),
+                    person_detector=person_detector,
+                    max_persons=int(q.get("max_persons", 1)),
+                    min_subject_area=float(q.get("min_subject_area", 0.12)),
+                    min_subject_visibility=float(q.get("min_subject_visibility", 0.35)),
+                )
                 p.save()
-                return "cleaned " + str(s.kept) + "; exact dup " + str(s.exact_duplicates) + "; perceptual dup " + str(s.perceptual_duplicates)
+                return "cleaned " + str(s.kept) + "; exact dup " + str(s.exact_duplicates) + "; perceptual dup " + str(s.perceptual_duplicates) + "; quality rejected " + str(s.quality_rejected)
             if stage == "process":
                 pc = cfg.get("processing", {})
                 face_crop = bool(pc.get("face_crop", False))

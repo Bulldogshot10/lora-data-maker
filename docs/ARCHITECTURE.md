@@ -80,7 +80,7 @@ Current image states:
 
 discovered → downloaded → validated → processed → tagged → captioned → exported
 
-Images can also enter duplicate or rejected states with an auditable reason. The clean stage records exact SHA-256 hashes, perceptual hashes, duplicate provenance, blur scores, aspect ratios, and quality rejection reasons.
+Images can also enter duplicate or rejected states with an auditable reason. The clean stage records exact SHA-256 hashes, perceptual hashes, duplicate provenance, blur scores, aspect ratios, deterministic quality scores, person counts, subject visibility metrics, and quality rejection reasons.
 
 The manifest is the durable state used for resume and audit. Incremental stages preserve forward progress: raw reconciliation adds newly discovered files, scraper source URLs already present in the manifest are skipped, and state-gated stages only consume records eligible for their next transition. Existing advanced states are never regressed by a normal validation scan. The build orchestrator runs the stages in pipeline order through export and pack, supports stage ranges and explicit skips, stops on the first failed stage, and persists per-stage before/after status counts plus build timestamps and outcome metadata under `manifest.source`.
 
@@ -130,6 +130,8 @@ Image processing is implemented as a Pillow-only core stage that reads validated
 
 Face detection is optional. The processor consumes a small `FaceDetector` protocol and can perform padded square face crops when a detector is supplied. The base pipeline works without any face detector dependency.
 
+The quality gate is also optional. When enabled during the clean stage, it uses a pinned YOLOX-Nano ONNX model through ONNX Runtime to count people and estimate subject visibility, then combines those measurements with Pillow-based sharpness, contrast, and exposure heuristics. Raw images remain untouched and every rejection reason is persisted in the manifest.
+
 ## Scraper boundary
 
 Scrapers implement a common interface and produce download records plus source metadata.
@@ -162,11 +164,11 @@ The following are out of scope for v1:
 ### Optional
 
 - OpenCV for image/face processing backends
-- ONNX Runtime for taggers
+- ONNX Runtime and NumPy for taggers and the optional person-quality gate
 - gallery-dl for optional external download backends
 - pytest for development
 
-Optional features must never make the basic CLI import fail. The `tagger` extra provides NumPy and ONNX Runtime without adding them to the core dependency set.
+Optional features must never make the basic CLI import fail. The `tagger` and `quality` extras provide NumPy and ONNX Runtime without adding them to the core dependency set.
 
 ## Compatibility target
 

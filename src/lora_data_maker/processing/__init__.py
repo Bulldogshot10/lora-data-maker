@@ -2,7 +2,8 @@ from .clean import CleanSummary, clean_manifest
 from .dedup import DuplicateMatch, find_perceptual_duplicates, hamming_distance, perceptual_hash, sha256_file
 from .faces import FaceBox, FaceDetector, YuNetFaceDetector, largest_face, square_crop_around_face
 from .processor import ProcessConfig, ProcessResult, process_image, process_manifest, resize_and_crop
-from .quality import QualityResult, evaluate_quality, laplacian_variance
+from .person import PersonBox, PersonDetector, YOLOXNanoPersonDetector
+from .quality import QualityResult, evaluate_quality, image_contrast_score, image_exposure_score, laplacian_variance
 from .validator import ImageValidationResult, validate_image
 
 __all__ = [
@@ -14,9 +15,14 @@ __all__ = [
     "ImageValidationResult",
     "ProcessConfig",
     "ProcessResult",
+    "PersonBox",
+    "PersonDetector",
+    "YOLOXNanoPersonDetector",
     "QualityResult",
     "clean_manifest",
     "evaluate_quality",
+    "image_contrast_score",
+    "image_exposure_score",
     "find_perceptual_duplicates",
     "hamming_distance",
     "laplacian_variance",

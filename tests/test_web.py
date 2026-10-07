@@ -89,3 +89,38 @@ def test_new_project_switches_active_project(tmp_path: Path) -> None:
     assert state["project"]["name"] == "second"
     assert state["project"]["subject"] == "cat"
     assert state["project"]["trigger"] == "catx"
+
+
+
+def test_web_quality_settings_round_trip(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    response = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "trigger": "person",
+            "preset": "sweetspot",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+            "face_crop": False,
+            "face_padding": 1.75,
+            "person_check": True,
+            "max_persons": 1,
+            "person_threshold": 0.4,
+            "min_subject_area": 0.15,
+            "min_subject_visibility": 0.4,
+        },
+    )
+    assert response.status_code == 200
+
+    state = client.get("/api/state").json()
+    assert state["quality"]["person_check"] is True
+    assert state["quality"]["max_persons"] == 1
+    assert state["quality"]["person_threshold"] == 0.4
+    assert state["quality"]["min_subject_area"] == 0.15
+    assert state["quality"]["min_subject_visibility"] == 0.4
