@@ -67,6 +67,7 @@ class ScraperManager:
             user_agent=effective_user_agent,
         )
         self.archive = DownloadArchive(self.cache_dir / "downloads.txt")
+        self.last_search_error: str | None = None
 
     def run(
         self,
@@ -81,6 +82,7 @@ class ScraperManager:
         downloads: list[DownloadResult] = []
         failures: list[tuple[ImageResult, str]] = []
         known_url_set = set(known_urls)
+        self.last_search_error = None
         next_index = self._next_index()
 
         # Ask the source for more candidates than the target because some
@@ -121,6 +123,7 @@ class ScraperManager:
                 if len(downloads) >= count:
                     break
         except ScraperError as exc:
+            self.last_search_error = str(exc)
             if downloads:
                 print(
                     f"scrape: search source stopped; keeping "
