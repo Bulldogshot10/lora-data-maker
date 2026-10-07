@@ -25,6 +25,7 @@ count = 300
 timeout = 20
 retries = 3
 delay = 1.0
+max_scrolls = 30
 
 [validation]
 min_width = 1
