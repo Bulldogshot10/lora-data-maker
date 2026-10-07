@@ -258,3 +258,26 @@ The project CI smoke-tests Python 3.12, 3.13, and 3.14, including package instal
 ## License
 
 Licensed under the Apache License 2.0. See `LICENSE` and `NOTICE`.
+
+## WebUI
+
+The project includes an optional localhost WebUI. It is designed for local dataset work from a phone or desktop browser. The scraper is intentionally outside the WebUI pipeline.
+
+Install the WebUI and tagger extras:
+
+    pip install -e ".[web,tagger]"
+
+From an initialized dataset project:
+
+    lora-data-maker web --path .
+
+Then open http://127.0.0.1:8787 in the browser.
+
+The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 preset selection, validation, staging, tagging, tag cleaning, caption generation, Kohya export, ZIP packaging, gallery preview, and ZIP download.
+
+The one-click Prepare Dataset flow runs:
+
+    validate -> stage -> tag -> clean tags -> caption -> export -> ZIP
+
+The image quality/dedup cleaning stage remains an explicit optional button because a manually curated/cherry-picked image set may intentionally skip that stage.
+
