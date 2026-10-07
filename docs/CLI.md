@@ -42,7 +42,7 @@ Download images through a built-in backend.
 lora-data-maker scrape {google,duckduckgo,chromium,direct} [query] [--count COUNT] [--path PATH]
 ~~~
 
-Google uses query text with the legacy HTTP parser. DuckDuckGo uses query text and its image JSON endpoint. Chromium drives a local headless Chromium browser, renders Google Images, and falls back to Bing Images when Google presents a consent/verification page; it auto-scrolls and extracts original image URLs. Direct uses a text file containing source URLs.
+Google uses query text with the legacy HTTP parser. DuckDuckGo uses query text and its image JSON endpoint. Chromium mode uses DuckDuckGo Images first, then starts local headless Chromium for Bing Images when more candidates are needed; it auto-scrolls and extracts original image URLs. Direct uses a text file containing source URLs.
 
 Scrape is add-only. Known manifest source URLs and archived URLs are skipped.
 
