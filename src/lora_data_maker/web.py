@@ -18,82 +18,374 @@ from .export import export_manifest, safe_component
 from .manifest import register_image
 from .pack import pack_dataset
 from .paths import ProjectPaths, manifest_path
-from .processing import ProcessConfig, clean_manifest, process_manifest, validate_image
+from .processing import ProcessConfig, YuNetFaceDetector, clean_manifest, process_manifest, validate_image
 from .reconcile import reconcile_raw
 from .taggers import build_tagger, clean_tag_manifest, tag_manifest
 
 HTML = r"""
-<!doctype html><html lang="en"><head><meta charset="utf-8">
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>LoRA Data Maker</title>
 <style>
-:root{color-scheme:dark;--bg:#101014;--panel:#18181f;--line:#30303a;--text:#f2f2f5;--muted:#a8a8b3;--accent:#8b6cff;--ok:#69d39a;--bad:#ff7474}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px system-ui,-apple-system,sans-serif}
-main{max-width:1050px;margin:auto;padding:18px}.top{display:flex;justify-content:space-between;gap:12px;align-items:center;margin-bottom:14px}
-h1{font-size:24px;margin:0}.muted{color:var(--muted)}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.panel{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:14px;margin-bottom:12px}
-label{display:block;color:var(--muted);font-size:13px;margin:9px 0 5px}
-input,select,button{font:inherit;border-radius:10px;border:1px solid var(--line);padding:10px;background:#111118;color:var(--text)}
-input,select{width:100%}button{cursor:pointer;background:var(--accent);border-color:var(--accent);font-weight:650}
-button.secondary{background:transparent;border-color:var(--line)}button:disabled{opacity:.45;cursor:not-allowed}
-.actions{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.actions button{min-height:46px}
-.drop{border:2px dashed #454552;border-radius:14px;padding:22px;text-align:center}
-.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(115px,1fr));gap:7px}.gallery img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:9px;background:#0b0b0f}
-.stats{display:flex;flex-wrap:wrap;gap:8px}.pill{padding:7px 10px;background:#22222b;border-radius:999px;color:var(--muted)}
-#status{white-space:pre-wrap;color:var(--muted);min-height:22px}.ok{color:var(--ok)!important}.bad{color:var(--bad)!important}
-.row{display:flex;gap:8px;align-items:center}.row>*{flex:1}
-@media(max-width:700px){.grid{grid-template-columns:1fr}.actions{grid-template-columns:1fr 1fr}.top{align-items:flex-start}}
-</style></head><body><main>
-<div class="top"><div><h1>LoRA Data Maker</h1><div class="muted">localhost · local dataset pipeline</div></div><button class="secondary" onclick="newProject()">new dataset</button></div>
+:root{
+  color-scheme:dark;
+  --bg:#0b0c0f;
+  --panel:#121419;
+  --panel-2:#171920;
+  --line:#292d36;
+  --text:#f4f5f7;
+  --muted:#8f96a3;
+  --accent:#9b87ff;
+  --accent-2:#b4a6ff;
+  --ok:#71d7a2;
+  --bad:#ff7c87;
+  --radius:18px;
+}
+*{box-sizing:border-box}
+html{background:var(--bg)}
+body{
+  margin:0;
+  background:
+    radial-gradient(900px 420px at 50% -180px,rgba(155,135,255,.12),transparent 70%),
+    var(--bg);
+  color:var(--text);
+  font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+}
+button,input,select{font:inherit}
+button{cursor:pointer}
+.shell{max-width:1120px;margin:0 auto;padding:24px 16px 48px}
+.header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+.brand{display:flex;align-items:center;gap:12px}
+.logo{
+  width:34px;height:34px;border-radius:10px;
+  display:grid;place-items:center;
+  background:linear-gradient(145deg,#b9adff,#7f69ef);
+  color:#0a0a0d;font-weight:900;
+  box-shadow:0 8px 28px rgba(155,135,255,.18);
+}
+.title{font-size:17px;font-weight:760;letter-spacing:-.02em}
+.subtitle{font-size:12px;color:var(--muted)}
+.header-actions{display:flex;gap:8px}
+.card{
+  background:rgba(18,20,25,.92);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  padding:16px;
+  margin-bottom:12px;
+  backdrop-filter:blur(12px);
+}
+.card-title{font-size:13px;font-weight:700;margin-bottom:12px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+label{display:block;color:var(--muted);font-size:11px;margin:0 0 6px 2px}
+input,select{
+  width:100%;height:40px;padding:0 11px;
+  color:var(--text);background:#0d0f13;border:1px solid var(--line);border-radius:11px;
+  outline:none;
+}
+input:focus,select:focus{border-color:#6255a5;box-shadow:0 0 0 3px rgba(155,135,255,.08)}
+.row{display:flex;align-items:center;gap:10px}
+.check{
+  display:flex;align-items:center;gap:8px;
+  height:40px;padding:0 10px;
+  color:var(--text);background:#0d0f13;border:1px solid var(--line);border-radius:11px;
+}
+.check input{width:auto;height:auto;accent-color:var(--accent)}
+button{
+  min-height:40px;padding:0 13px;border-radius:11px;
+  color:#0b0b0e;background:var(--accent);border:1px solid var(--accent);
+  font-weight:720;
+}
+button:hover{background:var(--accent-2)}
+button.secondary{color:var(--text);background:#101217;border-color:var(--line)}
+button.secondary:hover{border-color:#444a56;background:#151820}
+button:disabled{opacity:.42;cursor:not-allowed}
+.save{margin-top:12px}
+.range{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
+.range input{padding:0}
+.range-value{min-width:40px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
+.drop{
+  border:1px dashed #3c424e;border-radius:14px;padding:22px;
+  text-align:center;background:#0d0f13;transition:.15s;
+}
+.drop.drag{border-color:var(--accent);background:rgba(155,135,255,.07)}
+.drop strong{display:block;font-size:14px;margin-bottom:4px}
+.drop p{margin:0 0 13px;color:var(--muted);font-size:12px}
+#files{display:none}
+.inline-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.stat{
+  background:#0d0f13;border:1px solid var(--line);border-radius:12px;padding:10px;
+}
+.stat b{display:block;font-size:18px;line-height:1.1;font-variant-numeric:tabular-nums}
+.stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.status{
+  display:flex;align-items:flex-start;gap:9px;margin-top:12px;
+  color:var(--muted);min-height:20px;
+}
+.dot{width:8px;height:8px;border-radius:999px;background:#666;margin-top:5px;flex:0 0 auto}
+.dot.running{background:var(--accent);box-shadow:0 0 12px rgba(155,135,255,.7)}
+.dot.ok{background:var(--ok)}
+.dot.bad{background:var(--bad)}
+.pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.step{
+  min-height:74px;padding:11px;
+  text-align:left;color:var(--text);
+  background:#0d0f13;border-color:var(--line);
+}
+.step .n{font-size:10px;color:var(--muted);margin-bottom:4px}
+.step .name{font-size:12px;font-weight:700}
+.step .hint{display:block;font-size:10px;color:var(--muted);margin-top:2px}
+.step.primary{grid-column:span 2;background:linear-gradient(145deg,rgba(155,135,255,.18),rgba(155,135,255,.07));border-color:#4f456e}
+.step.clean{grid-column:span 2}
+.output{
+  display:flex;align-items:center;justify-content:space-between;gap:12px;
+  padding:12px;background:#0d0f13;border:1px solid var(--line);border-radius:13px;
+}
+.output-name{font-weight:700}
+.output-meta{font-size:11px;color:var(--muted)}
+a.download{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:38px;padding:0 12px;border-radius:10px;
+  color:#0b0b0e;background:var(--ok);font-weight:760;text-decoration:none;
+}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:7px}
+.tile{min-width:0}
+.tile img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:11px;background:#08090c;border:1px solid var(--line)}
+.tile .meta{padding:5px 2px 0}
+.tile .path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
+.tile .tag{font-size:9px;color:var(--muted)}
+.empty{padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:13px}
+.note{color:var(--muted);font-size:11px;margin:10px 2px 0}
+.danger{color:var(--bad)}
+@media(max-width:820px){.stats{grid-template-columns:repeat(3,1fr)}.pipeline{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){
+  .shell{padding:16px 12px 34px}
+  .header{align-items:flex-start}
+  .grid-2,.grid-3{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(2,1fr)}
+  .pipeline{grid-template-columns:1fr 1fr}
+  .step.primary,.step.clean{grid-column:span 2}
+  .output{align-items:flex-start;flex-direction:column}
+  .header-actions button{padding:0 10px}
+}
+</style>
+</head>
+<body>
+<div class="shell">
+  <header class="header">
+    <div class="brand">
+      <div class="logo">L</div>
+      <div>
+        <div class="title">LoRA Data Maker</div>
+        <div class="subtitle">local dataset pipeline · localhost</div>
+      </div>
+    </div>
+    <div class="header-actions">
+      <button class="secondary" onclick="newProject()">new dataset</button>
+    </div>
+  </header>
 
-<section class="panel"><div class="grid">
-<div><label>project name</label><input id="name"></div>
-<div><label>subject</label><input id="subject"></div>
-<div><label>trigger</label><input id="trigger"></div>
-<div><label>tagger</label><select id="preset"><option value="sweetspot">sweetspot</option><option value="potato">potato</option></select></div>
-</div><div class="grid">
-<div><label>resize mode</label><select id="mode"><option>cover</option><option>fit</option><option>stretch</option></select></div>
-<div class="row"><div><label>width</label><input id="width" type="number" min="1"></div><div><label>height</label><input id="height" type="number" min="1"></div></div>
-</div><label>jpeg quality: <span id="qv"></span></label><input id="quality" type="range" min="60" max="100">
-<button class="secondary" onclick="saveSettings()">save settings</button></section>
+  <section class="card">
+    <div class="card-title">project</div>
+    <div class="grid-2">
+      <div><label>name</label><input id="name"></div>
+      <div><label>subject</label><input id="subject"></div>
+      <div><label>trigger</label><input id="trigger"></div>
+      <div><label>wd14 preset</label><select id="preset"><option value="sweetspot">sweetspot</option><option value="potato">potato</option></select></div>
+    </div>
+    <div class="grid-2" style="margin-top:12px">
+      <div>
+        <label>resize</label>
+        <select id="mode"><option value="cover">cover</option><option value="fit">fit</option><option value="stretch">stretch</option></select>
+      </div>
+      <div class="row">
+        <div style="flex:1"><label>width</label><input id="width" type="number" min="1"></div>
+        <div style="flex:1"><label>height</label><input id="height" type="number" min="1"></div>
+      </div>
+    </div>
+    <div class="grid-3" style="margin-top:12px">
+      <div><label>jpeg quality</label><div class="range"><input id="quality" type="range" min="60" max="100"><span class="range-value" id="qv"></span></div></div>
+      <div><label>face crop</label><label class="check"><input id="face_crop" type="checkbox"> enable</label></div>
+      <div><label>face padding</label><input id="face_padding" type="number" min="0.1" step="0.05"></div>
+    </div>
+    <div class="row save"><button onclick="saveSettings()">save settings</button><span class="note">settings are written back to config.toml</span></div>
+  </section>
 
-<section class="panel"><div class="drop">
-<input id="files" type="file" accept="image/*" multiple>
-<p class="muted">pilih foto dari gallery/file manager. upload langsung ke raw/</p>
-<button onclick="upload()">upload selected</button></div></section>
+  <section class="card">
+    <div class="card-title">input</div>
+    <div class="drop" id="drop">
+      <input id="files" type="file" accept="image/*" multiple>
+      <strong>drop images here</strong>
+      <p>or pick files from your gallery / file manager</p>
+      <div class="inline-actions">
+        <button class="secondary" onclick="document.getElementById('files').click()">choose images</button>
+        <button onclick="upload()">upload selected</button>
+      </div>
+    </div>
+  </section>
 
-<section class="panel"><div class="stats" id="stats"></div><p id="status">ready</p></section>
+  <section class="card">
+    <div class="card-title">dataset status</div>
+    <div class="stats" id="stats"></div>
+    <div class="status"><span class="dot" id="dot"></span><span id="status">ready</span></div>
+  </section>
 
-<section class="panel"><div class="actions">
-<button onclick="run('prepare')">prepare dataset</button>
-<button class="secondary" onclick="run('validate')">validate</button>
-<button class="secondary" onclick="run('process')">stage / resize</button>
-<button class="secondary" onclick="run('tag')">tag</button>
-<button class="secondary" onclick="run('clean-tags')">clean tags</button>
-<button class="secondary" onclick="run('caption')">caption .txt</button>
-<button class="secondary" onclick="run('export')">export Kohya</button>
-<button class="secondary" onclick="run('pack')">make ZIP</button>
-<button class="secondary" onclick="run('clean')">image clean</button>
+  <section class="card">
+    <div class="card-title">pipeline</div>
+    <div class="pipeline">
+      <button class="step primary" onclick="run('prepare')"><div class="n">ALL</div><div class="name">prepare dataset</div><span class="hint">validate → process → tag → clean → caption → export → ZIP</span></button>
+      <button class="step" onclick="run('validate')"><div class="n">01</div><div class="name">validate</div><span class="hint">scan raw images</span></button>
+      <button class="step" onclick="run('process')"><div class="n">02</div><div class="name">stage / resize</div><span class="hint">make training images</span></button>
+      <button class="step" onclick="run('tag')"><div class="n">03</div><div class="name">tag</div><span class="hint">WD14 auto tags</span></button>
+      <button class="step" onclick="run('clean-tags')"><div class="n">04</div><div class="name">clean tags</div><span class="hint">apply tag rules</span></button>
+      <button class="step" onclick="run('caption')"><div class="n">05</div><div class="name">caption</div><span class="hint">write .txt captions</span></button>
+      <button class="step" onclick="run('export')"><div class="n">06</div><div class="name">export</div><span class="hint">Kohya-ready folder</span></button>
+      <button class="step" onclick="run('pack')"><div class="n">07</div><div class="name">make ZIP</div><span class="hint">final archive</span></button>
+      <button class="step clean" onclick="run('clean')"><div class="n">OPTIONAL</div><div class="name">image clean / dedup</div><span class="hint">manual quality + duplicate pass</span></button>
+    </div>
+    <div id="download" style="margin-top:12px"></div>
+  </section>
+
+  <section class="card">
+    <div class="card-title">gallery</div>
+    <div class="gallery" id="gallery"></div>
+  </section>
 </div>
-<p class="muted">prepare = validate → stage → tag → clean tags → caption → export → ZIP. image cleaning tetap manual/optional.</p>
-<div id="download"></div></section>
 
-<section class="panel"><h3>gallery</h3><div class="gallery" id="gallery"></div></section>
-</main>
 <script>
 const $=id=>document.getElementById(id);
-async function api(url,opt={}){const r=await fetch(url,opt);const d=await r.json().catch(()=>({detail:r.statusText}));if(!r.ok)throw Error(d.detail||"request failed");return d}
-function settings(s){$("name").value=s.project.name;$("subject").value=s.project.subject;$("trigger").value=s.project.trigger;$("preset").value=s.tagger.preset;$("mode").value=s.processing.mode;$("width").value=s.processing.width;$("height").value=s.processing.height;$("quality").value=s.processing.quality;$("qv").textContent=s.processing.quality}
-$("quality").oninput=()=>{$("qv").textContent=$("quality").value}
-async function refresh(){const s=await api("/api/state");settings(s);$("stats").innerHTML=Object.entries(s.counts).map(([k,v])=>'<span class="pill">'+k+': '+v+'</span>').join("");$("gallery").innerHTML=s.images.map(x=>'<img loading="lazy" src="/media/'+encodeURIComponent(x.path)+'">').join("")}
-async function saveSettings(){await api("/api/settings",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name:$("name").value,subject:$("subject").value,trigger:$("trigger").value,preset:$("preset").value,mode:$("mode").value,width:+$("width").value,height:+$("height").value,quality:+$("quality").value})});setStatus("settings saved","ok");refresh()}
-async function upload(){const fs=$("files").files;if(!fs.length)return setStatus("select images first","bad");const f=new FormData();for(const x of fs)f.append("files",x);setStatus("uploading "+fs.length+" images...");const d=await api("/api/upload",{method:"POST",body:f});setStatus("uploaded "+d.uploaded+", skipped "+d.skipped,"ok");$("files").value="";refresh()}
-async function run(stage){try{await saveSettings();const d=await api("/api/run/"+stage,{method:"POST"});setStatus(d.message);poll(d.job_id)}catch(e){setStatus(e.message,"bad")}}
-async function poll(id){const d=await api("/api/jobs/"+id);setStatus(d.message||d.status,d.status==="failed"?"bad":d.status==="done"?"ok":"");if(d.status==="running"){setTimeout(()=>poll(id),1000)}else{refresh();if(d.download)$("download").innerHTML='<p><a href="'+d.download+'">⬇ download ZIP</a></p>'}}
-function setStatus(t,c=""){$("status").textContent=t;$("status").className=c}
-async function newProject(){const name=prompt("new dataset folder name");if(!name)return;const subject=prompt("subject",name)||name;const trigger=prompt("trigger",subject)||subject;try{await api("/api/project/new",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({name,subject,trigger})});setStatus("created "+name+". restart WebUI with that project path.");}catch(e){setStatus(e.message,"bad")}}
-refresh()
-</script></body></html>
+const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]));
+async function api(url,opt={}){
+  const r=await fetch(url,opt);
+  const d=await r.json().catch(()=>({detail:r.statusText}));
+  if(!r.ok)throw Error(d.detail||"request failed");
+  return d;
+}
+function applySettings(s){
+  $("name").value=s.project.name;
+  $("subject").value=s.project.subject;
+  $("trigger").value=s.project.trigger;
+  $("preset").value=s.tagger.preset;
+  $("mode").value=s.processing.mode;
+  $("width").value=s.processing.width;
+  $("height").value=s.processing.height;
+  $("quality").value=s.processing.quality;
+  $("qv").textContent=s.processing.quality;
+  $("face_crop").checked=!!s.processing.face_crop;
+  $("face_padding").value=s.processing.face_padding;
+}
+function renderStats(counts){
+  const keys=["discovered","validated","processed","tagged","captioned","exported"];
+  $("stats").innerHTML=keys.map(k=>'<div class="stat"><b>'+esc(counts[k]??0)+'</b><span>'+esc(k)+'</span></div>').join("");
+}
+function renderGallery(images){
+  if(!images.length){
+    $("gallery").innerHTML='<div class="empty">no images yet. upload some raw images above.</div>';
+    return;
+  }
+  $("gallery").innerHTML=images.map(x=>{
+    const src="/media/"+encodeURIComponent(x.path);
+    return '<div class="tile"><img loading="lazy" src="'+src+'" alt="'+esc(x.path)+'"><div class="meta"><div class="path" title="'+esc(x.path)+'">'+esc(x.path)+'</div><div class="tag">'+esc(x.status)+'</div></div></div>';
+  }).join("");
+}
+function renderDownload(name){
+  $("download").innerHTML=name
+    ? '<div class="output"><div><div class="output-name">'+esc(name)+'</div><div class="output-meta">final dataset archive</div></div><a class="download" href="/api/download">download ZIP</a></div>'
+    : "";
+}
+async function refresh(){
+  try{
+    const s=await api("/api/state");
+    applySettings(s);
+    renderStats(s.counts);
+    renderGallery(s.images);
+    renderDownload(s.archive);
+  }catch(e){setStatus(e.message,"bad")}
+}
+async function saveSettings(){
+  try{
+    await api("/api/settings",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({
+        name:$("name").value.trim(),
+        subject:$("subject").value.trim(),
+        trigger:$("trigger").value.trim(),
+        preset:$("preset").value,
+        mode:$("mode").value,
+        width:+$("width").value,
+        height:+$("height").value,
+        quality:+$("quality").value,
+        face_crop:$("face_crop").checked,
+        face_padding:+$("face_padding").value
+      })
+    });
+    setStatus("settings saved","ok");
+    refresh();
+  }catch(e){setStatus(e.message,"bad")}
+}
+async function upload(){
+  const fs=$("files").files;
+  if(!fs.length)return setStatus("select images first","bad");
+  const f=new FormData();
+  for(const x of fs)f.append("files",x);
+  try{
+    setStatus("uploading "+fs.length+" images...","running");
+    const d=await api("/api/upload",{method:"POST",body:f});
+    setStatus("uploaded "+d.uploaded+", skipped "+d.skipped,"ok");
+    $("files").value="";
+    refresh();
+  }catch(e){setStatus(e.message,"bad")}
+}
+async function run(stage){
+  try{
+    await saveSettings();
+    const d=await api("/api/run/"+stage,{method:"POST"});
+    setStatus(d.message,"running");
+    poll(d.job_id);
+  }catch(e){setStatus(e.message,"bad")}
+}
+async function poll(id){
+  try{
+    const d=await api("/api/jobs/"+id);
+    const cls=d.status==="failed"?"bad":d.status==="done"?"ok":"running";
+    setStatus(d.message||d.status,cls);
+    if(d.status==="running"){setTimeout(()=>poll(id),900)}
+    else{refresh()}
+  }catch(e){setStatus(e.message,"bad")}
+}
+function setStatus(t,c=""){
+  $("status").textContent=t;
+  $("dot").className="dot "+c;
+}
+async function newProject(){
+  const name=prompt("new dataset folder name");
+  if(!name)return;
+  const subject=prompt("subject",name)||name;
+  const trigger=prompt("trigger",subject)||subject;
+  try{
+    const d=await api("/api/project/new",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({name,subject,trigger})
+    });
+    setStatus("switched to "+d.name,"ok");
+    await refresh();
+  }catch(e){setStatus(e.message,"bad")}
+}
+const drop=$("drop");
+["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("drag")}));
+["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("drag")}));
+drop.addEventListener("drop",e=>{$("files").files=e.dataTransfer.files});
+$("quality").oninput=()=>{$("qv").textContent=$("quality").value};
+refresh();
+</script>
+</body>
+</html>
 """
 
 class JobStore:
@@ -176,10 +468,11 @@ def create_app(root: Path | str = ".") -> FastAPI:
         tagger = cfg.get("tagger", {})
         return {
             "project": {"name": p.manifest.project_name, "subject": p.manifest.subject, "trigger": p.manifest.trigger},
-            "processing": {"mode": str(processing.get("resize_mode", "cover")), "width": int(processing.get("target_width", 512)), "height": int(processing.get("target_height", 512)), "quality": int(processing.get("jpeg_quality", 95))},
+            "processing": {"mode": str(processing.get("resize_mode", "cover")), "width": int(processing.get("target_width", 512)), "height": int(processing.get("target_height", 512)), "quality": int(processing.get("jpeg_quality", 95)), "face_crop": bool(processing.get("face_crop", False)), "face_padding": float(processing.get("face_padding", 1.75))},
             "tagger": {"preset": str(tagger.get("preset", "sweetspot"))},
             "counts": p.counts(),
-            "images": [{"id": x.image_id, "path": x.processed_path or x.path} for x in sorted(p.manifest.images.values(), key=lambda x: x.path) if x.status != "rejected"],
+            "images": [{"id": x.image_id, "path": x.processed_path or x.path, "status": x.status} for x in sorted(p.manifest.images.values(), key=lambda x: x.path) if x.status != "rejected"],
+            "archive": Path(str(p.manifest.source.get("last_pack_archive", ""))).name if p.manifest.source.get("last_pack_archive") else None,
         }
 
     @app.post("/api/settings")
@@ -188,10 +481,12 @@ def create_app(root: Path | str = ".") -> FastAPI:
         trigger = str(payload.get("trigger", "")).strip() or subject
         mode, preset = str(payload.get("mode", "cover")).lower(), str(payload.get("preset", "sweetspot"))
         width, height, quality = int(payload.get("width", 512)), int(payload.get("height", 512)), int(payload.get("quality", 95))
-        if not name or not subject or mode not in {"cover", "fit", "stretch"} or width < 1 or height < 1 or not 1 <= quality <= 100:
+        face_crop = bool(payload.get("face_crop", False))
+        face_padding = float(payload.get("face_padding", 1.75))
+        if not name or not subject or mode not in {"cover", "fit", "stretch"} or width < 1 or height < 1 or not 1 <= quality <= 100 or face_padding <= 0:
             raise HTTPException(400, "invalid settings")
         set_config("project", {"name": name, "subject": subject, "trigger": trigger})
-        set_config("processing", {"resize_mode": mode, "target_width": width, "target_height": height, "jpeg_quality": quality})
+        set_config("processing", {"resize_mode": mode, "target_width": width, "target_height": height, "jpeg_quality": quality, "face_crop": face_crop, "face_padding": face_padding})
         set_config("tagger", {"preset": preset})
         p = project()
         p.manifest.project_name, p.manifest.subject, p.manifest.trigger = name, subject, trigger
@@ -255,8 +550,13 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 return "cleaned " + str(s.kept) + "; exact dup " + str(s.exact_duplicates) + "; perceptual dup " + str(s.perceptual_duplicates)
             if stage == "process":
                 pc = cfg.get("processing", {})
-                settings = ProcessConfig(target_width=int(pc.get("target_width", 512)), target_height=int(pc.get("target_height", 512)), resize_mode=str(pc.get("resize_mode", "cover")), jpeg_quality=int(pc.get("jpeg_quality", 95)), face_crop=False)
-                done, failed, skipped = process_manifest(p.manifest, root=project_root, output_dir=ps.work, config=settings)
+                face_crop = bool(pc.get("face_crop", False))
+                face_padding = float(pc.get("face_padding", 1.75))
+                face_detector = None
+                if face_crop:
+                    face_detector = YuNetFaceDetector(cache_dir=ps.cache / "face")
+                settings = ProcessConfig(target_width=int(pc.get("target_width", 512)), target_height=int(pc.get("target_height", 512)), resize_mode=str(pc.get("resize_mode", "cover")), jpeg_quality=int(pc.get("jpeg_quality", 95)), face_crop=face_crop, face_padding=face_padding)
+                done, failed, skipped = process_manifest(p.manifest, root=project_root, output_dir=ps.work, config=settings, face_detector=face_detector)
                 p.save()
                 return "staged " + str(done) + ", failed " + str(failed) + ", skipped " + str(skipped)
             if stage == "tag":
@@ -331,6 +631,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
 
     @app.post("/api/project/new")
     def new_project(payload: dict[str, Any]):
+        nonlocal project_root
         name = safe_component(str(payload.get("name", "")).strip())
         subject = str(payload.get("subject", "")).strip() or name
         trigger = str(payload.get("trigger", "")).strip() or subject
@@ -341,7 +642,8 @@ def create_app(root: Path | str = ".") -> FastAPI:
         new_paths = ProjectPaths.from_root(target); new_paths.create_directories()
         write_default_config(new_paths.config, name=name, subject=subject, trigger=trigger)
         DatasetProject.create(new_paths)
-        return {"ok": True, "path": target.as_posix()}
+        project_root = target.resolve()
+        return {"ok": True, "path": target.as_posix(), "name": name}
 
     return app
 
