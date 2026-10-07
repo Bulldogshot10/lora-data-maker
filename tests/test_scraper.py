@@ -991,6 +991,9 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
     class FakeSession:
+        def __init__(self):
+            self.evaluate_calls = 0
+
         def send(self, method, params=None, timeout=None):
             if method == "Page.navigate":
                 assert params["url"].startswith(
@@ -998,11 +1001,13 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
                 )
                 return {"loaderId": "loader-1"}
             if method == "Runtime.evaluate":
-                return {
-                    "result": {
-                        "value": ["complete", params and params.get("url", "https://www.bing.com/images/search?")]
-                    }
-                }
+                self.evaluate_calls += 1
+                href = (
+                    "about:blank"
+                    if self.evaluate_calls == 1
+                    else "https://www.bing.com/images/search?q=julia"
+                )
+                return {"result": {"value": ["complete", href]}}
             raise AssertionError(f"unexpected CDP method: {method}")
 
     class FakePage:
