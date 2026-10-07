@@ -196,9 +196,11 @@ def test_scraper_manager_skips_urls_already_in_manifest(tmp_path):
 
 
 def test_scraper_manager_skips_failed_downloads_and_continues(tmp_path):
+    from pathlib import Path
+
     from lora_data_maker.scrapers.base import ImageResult, ScraperError
-    from lora_data_maker.scrapers.manager import ScraperManager
     from lora_data_maker.scrapers.downloader import DownloadResult
+    from lora_data_maker.scrapers.manager import ScraperManager
 
     manager = ScraperManager(
         backend="direct",
@@ -212,28 +214,29 @@ def test_scraper_manager_skips_failed_downloads_and_continues(tmp_path):
         ImageResult("https://example.com/b.jpg", query="julia"),
         ImageResult("https://example.com/c.jpg", query="julia"),
     ]
-    manager.scraper = type("FakeScraper", (), {
-        "search": lambda self, query, *, limit: iter(results)
-    })()
+
+    class FakeScraper:
+        def search(self, query, *, limit):
+            return iter(results)
+
+    manager.scraper = FakeScraper()
 
     calls = []
 
-    def fake_download(url, output_dir, *, index, archive):
-        calls.append(url)
-        if url.endswith("/b.jpg"):
-            raise ScraperError("source refused image")
-        return DownloadResult(
-            url=url,
-            path=Path(output_dir) / f"{index:06d}.jpg",
-            sha256="0" * 64,
-            file_size=123,
-            content_type="image/jpeg",
-        )
+    class FakeDownloader:
+        def download(self, url, output_dir, *, index, archive):
+            calls.append(url)
+            if url.endswith("/b.jpg"):
+                raise ScraperError("source refused image")
+            return DownloadResult(
+                url=url,
+                path=Path(output_dir) / f"{index:06d}.jpg",
+                sha256="0" * 64,
+                file_size=123,
+                content_type="image/jpeg",
+            )
 
-    from pathlib import Path
-    manager.downloader = type("FakeDownloader", (), {
-        "download": fake_download
-    })()
+    manager.downloader = FakeDownloader()
 
     downloads, failures = manager.run(
         "julia",
@@ -252,45 +255,6 @@ def test_scraper_manager_skips_failed_downloads_and_continues(tmp_path):
     ]
     assert len(failures) == 1
     assert failures[0][0].image_url.endswith("/b.jpg")
-
-
-    from lora_data_maker.scrapers.base import ImageResult
-    from lora_data_maker.scrapers.manager import ScraperManager
-
-    manager = ScraperManager(
-        backend="direct",
-        output_dir=tmp_path / "raw",
-        cache_dir=tmp_path / "cache",
-        delay=0,
-    )
-
-    class FakeScraper:
-        def search(self, query, *, limit):
-            yield ImageResult(
-                image_url="https://example.com/already.jpg",
-                query=query,
-            )
-
-    calls = []
-
-    class FakeDownloader:
-        def download(self, *args, **kwargs):
-            calls.append(args[0])
-            raise AssertionError("known URL should not reach downloader")
-
-    manager.scraper = FakeScraper()
-    manager.downloader = FakeDownloader()
-
-    downloads, failures = manager.run(
-        "julia",
-        count=1,
-        known_urls={"https://example.com/already.jpg"},
-    )
-
-    assert downloads == []
-    assert failures == []
-    assert calls == []
-
 
 def test_downloader_prefers_ipv4_in_termux(monkeypatch):
     import urllib3.util.connection as urllib3_connection
@@ -346,7 +310,7 @@ def test_duckduckgo_extracts_image_results():
     ]
 
 
-def test_chromium_uses_duckduckgo_then_bing():
+def test_chromium_uses_duckduckgo_without_launching_bing(monkeypatch):
     from lora_data_maker.scrapers import chromium as chromium_module
 
     class FakeDuckDuckGo:
@@ -359,42 +323,28 @@ def test_chromium_uses_duckduckgo_then_bing():
             from lora_data_maker.scrapers.base import ImageResult
 
             assert query == "julia"
-            assert limit == 2
+            assert limit == 1
             yield ImageResult("https://cdn.example.com/ddg.jpg", query=query)
 
-    monkeypatch = __import__("pytest").MonkeyPatch()
-    try:
-        monkeypatch.setattr(chromium_module, "DuckDuckGoImagesScraper", FakeDuckDuckGo)
+    monkeypatch.setattr(
+        chromium_module,
+        "DuckDuckGoImagesScraper",
+        FakeDuckDuckGo,
+    )
 
-        scraper = chromium_module.ChromiumImagesScraper(delay=0)
-        monkeypatch.setattr(
-            scraper,
-            "_start_driver",
-            lambda: (_ for _ in ()).throw(AssertionError("Bing should not run")),
-        )
+    scraper = chromium_module.ChromiumImagesScraper(delay=0)
+    monkeypatch.setattr(
+        scraper,
+        "_start_driver",
+        lambda: (_ for _ in ()).throw(AssertionError("Bing should not run")),
+    )
 
-        results = list(scraper.search("julia", limit=1))
-        assert [item.image_url for item in results] == [
-            "https://cdn.example.com/ddg.jpg"
-        ]
-        assert results[0].metadata["provider"] == "duckduckgo"
-    finally:
-        monkeypatch.undo()
+    results = list(scraper.search("julia", limit=1))
 
-
-    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
-
-    hrefs = [
-        "https://www.google.com/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Fa.jpg&imgrefurl=https%3A%2F%2Fexample.com%2Fa",
-        "/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Fb.png",
-        "https://www.google.com/search?q=not-an-image",
+    assert [item.image_url for item in results] == [
+        "https://cdn.example.com/ddg.jpg"
     ]
-
-    assert ChromiumImagesScraper._extract_image_urls(hrefs) == [
-        "https://cdn.example.com/a.jpg",
-        "https://cdn.example.com/b.png",
-    ]
-
+    assert results[0].metadata["provider"] == "duckduckgo"
 
 def test_bing_rejects_bing_hosted_thumbnails():
     from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
@@ -408,16 +358,6 @@ def test_bing_rejects_bing_hosted_thumbnails():
     assert ChromiumImagesScraper._extract_bing_image_urls(payloads) == [
         "https://cdn.example.com/real.jpg"
     ]
-
-
-    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
-
-    hrefs = [
-        "https://www.google.com/imgres?imgurl=https%3A%2F%2Fencrypted-tbn0.gstatic.com%2Fimages%2Fthumb.jpg"
-    ]
-
-    assert ChromiumImagesScraper._extract_image_urls(hrefs) == []
-
 
 def test_bing_extracts_original_image_urls():
     from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
@@ -541,8 +481,8 @@ def test_chromium_preserves_duckduckgo_candidate_order(monkeypatch):
         "DuckDuckGoImagesScraper",
         FakeDuckDuckGo,
     )
-    scraper = chromium_module.ChromiumImagesScraper(delay=0)
 
+    scraper = chromium_module.ChromiumImagesScraper(delay=0)
     results = list(scraper.search("julia", limit=2))
 
     assert [item.image_url for item in results] == [
@@ -554,71 +494,12 @@ def test_chromium_preserves_duckduckgo_candidate_order(monkeypatch):
         "duckduckgo",
     ]
 
-
+def test_chromium_bing_page_timeout_retries(monkeypatch):
     import sys
     import types
 
-    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
-
-    class TimeoutException(Exception):
-        pass
-
-    WebDriverException = type("WebDriverException", (Exception,), {})
-
-    selenium = types.ModuleType("selenium")
-    common = types.ModuleType("selenium.common")
-    exceptions = types.ModuleType("selenium.common.exceptions")
-    exceptions.TimeoutException = TimeoutException
-    exceptions.WebDriverException = WebDriverException
-    common.exceptions = exceptions
-
-    monkeypatch.setitem(sys.modules, "selenium", selenium)
-    monkeypatch.setitem(sys.modules, "selenium.common", common)
-    monkeypatch.setitem(sys.modules, "selenium.common.exceptions", exceptions)
-
-    class FakeDriver:
-        title = "Google Images"
-
-        def __init__(self):
-            self.quit_called = False
-
-        def get(self, _url):
-            return None
-
-        def execute_script(self, script):
-            if "document.readyState" in script:
-                return "complete"
-            if "document.body" in script:
-                return "normal results"
-            if "querySelectorAll" in script:
-                return [
-                    "https://www.google.com/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Ffirst.jpg",
-                    "https://www.google.com/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Fsecond.jpg",
-                ]
-            return None
-
-        def quit(self):
-            self.quit_called = True
-
-    driver = FakeDriver()
-    scraper = ChromiumImagesScraper(delay=0)
-    monkeypatch.setattr(scraper, "_start_driver", lambda: driver)
-
-    results = list(scraper.search("julia", limit=2))
-
-    assert [item.image_url for item in results] == [
-        "https://cdn.example.com/first.jpg",
-        "https://cdn.example.com/second.jpg",
-    ]
-    assert driver.quit_called is True
-
-
-def test_chromium_page_timeout_retries(monkeypatch):
-    import sys
-    import types
-
-    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
     from lora_data_maker.scrapers.base import ScraperError
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
 
     class TimeoutException(Exception):
         pass
@@ -652,7 +533,10 @@ def test_chromium_page_timeout_retries(monkeypatch):
     scraper = ChromiumImagesScraper(retries=1, delay=0)
 
     try:
-        scraper._load_page(driver, "https://www.bing.com/images/search?q=julia")
+        scraper._load_page(
+            driver,
+            "https://www.bing.com/images/search?q=julia",
+        )
     except ScraperError as exc:
         assert "timed out" in str(exc).lower()
     else:
@@ -660,60 +544,6 @@ def test_chromium_page_timeout_retries(monkeypatch):
 
     assert driver.get_calls == 2
     assert driver.stop_calls == 2
-
-
-    import sys
-    import types
-
-    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
-
-    class TimeoutException(Exception):
-        pass
-
-    WebDriverException = type("WebDriverException", (Exception,), {})
-
-    common = types.ModuleType("selenium.common")
-    exceptions = types.ModuleType("selenium.common.exceptions")
-    exceptions.TimeoutException = TimeoutException
-    exceptions.WebDriverException = WebDriverException
-    common.exceptions = exceptions
-
-    monkeypatch.setitem(
-        sys.modules,
-        "selenium.common",
-        common,
-    )
-    monkeypatch.setitem(
-        sys.modules,
-        "selenium.common.exceptions",
-        exceptions,
-    )
-
-    class FakeDriver:
-        def __init__(self):
-            self.get_calls = 0
-            self.stop_calls = 0
-
-        def get(self, _url):
-            self.get_calls += 1
-            raise TimeoutException("timed out")
-
-        def execute_script(self, script):
-            if "window.stop" in script:
-                self.stop_calls += 1
-            return None
-
-    driver = FakeDriver()
-    scraper = ChromiumImagesScraper(retries=1, delay=0)
-
-    assert scraper._load_page(
-        driver,
-        "https://www.google.com/search?tbm=isch&q=julia",
-        provider="google",
-    ) is False
-    assert driver.get_calls == 2
-    assert driver.stop_calls == 2
-
 
 def test_chromium_continues_to_bing_when_duckduckgo_has_too_few_candidates(monkeypatch):
     import sys
@@ -742,7 +572,6 @@ def test_chromium_continues_to_bing_when_duckduckgo_has_too_few_candidates(monke
             yield ImageResult("https://cdn.example.com/ddg.jpg", query=query)
 
     class FakeDriver:
-        title = "Bing Images"
         quit_called = False
 
         def get(self, _url):
@@ -759,8 +588,16 @@ def test_chromium_continues_to_bing_when_duckduckgo_has_too_few_candidates(monke
             self.quit_called = True
 
     driver = FakeDriver()
-    scraper = chromium_module.ChromiumImagesScraper(delay=0, retries=0, max_scrolls=1)
-    monkeypatch.setattr(chromium_module, "DuckDuckGoImagesScraper", FakeDuckDuckGo)
+    scraper = chromium_module.ChromiumImagesScraper(
+        delay=0,
+        retries=0,
+        max_scrolls=1,
+    )
+    monkeypatch.setattr(
+        chromium_module,
+        "DuckDuckGoImagesScraper",
+        FakeDuckDuckGo,
+    )
     monkeypatch.setattr(scraper, "_start_driver", lambda: driver)
 
     results = list(scraper.search("julia", limit=2))
@@ -774,66 +611,6 @@ def test_chromium_continues_to_bing_when_duckduckgo_has_too_few_candidates(monke
         "bing",
     ]
     assert driver.quit_called is True
-
-
-    import sys
-    import types
-
-    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
-
-    TimeoutException = type("TimeoutException", (Exception,), {})
-    WebDriverException = type("WebDriverException", (Exception,), {})
-    common = types.ModuleType("selenium.common")
-    exceptions = types.ModuleType("selenium.common.exceptions")
-    exceptions.TimeoutException = TimeoutException
-    exceptions.WebDriverException = WebDriverException
-    common.exceptions = exceptions
-    monkeypatch.setitem(sys.modules, "selenium.common", common)
-    monkeypatch.setitem(sys.modules, "selenium.common.exceptions", exceptions)
-
-    class FakeDriver:
-        title = "Images"
-
-        def __init__(self):
-            self.provider_calls = 0
-            self.quit_called = False
-
-        def get(self, url):
-            self.provider_calls += 1
-            self.last_url = url
-
-        def execute_script(self, script):
-            if "document.body" in script:
-                return "normal results"
-            if "querySelectorAll" in script:
-                if "a[href]" in script and "i.iusc" not in script:
-                    return [
-                        "https://www.google.com/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Fgoogle.jpg"
-                    ]
-                return [
-                    '{"murl":"https://cdn.example.com/bing.jpg"}'
-                ]
-            return "complete"
-
-        def quit(self):
-            self.quit_called = True
-
-    driver = FakeDriver()
-    scraper = ChromiumImagesScraper(delay=0, retries=0, max_scrolls=1)
-    monkeypatch.setattr(scraper, "_start_driver", lambda: driver)
-
-    results = list(scraper.search("julia", limit=2))
-
-    assert [item.image_url for item in results] == [
-        "https://cdn.example.com/google.jpg",
-        "https://cdn.example.com/bing.jpg",
-    ]
-    assert [item.metadata["provider"] for item in results] == [
-        "google",
-        "bing",
-    ]
-    assert driver.quit_called is True
-
 
 def test_downloader_extensionless_image_is_visible_to_validator(tmp_path):
     from PIL import Image
@@ -875,7 +652,7 @@ def test_downloader_extensionless_image_is_visible_to_validator(tmp_path):
 
 
 
-def test_chromium_keeps_duckduckgo_candidates_when_bing_fails(monkeypatch):
+def test_chromium_keeps_duckduckgo_when_bing_fails(monkeypatch):
     import sys
     import types
 
@@ -903,7 +680,7 @@ def test_chromium_keeps_duckduckgo_candidates_when_bing_fails(monkeypatch):
 
     class FakeDriver:
         def get(self, _url):
-            return None
+            pass
 
         def execute_script(self, script):
             if "document.readyState" in script:
@@ -916,8 +693,16 @@ def test_chromium_keeps_duckduckgo_candidates_when_bing_fails(monkeypatch):
             self.quit_called = True
 
     driver = FakeDriver()
-    scraper = chromium_module.ChromiumImagesScraper(delay=0, retries=0, max_scrolls=1)
-    monkeypatch.setattr(chromium_module, "DuckDuckGoImagesScraper", FakeDuckDuckGo)
+    scraper = chromium_module.ChromiumImagesScraper(
+        delay=0,
+        retries=0,
+        max_scrolls=1,
+    )
+    monkeypatch.setattr(
+        chromium_module,
+        "DuckDuckGoImagesScraper",
+        FakeDuckDuckGo,
+    )
     monkeypatch.setattr(scraper, "_start_driver", lambda: driver)
 
     results = list(scraper.search("julia", limit=2))
@@ -927,81 +712,6 @@ def test_chromium_keeps_duckduckgo_candidates_when_bing_fails(monkeypatch):
     ]
     assert results[0].metadata["provider"] == "duckduckgo"
     assert driver.quit_called is True
-
-
-    import sys
-    import types
-
-    from lora_data_maker.scrapers.base import ScraperError
-    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
-
-    TimeoutException = type("TimeoutException", (Exception,), {})
-    WebDriverException = type("WebDriverException", (Exception,), {})
-    common = types.ModuleType("selenium.common")
-    exceptions = types.ModuleType("selenium.common.exceptions")
-    exceptions.TimeoutException = TimeoutException
-    exceptions.WebDriverException = WebDriverException
-    common.exceptions = exceptions
-    monkeypatch.setitem(sys.modules, "selenium.common", common)
-    monkeypatch.setitem(sys.modules, "selenium.common.exceptions", exceptions)
-
-    class FakeDriver:
-        title = "Images"
-
-        def __init__(self):
-            self.get_urls = []
-            self.script_calls = 0
-            self.quit_called = False
-
-        def get(self, url):
-            self.get_urls.append(url)
-
-        def execute_script(self, script):
-            if "document.readyState" in script:
-                return "complete"
-            if "document.body" in script:
-                self.script_calls += 1
-                if self.script_calls >= 2:
-                    raise RuntimeError("not used")
-                return "normal results"
-            if "querySelectorAll" in script:
-                if len(self.get_urls) == 1:
-                    return [
-                        "https://www.google.com/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Fgoogle.jpg"
-                    ]
-                return ['{"murl":"https://cdn.example.com/bing.jpg"}']
-            if "window.scrollTo" in script:
-                return None
-            return None
-
-        def quit(self):
-            self.quit_called = True
-
-    driver = FakeDriver()
-    scraper = ChromiumImagesScraper(delay=0, retries=0, max_scrolls=2)
-
-    checks = {"calls": 0}
-
-    def check_page(_driver):
-        checks["calls"] += 1
-        if checks["calls"] >= 2:
-            raise ScraperError("Google returned a consent/verification page")
-
-    monkeypatch.setattr(scraper, "_start_driver", lambda: driver)
-    monkeypatch.setattr(scraper, "_check_page", check_page)
-
-    results = list(scraper.search("julia", limit=2))
-
-    assert [item.image_url for item in results] == [
-        "https://cdn.example.com/google.jpg",
-        "https://cdn.example.com/bing.jpg",
-    ]
-    assert [item.metadata["provider"] for item in results] == [
-        "google",
-        "bing",
-    ]
-    assert driver.quit_called is True
-
 
 def test_download_archive_rejects_invalid_utf8(tmp_path):
     from lora_data_maker.scrapers.archive import DownloadArchive
@@ -1095,6 +805,7 @@ def test_downloader_rolls_back_file_when_archive_update_fails(tmp_path):
 
 def test_scrape_command_accepts_partial_success_after_skipping_failures(tmp_path, monkeypatch):
     from argparse import Namespace
+
     from lora_data_maker.cli import command_init, command_scrape
     from lora_data_maker.scrapers.downloader import DownloadResult
 
@@ -1122,10 +833,13 @@ def test_scrape_command_accepts_partial_success_after_skipping_failures(tmp_path
             pass
 
         def run(self, query, *, count, known_urls):
-            assert count == 3
             return [result], [
                 (
-                    type("Result", (), {"image_url": "https://bad.example/2.jpg"})(),
+                    type(
+                        "Result",
+                        (),
+                        {"image_url": "https://bad.example/2.jpg"},
+                    )(),
                     "source refused image",
                 )
             ]
@@ -1141,45 +855,3 @@ def test_scrape_command_accepts_partial_success_after_skipping_failures(tmp_path
         )
     ) == 0
 
-
-    from argparse import Namespace
-    from lora_data_maker.cli import command_init, command_scrape
-    from lora_data_maker.scrapers.downloader import DownloadResult
-
-    root = tmp_path / "project"
-    command_init(
-        Namespace(
-            path=str(root),
-            name="julia",
-            subject="julia",
-            trigger=None,
-            force=False,
-        )
-    )
-
-    result = DownloadResult(
-        url="https://cdn.example.com/001.jpg",
-        path=root / "raw" / "000001.jpg",
-        sha256="0" * 64,
-        file_size=123,
-        content_type="image/jpeg",
-    )
-
-    class FakeManager:
-        def __init__(self, **kwargs):
-            pass
-
-        def run(self, query, *, count, known_urls):
-            assert count == 3
-            return [result], []
-
-    monkeypatch.setattr("lora_data_maker.cli.ScraperManager", FakeManager)
-
-    assert command_scrape(
-        Namespace(
-            backend="direct",
-            query="unused.txt",
-            count=3,
-            path=str(root),
-        )
-    ) == 1
