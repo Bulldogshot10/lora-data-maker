@@ -471,7 +471,11 @@ def command_clean(args: argparse.Namespace) -> int:
 
     person_check = bool(quality_config.get("person_check", True))
     person_detector = None
-    if person_check:
+    has_quality_candidates = any(
+        image.status == "validated"
+        for image in project.manifest.images.values()
+    )
+    if person_check and has_quality_candidates:
         try:
             person_detector = YOLOXNanoPersonDetector(
                 cache_dir=paths.cache / "person",
