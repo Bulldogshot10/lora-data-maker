@@ -958,6 +958,55 @@ def test_playwright_bing_extracts_original_urls():
     ]
 
 
+
+def test_playwright_bing_parser_handles_html_entities_and_quote_styles():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = r'''
+    <a class="iusc" m='{"murl":"https://cdn.example.com/single.jpg"}'></a>
+    <a class="x iusc y" m="{&quot;murl&quot;:&quot;https://cdn.example.com/double.png&quot;}"></a>
+    '''
+
+    assert PlaywrightImagesScraper._extract_bing_urls(body) == [
+        "https://cdn.example.com/single.jpg",
+        "https://cdn.example.com/double.png",
+    ]
+
+
+def test_playwright_manager_passes_max_scrolls(monkeypatch, tmp_path):
+    import lora_data_maker.scrapers.manager as manager_module
+
+    captured = {}
+
+    class FakePlaywrightScraper:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        manager_module,
+        "PlaywrightImagesScraper",
+        FakePlaywrightScraper,
+    )
+
+    manager_module.ScraperManager(
+        backend="playwright-bing",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        timeout=17,
+        retries=2,
+        delay=0.75,
+        max_scrolls=11,
+    )
+
+    assert captured == {
+        "provider": "bing",
+        "timeout": 17,
+        "retries": 2,
+        "delay": 0.75,
+        "max_scrolls": 11,
+    }
+
+
 def test_playwright_google_prefers_original_ou_url():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
