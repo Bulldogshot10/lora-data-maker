@@ -928,8 +928,16 @@ def command_scrape(args: argparse.Namespace) -> int:
         print("no new images downloaded")
         return 0
 
+    if downloads:
+        print(
+            f"scrape complete with skips: downloaded {len(downloads)}/{count} requested; "
+            f"skipped {len(failures)} failed candidates",
+        )
+        return 0
+
     print(
-        f"scrape incomplete: downloaded {len(downloads)}/{count} requested",
+        f"scrape failed: downloaded 0/{count} requested; "
+        f"failed candidates: {len(failures)}",
     )
     return 1
 
