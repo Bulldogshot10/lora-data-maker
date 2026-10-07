@@ -879,6 +879,7 @@ def command_scrape(args: argparse.Namespace) -> int:
         count=count,
         known_urls=known_urls,
     )
+    search_error = manager.last_search_error
 
     added_records = 0
     for result in downloads:
@@ -924,15 +925,30 @@ def command_scrape(args: argparse.Namespace) -> int:
     if len(downloads) >= count:
         return 0
 
+    if search_error and not downloads:
+        print(
+            f"scrape failed: downloaded 0/{count} requested; "
+            f"search source error: {search_error}",
+        )
+        return 1
+
     if not downloads and known_urls and not failures:
         print("no new images downloaded")
         return 0
 
     if downloads:
-        print(
-            f"scrape complete with skips: downloaded {len(downloads)}/{count} requested; "
-            f"skipped {len(failures)} failed candidates",
-        )
+        if search_error:
+            print(
+                f"scrape complete with source error: downloaded "
+                f"{len(downloads)}/{count} requested; "
+                f"skipped {len(failures)} failed candidates; "
+                f"source: {search_error}",
+            )
+        else:
+            print(
+                f"scrape complete with skips: downloaded {len(downloads)}/{count} requested; "
+                f"skipped {len(failures)} failed candidates",
+            )
         return 0
 
     print(
