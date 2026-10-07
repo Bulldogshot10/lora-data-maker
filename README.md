@@ -12,7 +12,7 @@ Model training and image generation are outside the scope of this project.
 
 ## Current state
 
-v1.3.0 adds two mobile-friendly WD14 tagger presets:
+v1.3.0 includes two mobile-friendly WD14 tagger presets plus a JoyTag ONNX backend:
 
 - **sweetspot**: SmilingWolf WD ViT Tagger v3, a compact general-purpose WD14-compatible ONNX tagger.
 - **potato**: QUINT8 mobile SwinV2 tagger for the smallest built-in footprint.
