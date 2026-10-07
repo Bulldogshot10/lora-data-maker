@@ -206,7 +206,7 @@ class PlaywrightImagesScraper(Scraper):
 
     def _goto(self, page, url: str) -> None:
         """Navigate without relying on playwright-termux Page.goto()."""
-        timeout = max(float(self.timeout), 1.0)
+        timeout = max(float(self.timeout), 0.1)
         navigation_timeout = min(timeout, 5.0)
         initial_url = getattr(page, "url", "about:blank") or "about:blank"
         try:
