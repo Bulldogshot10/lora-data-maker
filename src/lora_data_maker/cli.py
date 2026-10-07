@@ -735,14 +735,13 @@ def command_caption(args: argparse.Namespace) -> int:
         "last_caption_backend": selected_backend,
         "last_caption_separator": separator,
         "last_caption_subject": project.manifest.subject,
-            "last_caption_trigger": (
-                project.manifest.subject
-                if trigger_from_subject
-                else project.manifest.trigger
-            ),
-            "last_caption_trigger_from_subject": trigger_from_subject,
-        }
-    )
+        "last_caption_trigger": (
+            project.manifest.subject
+            if trigger_from_subject
+            else project.manifest.trigger
+        ),
+        "last_caption_trigger_from_subject": trigger_from_subject,
+    }
     if captioner is not None:
         source.update(
             {
