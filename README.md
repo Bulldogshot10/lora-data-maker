@@ -141,26 +141,42 @@ lora-data-maker export
 lora-data-maker pack
 ~~~
 
-## llama.cpp VLM backends
+## llama.cpp embedded VLM runtime
 
-A local llama.cpp server can be used for both image tagging and image captioning. The project talks to the OpenAI-compatible /v1/chat/completions API and sends processed images as image_url content.
+The tagger and captioner can run a local multimodal GGUF model through the embedded llama.cpp runtime. The project uses \`llama-cpp-python\`, so the Python process loads the GGUF and \`mmproj\` directly. No local HTTP server is required.
 
-Configure:
+Install the optional runtime:
+
+~~~bash
+python -m pip install ".[llama_cpp]"
+~~~
+
+Configure local model paths:
 
 ~~~toml
 [tagger]
 backend = "llama_cpp"
 
 [tagger.llama_cpp]
-base_url = "http://127.0.0.1:8080/v1"
-model = "local-model"
+model_path = "/path/to/vision-model.gguf"
+mmproj_path = "/path/to/mmproj.gguf"
+n_ctx = 4096
+n_threads = 4
+n_gpu_layers = -1
+temperature = 0.0
+max_tokens = 256
 
 [caption]
 backend = "llama_cpp"
 
 [caption.llama_cpp]
-base_url = "http://127.0.0.1:8080/v1"
-model = "local-model"
+model_path = "/path/to/vision-model.gguf"
+mmproj_path = "/path/to/mmproj.gguf"
+n_ctx = 4096
+n_threads = 4
+n_gpu_layers = -1
+temperature = 0.2
+max_tokens = 128
 ~~~
 
 Then run:
@@ -171,7 +187,9 @@ lora-data-maker clean-tags
 lora-data-maker caption
 ~~~
 
-See docs/LLAMA_CPP.md for server setup and backend details.
+The runtime stays in-process and can be shared by the future GUI between tagger and captioner. Multimodal inference uses the current MTMDChatHandler path in llama-cpp-python.
+
+See \`docs/LLAMA_CPP.md\` for runtime setup.
 
 ## Face cropping
 
