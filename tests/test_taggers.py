@@ -330,3 +330,141 @@ def test_mobile_model_load_failure_becomes_tagger_error(tmp_path):
     import pytest
     with pytest.raises(TaggerError, match="could not load mobile WD14 tagger model"):
         tagger.tag_image(tmp_path / "missing.jpg")
+
+
+
+class JoyTagFakeInput:
+    shape = [1, 3, 448, 448]
+    name = "input"
+    type = "tensor(float)"
+
+
+class JoyTagFakeOutput:
+    name = "output"
+
+
+class JoyTagFakeSession:
+    def get_inputs(self):
+        return [JoyTagFakeInput()]
+
+    def get_outputs(self):
+        return [JoyTagFakeOutput()]
+
+    def run(self, output_names, inputs):
+        batch = next(iter(inputs.values()))
+        import numpy as np
+
+        assert batch.dtype == np.float32
+        assert batch.ndim == 4
+        assert batch.shape[0] == 2
+        assert batch.shape[1:] == (3, 448, 448)
+        return [
+            np.array(
+                [
+                    [2.0, 0.0, -2.0, 1.0],
+                    [-2.0, 2.0, 0.0, -1.0],
+                ],
+                dtype=np.float32,
+            )
+        ]
+
+
+def test_joytag_labels_loads_top_tags(tmp_path):
+    labels = tmp_path / "top_tags.txt"
+    labels.write_text(
+        "1girl\n"
+        "brown_hair\n"
+        "photo_(medium)\n",
+        encoding="utf-8",
+    )
+
+    from lora_data_maker.taggers.joytag import JoyTagLabels
+
+    result = JoyTagLabels.load(labels)
+
+    assert result.names == ["1girl", "brown_hair", "photo_(medium)"]
+
+
+def test_joytag_fake_inference_uses_nchw_and_sigmoid(tmp_path):
+    import numpy as np
+    from PIL import Image
+
+    model_path = tmp_path / "model.onnx"
+    labels_path = tmp_path / "top_tags.txt"
+    model_path.write_bytes(b"fake")
+    labels_path.write_text(
+        "tag_a\n"
+        "tag_b\n"
+        "tag_c\n"
+        "tag_d\n",
+        encoding="utf-8",
+    )
+
+    first = tmp_path / "first.jpg"
+    second = tmp_path / "second.jpg"
+    Image.new("RGB", (800, 600), (255, 0, 0)).save(first, format="JPEG")
+    Image.new("RGB", (400, 800), (0, 255, 0)).save(second, format="JPEG")
+
+    from lora_data_maker.taggers.joytag import JoyTagTagger
+
+    tagger = JoyTagTagger(
+        model_cache=FakeCache(model_path, labels_path),
+        threshold=0.6,
+        batch_size=2,
+        session_factory=lambda _path: JoyTagFakeSession(),
+    )
+
+    results = tagger.tag_images([first, second])
+
+    assert len(results) == 2
+    assert results[0].tags == ["tag_a", "tag_d"]
+    assert results[1].tags == ["tag_b"]
+    assert abs(results[0].scores["tag_a"] - 0.880797) < 1e-5
+    assert abs(results[0].scores["tag_d"] - 0.731059) < 1e-5
+
+
+def test_joytag_uses_profile_defaults_and_preset():
+    from lora_data_maker.taggers import JOYTAG
+    from lora_data_maker.taggers.joytag import JoyTagTagger
+    from lora_data_maker.taggers.manager import build_tagger
+
+    tagger = build_tagger({}, preset="joytag")
+
+    assert JOYTAG.repo_id == "fancyfeast/joytag"
+    assert JOYTAG.model_filename == "model.onnx"
+    assert JOYTAG.labels_filename == "top_tags.txt"
+    assert JOYTAG.default_threshold == 0.4
+    assert isinstance(tagger, JoyTagTagger)
+    assert abs(tagger.threshold - 0.4) < 1e-9
+    assert tagger.model_cache.revision == JOYTAG.revision
+
+
+def test_joytag_invalid_input_shape_becomes_tagger_error(tmp_path):
+    from lora_data_maker.taggers.joytag import JoyTagTagger
+
+    class BrokenInput:
+        shape = [1, 4, 448, 448]
+        name = "input"
+        type = "tensor(float)"
+
+    class BrokenSession:
+        def get_inputs(self):
+            return [BrokenInput()]
+
+        def get_outputs(self):
+            return [JoyTagFakeOutput()]
+
+    model_path = tmp_path / "model.onnx"
+    labels_path = tmp_path / "top_tags.txt"
+    model_path.write_bytes(b"fake")
+    labels_path.write_text("tag\n", encoding="utf-8")
+
+    tagger = JoyTagTagger(
+        model_cache=FakeCache(model_path, labels_path),
+        session_factory=lambda _path: BrokenSession(),
+    )
+
+    import pytest
+
+    with pytest.raises(TaggerError, match="unexpected JoyTag ONNX input shape"):
+        tagger.tag_image(tmp_path / "missing.jpg")
