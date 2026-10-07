@@ -65,10 +65,16 @@ min_width = 512
 min_height = 512
 blur_threshold = 0.0
 max_aspect_ratio = 0.0
+person_check = true
+person_threshold = 0.35
+max_persons = 1
+min_subject_area = 0.12
+min_subject_visibility = 0.35
 ~~~
 
 A zero blur threshold disables blur rejection.
 A zero max aspect ratio disables that upper bound.
+When person_check is true, the quality gate runs YOLOX-Nano through ONNX Runtime and rejects images with no detected person, more than max_persons people, or a primary subject that is too small/poorly visible. The detector is cached under cache/person/ and verified against its pinned SHA-256 checksum.
 
 ## processing
 
