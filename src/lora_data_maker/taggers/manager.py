@@ -17,6 +17,7 @@ def build_tagger(
     *,
     cache_root: Path | str | None = None,
     preset: str | None = None,
+    runtime: LlamaCppRuntime | None = None,
 ) -> Tagger:
     backend = str(config.get("backend", "wd14")).strip().lower()
     if backend == "llama_cpp":
@@ -25,7 +26,7 @@ def build_tagger(
             raise TaggerError("config section [tagger.llama_cpp] must be a table")
 
         try:
-            runtime = LlamaCppRuntime(
+            selected_runtime = runtime or LlamaCppRuntime(
                 model_path=str(llama_config.get("model_path", "")),
                 mmproj_path=(
                     str(llama_config["mmproj_path"])
@@ -52,7 +53,7 @@ def build_tagger(
             raise TaggerError(str(exc)) from exc
 
         return LlamaCppVLMTagger(
-            runtime=runtime,
+            runtime=selected_runtime,
             temperature=float(llama_config.get("temperature", 0.0)),
             max_tokens=int(llama_config.get("max_tokens", 256)),
             system_prompt=llama_config.get("system_prompt"),
