@@ -191,16 +191,22 @@ class PlaywrightImagesScraper(Scraper):
     @staticmethod
     def _extract_bing_urls(page_html: str) -> list[str]:
         # Bing image results expose original URLs in the JSON stored in murl.
-        pattern = re.compile(
-            r'<a[^>]+class=["\'][^"\']*\biusc\b[^"\']*["\'][^>]+'
-            r'\bm=["\'](.*?)["\']',
+        tag_pattern = re.compile(
+            r"<a\\b[^>]*\\bclass=[\\"'][^\\"']*\\biusc\\b[^\\"']*[\\"'][^>]*>",
+            re.IGNORECASE | re.DOTALL,
+        )
+        murl_pattern = re.compile(
+            r"""\\bm=[\\"'](.*?)[\\"']""",
             re.IGNORECASE | re.DOTALL,
         )
         urls: list[str] = []
         seen: set[str] = set()
 
-        for payload in pattern.findall(page_html):
-            payload = html.unescape(payload)
+        for tag in tag_pattern.findall(page_html):
+            match = murl_pattern.search(tag)
+            if match is None:
+                continue
+            payload = html.unescape(match.group(1))
             try:
                 import json
 
@@ -213,7 +219,8 @@ class PlaywrightImagesScraper(Scraper):
                 continue
             if not image_url.startswith(("http://", "https://")):
                 continue
-            if "bing.com" in image_url.lower():
+            host = image_url.lower()
+            if "bing.com" in host:
                 continue
             if image_url in seen:
                 continue
@@ -245,7 +252,7 @@ class PlaywrightImagesScraper(Scraper):
         # Google image results commonly embed the original URL in an "ou"
         # field. Prefer it so thumbnails are never sent to the downloader.
         pattern = re.compile(
-            r'["\\']ou["\\']\\s*:\\s*["\\']((?:\\\\.|[^"\\'])+)["\\']'
+            r"""[\\"']ou[\\"']\\s*:\\s*[\\"']((?:\\\\.|[^\\"'])+)[\\"']"""
         )
         for raw in pattern.findall(page_html):
             value = PlaywrightImagesScraper._decode_json_string(raw)
