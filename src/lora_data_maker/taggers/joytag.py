@@ -206,22 +206,29 @@ class JoyTagTagger:
                     rgb = canvas.convert("RGB")
 
                     max_dim = max(rgb.size)
-                    pad_left = (max_dim - rgb.width) // 2
-                    pad_top = (max_dim - rgb.height) // 2
-                    padded = Image.new(
+                    ratio = float(self._target_size) / float(max_dim)
+                    new_size = (
+                        max(1, int(rgb.width * ratio)),
+                        max(1, int(rgb.height * ratio)),
+                    )
+                    resized = rgb.resize(
+                        new_size,
+                        Image.Resampling.BICUBIC,
+                    )
+                    square = Image.new(
                         "RGB",
-                        (max_dim, max_dim),
+                        (self._target_size, self._target_size),
                         (255, 255, 255),
                     )
-                    padded.paste(rgb, (pad_left, pad_top))
+                    square.paste(
+                        resized,
+                        (
+                            (self._target_size - new_size[0]) // 2,
+                            (self._target_size - new_size[1]) // 2,
+                        ),
+                    )
 
-                    if max_dim != self._target_size:
-                        padded = padded.resize(
-                            (self._target_size, self._target_size),
-                            Image.Resampling.BICUBIC,
-                        )
-
-                    array = np.asarray(padded, dtype=np.float32) / 255.0
+                    array = np.asarray(square, dtype=np.float32) / 255.0
                     mean = np.asarray(JOYTAG_MEAN, dtype=np.float32)
                     std = np.asarray(JOYTAG_STD, dtype=np.float32)
                     array = (array - mean) / std
