@@ -185,7 +185,7 @@ chromium
 direct
 ~~~
 
-Chromium renders Google Images and can fall back to Bing Images when Google presents a consent or verification page.
+Chromium mode uses DuckDuckGo Images first and falls back to Bing Images when DuckDuckGo cannot provide enough candidates.
 
 Example:
 
