@@ -192,11 +192,11 @@ class PlaywrightImagesScraper(Scraper):
     def _extract_bing_urls(page_html: str) -> list[str]:
         # Bing image results expose original URLs in the JSON stored in murl.
         tag_pattern = re.compile(
-            r"<a\\b[^>]*\\bclass=[\\"'][^\\"']*\\biusc\\b[^\\"']*[\\"'][^>]*>",
+            r"""<a\b[^>]*\bclass=["'][^"']*\biusc\b[^"']*["'][^>]*>""",
             re.IGNORECASE | re.DOTALL,
         )
         murl_pattern = re.compile(
-            r"""\\bm=[\\"'](.*?)[\\"']""",
+            r"""\bm=["'](.*?)["']""",
             re.IGNORECASE | re.DOTALL,
         )
         urls: list[str] = []
