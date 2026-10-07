@@ -134,3 +134,34 @@ def test_quality_accepts_visible_single_subject(tmp_path):
     assert result.person_count == 1
     assert result.subject_visibility is not None
     assert 0.0 <= result.quality_score <= 1.0
+
+
+def test_clean_manifest_propagates_person_detector_runtime_error(tmp_path):
+    from lora_data_maker.models import ImageRecord, ProjectManifest
+    from lora_data_maker.processing.clean import clean_manifest
+
+    image_path = tmp_path / "person.png"
+    _make_checkerboard(640).save(image_path)
+
+    manifest = ProjectManifest(
+        project_name="example",
+        subject="example",
+        trigger="example",
+    )
+    record = ImageRecord(path="person.png", status="validated")
+    manifest.add_image(record)
+
+    class BrokenDetector:
+        def detect(self, image):
+            raise RuntimeError("onnx inference failed")
+
+    import pytest
+
+    with pytest.raises(RuntimeError, match="onnx inference failed"):
+        clean_manifest(
+            manifest,
+            root=tmp_path,
+            person_detector=BrokenDetector(),
+        )
+
+    assert record.status == "validated"
