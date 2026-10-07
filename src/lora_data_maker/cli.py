@@ -469,7 +469,7 @@ def command_clean(args: argparse.Namespace) -> int:
                 f"config field dedup.{key} must be a boolean"
             )
 
-    person_check = bool(quality_config.get("person_check", True))
+    person_check = bool(quality_config.get("person_check", False))
     person_detector = None
     has_quality_candidates = any(
         image.status == "validated"
