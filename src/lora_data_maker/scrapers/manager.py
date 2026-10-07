@@ -120,8 +120,18 @@ class ScraperManager:
 
                 if len(downloads) >= count:
                     break
-        except ScraperError:
-            raise
+        except ScraperError as exc:
+            if downloads:
+                print(
+                    f"scrape: search source stopped; keeping "
+                    f"{len(downloads)} downloaded images: {exc}",
+                    flush=True,
+                )
+            else:
+                print(
+                    f"scrape: search source failed: {exc}",
+                    flush=True,
+                )
 
         return downloads, failures
 
