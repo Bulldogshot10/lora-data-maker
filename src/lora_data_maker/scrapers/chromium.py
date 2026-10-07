@@ -6,20 +6,27 @@ import shutil
 import time
 from pathlib import Path
 from typing import Iterator
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse
+from urllib.parse import urlencode, urlparse
 
 from .base import ImageResult, ScraperError
-from .google import DEFAULT_USER_AGENT, GoogleImagesScraper
+from .duckduckgo import DuckDuckGoImagesScraper
+
+
+DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Linux; Android 14; Mobile) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/154.0.0.0 Mobile Safari/537.36"
+)
 
 
 class ChromiumImagesScraper:
-    """Image-search scraper driven by a local headless Chromium browser.
+    """Hybrid image-search scraper using DuckDuckGo first and Bing via Chromium.
 
-    Selenium is imported lazily so the core package remains usable without the
-    optional Chromium stack.
+    DuckDuckGo's image endpoint is used first so the scraper can collect
+    candidates without starting a browser. Bing is then used through local
+    headless Chromium to fill any remaining candidate budget.
     """
 
-    GOOGLE_URL = "https://www.google.com/search"
     BING_URL = "https://www.bing.com/images/search"
 
     def __init__(
@@ -56,78 +63,83 @@ class ChromiumImagesScraper:
         if limit <= 0:
             return
 
-        print("scrape: chromium starting browser...", flush=True)
-        driver = self._start_driver()
+        seen: set[str] = set()
+        ordered_candidates: list[str] = []
+        candidate_providers: dict[str, str] = {}
+
+        print(
+            f"scrape: chromium provider=duckduckgo query={query}",
+            flush=True,
+        )
+        duckduckgo = DuckDuckGoImagesScraper(
+            timeout=self.timeout,
+            retries=self.retries,
+            delay=self.delay,
+            user_agent=self.user_agent,
+        )
 
         try:
-            providers = (
-                ("google", self.GOOGLE_URL),
-                ("bing", self.BING_URL),
+            for result in duckduckgo.search(query, limit=limit):
+                if result.image_url in seen:
+                    continue
+                seen.add(result.image_url)
+                ordered_candidates.append(result.image_url)
+                candidate_providers[result.image_url] = "duckduckgo"
+                if len(ordered_candidates) >= limit:
+                    break
+        except ScraperError as exc:
+            print(
+                f"scrape: duckduckgo unavailable; continuing with Bing Images: {exc}",
+                flush=True,
             )
 
-            seen: set[str] = set()
-            ordered_candidates: list[str] = []
-            candidate_providers: dict[str, str] = {}
-
-            for provider, base_url in providers:
-                last_candidate_count = 0
-                stagnant_rounds = 0
-
-                target_url = self._build_search_url(provider, base_url, query)
+        if len(ordered_candidates) < limit:
+            print("scrape: chromium starting browser...", flush=True)
+            driver = None
+            try:
+                driver = self._start_driver()
+                target_url = self._build_bing_search_url(query)
                 print(
-                    f"scrape: chromium provider={provider} query={query}",
+                    f"scrape: chromium provider=bing query={query}",
                     flush=True,
                 )
 
-                loaded = self._load_page(
-                    driver,
-                    target_url,
-                    provider=provider,
-                )
-                if not loaded:
-                    continue
+                self._load_page(driver, target_url)
+
+                last_candidate_count = len(ordered_candidates)
+                stagnant_rounds = 0
 
                 for scroll_no in range(1, self.max_scrolls + 1):
-                    if provider == "google":
-                        raw_items = driver.execute_script(
-                            """
-                            return Array.from(document.querySelectorAll('a[href]'))
-                                .map(a => a.href)
-                                .filter(Boolean);
-                            """
-                        )
-                        candidates = self._extract_image_urls(raw_items)
-                    else:
-                        raw_items = driver.execute_script(
-                            """
-                            return Array.from(document.querySelectorAll('a.iusc'))
-                                .map(a => a.getAttribute('m'))
-                                .filter(Boolean);
-                            """
-                        )
-                        candidates = self._extract_bing_image_urls(raw_items)
+                    raw_items = driver.execute_script(
+                        """
+                        return Array.from(document.querySelectorAll('a.iusc'))
+                            .map(a => a.getAttribute('m'))
+                            .filter(Boolean);
+                        """
+                    )
+                    candidates = self._extract_bing_image_urls(raw_items)
 
                     for candidate in candidates:
                         if candidate not in seen:
                             seen.add(candidate)
                             ordered_candidates.append(candidate)
-                            candidate_providers[candidate] = provider
+                            candidate_providers[candidate] = "bing"
 
                     print(
-                        f"scrape: chromium provider={provider} "
+                        f"scrape: chromium provider=bing "
                         f"scroll={scroll_no}/{self.max_scrolls} "
-                        f"candidates={len(seen)}",
+                        f"candidates={len(ordered_candidates)}",
                         flush=True,
                     )
 
-                    if len(seen) >= limit:
+                    if len(ordered_candidates) >= limit:
                         break
 
-                    if len(seen) == last_candidate_count:
+                    if len(ordered_candidates) == last_candidate_count:
                         stagnant_rounds += 1
                     else:
                         stagnant_rounds = 0
-                    last_candidate_count = len(seen)
+                    last_candidate_count = len(ordered_candidates)
 
                     if stagnant_rounds >= 4:
                         break
@@ -136,70 +148,61 @@ class ChromiumImagesScraper:
                         "window.scrollTo(0, document.body.scrollHeight);"
                     )
                     time.sleep(max(self.delay, 0.5))
-
-                    if provider == "google":
-                        try:
-                            self._check_page(driver)
-                        except ScraperError as exc:
-                            if "verification" in str(exc).lower():
-                                print(
-                                    "scrape: google verification detected during scroll; "
-                                    "falling back to Bing Images",
-                                    flush=True,
-                                )
-                                break
-                            raise
-
-                if len(ordered_candidates) >= limit:
-                    break
-
-                if provider == "google":
+            except ScraperError as exc:
+                if ordered_candidates:
                     print(
-                        f"scrape: google yielded {len(ordered_candidates)} candidates; "
-                        "continuing with Bing Images",
+                        f"scrape: Bing unavailable; keeping "
+                        f"{len(ordered_candidates)} collected candidates: {exc}",
                         flush=True,
                     )
-
-            if ordered_candidates:
-                for rank, image_url in enumerate(ordered_candidates, start=1):
-                    yield ImageResult(
-                        image_url=image_url,
-                        query=query,
-                        page_url=(
-                            self.GOOGLE_URL
-                            if candidate_providers.get(image_url) == "google"
-                            else self.BING_URL
-                        ),
-                        rank=rank,
-                        metadata={
-                            "provider": candidate_providers.get(
-                                image_url,
-                                "chromium",
-                            )
-                        },
+                else:
+                    raise
+            except Exception as exc:
+                if ordered_candidates:
+                    print(
+                        f"scrape: Bing failed; keeping "
+                        f"{len(ordered_candidates)} collected candidates: {exc}",
+                        flush=True,
                     )
-                    if rank >= limit:
-                        break
-                return
+                else:
+                    raise ScraperError(
+                        f"Chromium Bing scraper failed: {exc}"
+                    ) from exc
+            finally:
+                if driver is not None:
+                    try:
+                        driver.quit()
+                    except Exception:
+                        pass
 
-            raise ScraperError(
-                "Chromium image search returned no parseable image URLs "
-                "from Google or Bing"
-            )
-        except ScraperError:
-            raise
-        except Exception as exc:
-            raise ScraperError(f"Chromium scraper failed: {exc}") from exc
-        finally:
-            driver.quit()
+        if ordered_candidates:
+            for rank, image_url in enumerate(ordered_candidates, start=1):
+                provider = candidate_providers.get(image_url, "chromium")
+                page_url = (
+                    DuckDuckGoImagesScraper.SITE_URL
+                    if provider == "duckduckgo"
+                    else self.BING_URL
+                )
+                yield ImageResult(
+                    image_url=image_url,
+                    query=query,
+                    page_url=page_url,
+                    rank=rank,
+                    metadata={"provider": provider},
+                )
+                if rank >= limit:
+                    break
+            return
+
+        raise ScraperError(
+            "Chromium image search returned no parseable image URLs "
+            "from DuckDuckGo or Bing"
+        )
 
     @staticmethod
-    def _build_search_url(provider: str, base_url: str, query: str) -> str:
-        if provider == "google":
-            params = {"tbm": "isch", "q": query, "hl": "en"}
-        else:
-            params = {"q": query, "form": "HDRSC2"}
-        return f"{base_url}?{urlencode(params)}"
+    def _build_bing_search_url(query: str) -> str:
+        params = {"q": query, "form": "HDRSC2"}
+        return f"{ChromiumImagesScraper.BING_URL}?{urlencode(params)}"
 
     @staticmethod
     def _extract_bing_image_urls(payloads: object) -> list[str]:
@@ -229,7 +232,12 @@ class ChromiumImagesScraper:
                 continue
 
             host = urlparse(image_url).netloc.lower()
-            if host.endswith("bing.com") or host.endswith("mm.bing.net"):
+            if (
+                host == "bing.com"
+                or host.endswith(".bing.com")
+                or host == "mm.bing.net"
+                or host.endswith(".mm.bing.net")
+            ):
                 continue
             if image_url in seen:
                 continue
@@ -239,13 +247,7 @@ class ChromiumImagesScraper:
 
         return urls
 
-    def _load_page(
-        self,
-        driver,
-        target_url: str,
-        *,
-        provider: str,
-    ) -> bool:
+    def _load_page(self, driver, target_url: str) -> bool:
         try:
             from selenium.common.exceptions import TimeoutException, WebDriverException
         except ImportError as exc:
@@ -269,9 +271,6 @@ class ChromiumImagesScraper:
                         break
                     time.sleep(0.1)
 
-                if provider == "google":
-                    self._check_page(driver)
-
                 time.sleep(max(self.delay, 0.25))
                 return True
             except TimeoutException as exc:
@@ -283,56 +282,33 @@ class ChromiumImagesScraper:
 
                 if attempt < self.retries:
                     print(
-                        f"scrape: chromium provider={provider} "
+                        "scrape: chromium provider=bing "
                         f"page load timeout; retry={attempt + 1}/{self.retries}",
                         flush=True,
                     )
                     time.sleep(min(max(self.delay, 0.25) * (2**attempt), 30.0))
                     continue
 
-                if provider == "google":
-                    print(
-                        "scrape: google page load timed out; "
-                        "falling back to Bing Images",
-                        flush=True,
-                    )
-                    return False
-
                 raise ScraperError(
-                    f"Chromium {provider} page load timed out after "
+                    "Chromium Bing page load timed out after "
                     f"{self.retries + 1} attempts"
                 ) from exc
             except WebDriverException as exc:
                 if attempt < self.retries:
                     print(
-                        f"scrape: chromium provider={provider} "
+                        "scrape: chromium provider=bing "
                         f"webdriver error; retry={attempt + 1}/{self.retries}",
                         flush=True,
                     )
                     time.sleep(min(max(self.delay, 0.25) * (2**attempt), 30.0))
                     continue
-                if provider == "google":
-                    print(
-                        "scrape: google webdriver error; "
-                        "falling back to Bing Images",
-                        flush=True,
-                    )
-                    return False
+
                 raise ScraperError(
-                    f"Chromium {provider} webdriver error: {exc}"
+                    f"Chromium Bing webdriver error: {exc}"
                 ) from exc
-            except ScraperError as exc:
-                if provider == "google" and "verification" in str(exc).lower():
-                    print(
-                        "scrape: google verification detected; "
-                        "falling back to Bing Images",
-                        flush=True,
-                    )
-                    return False
-                raise
 
         raise ScraperError(
-            f"Chromium {provider} page load failed: {last_timeout}"
+            f"Chromium Bing page load failed: {last_timeout}"
         )
 
     def _start_driver(self):
@@ -386,79 +362,3 @@ class ChromiumImagesScraper:
             return resolved
 
         raise ScraperError(f"executable not found: {value}")
-
-    @staticmethod
-    def _extract_image_urls(hrefs: object) -> list[str]:
-        if not isinstance(hrefs, list):
-            return []
-
-        urls: list[str] = []
-        seen: set[str] = set()
-
-        for raw_href in hrefs:
-            if not isinstance(raw_href, str):
-                continue
-
-            absolute = urljoin("https://www.google.com", raw_href)
-            parsed = urlparse(absolute)
-
-            if parsed.netloc.lower().endswith(".google.com") or (
-                parsed.netloc.lower() == "google.com"
-            ):
-                values = parse_qs(parsed.query)
-                image_values = values.get("imgurl", [])
-                for image_url in image_values:
-                    normalized = image_url.strip()
-                    if not normalized.startswith(("http://", "https://")):
-                        continue
-                    image_host = urlparse(normalized).netloc.lower()
-                    if image_host == "encrypted-tbn0.gstatic.com":
-                        continue
-                    if not GoogleImagesScraper._looks_like_image_url(normalized):
-                        continue
-                    if normalized in seen:
-                        continue
-                    seen.add(normalized)
-                    urls.append(normalized)
-                continue
-
-            if "imgurl=" not in absolute:
-                continue
-
-            values = parse_qs(parsed.query)
-            for image_url in values.get("imgurl", []):
-                normalized = image_url.strip()
-                if not normalized.startswith(("http://", "https://")):
-                    continue
-                if not GoogleImagesScraper._looks_like_image_url(normalized):
-                    continue
-                if normalized in seen:
-                    continue
-                seen.add(normalized)
-                urls.append(normalized)
-
-        return urls
-
-    @staticmethod
-    def _check_page(driver) -> None:
-        try:
-            text = str(
-                driver.execute_script(
-                    "return document.body ? document.body.innerText : '';"
-                )
-            ).lower()
-            title = str(driver.title).lower()
-        except Exception as exc:
-            raise ScraperError(f"could not inspect Chromium page: {exc}") from exc
-
-        markers = (
-            "our systems have detected unusual traffic",
-            "detected unusual traffic from your computer network",
-            "before you continue to google",
-            "unusual traffic",
-        )
-        if any(marker in text or marker in title for marker in markers):
-            raise ScraperError(
-                "Google returned a consent/verification page; "
-                "the Chromium scraper does not bypass verification challenges"
-            )
