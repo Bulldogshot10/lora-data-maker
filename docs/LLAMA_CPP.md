@@ -1,42 +1,65 @@
-# llama.cpp backends
+# llama.cpp embedded runtime
 
-The project can use a local llama-server as a multimodal VLM backend for both tagging and captioning. The Python side talks to the OpenAI-compatible /v1/chat/completions endpoint, so the llama.cpp binary stays outside the Python dependency set.
+The project can run a local multimodal GGUF model directly inside the Python process through `llama-cpp-python`. The tagger and captioner do not connect to `llama-server` and do not require an HTTP endpoint.
 
-Current llama.cpp server builds expose multimodal chat input through image_url content parts. A vision model needs its supported multimodal projector enabled when the server is started.
+`llama-cpp-python` builds and installs llama.cpp alongside its Python bindings. Its current multimodal support exposes `MTMDChatHandler`, which loads an external `mmproj` and feeds image content into the same in-process Llama context. citeturn596160search0turn270397search0
 
-Example server:
+Install the optional dependency:
 
 ~~~bash
-llama-server \
-  -m /path/to/model.gguf \
-  --mmproj /path/to/mmproj.gguf \
-  --host 127.0.0.1 \
-  --port 8080
+python -m pip install ".[llama_cpp]"
 ~~~
 
-Then configure the project:
+For Termux, the upstream llama.cpp project supports building its native runtime directly on Android/Termux. The Python binding is a separate packaging layer, so the most portable GUI architecture is to keep the runtime behind a small Python adapter. citeturn974045search0turn596160search5
+
+Configure a local model and multimodal projector:
 
 ~~~toml
 [tagger]
 backend = "llama_cpp"
 
 [tagger.llama_cpp]
-base_url = "http://127.0.0.1:8080/v1"
-model = "local-model"
+model_path = "/data/data/com.termux/files/home/models/vision-Q4_K_M.gguf"
+mmproj_path = "/data/data/com.termux/files/home/models/mmproj.gguf"
+n_ctx = 4096
+n_threads = 4
+n_gpu_layers = -1
+verbose = false
 temperature = 0.0
 max_tokens = 256
+max_tags = 64
+seed = 0
 
 [caption]
 backend = "llama_cpp"
 
 [caption.llama_cpp]
-base_url = "http://127.0.0.1:8080/v1"
-model = "local-model"
+model_path = "/data/data/com.termux/files/home/models/vision-Q4_K_M.gguf"
+mmproj_path = "/data/data/com.termux/files/home/models/mmproj.gguf"
+n_ctx = 4096
+n_threads = 4
+n_gpu_layers = -1
+verbose = false
 temperature = 0.2
 max_tokens = 128
+seed = 0
 ~~~
 
-Run the stages normally:
+`n_gpu_layers = -1` asks llama.cpp to offload all supported layers. Set it to `0` for CPU-only execution. The correct value depends on the native backend compiled into the installed llama.cpp build.
+
+The runtime is intentionally reusable:
+
+~~~text
+GUI service
+    ↓
+LlamaCppRuntime (one loaded model)
+    ├── VLM tagger
+    └── VLM captioner
+~~~
+
+This means the future GUI can load one GGUF/mmproj pair and reuse the same in-memory context instead of loading the model again for every image.
+
+Basic CLI usage:
 
 ~~~bash
 lora-data-maker tag
@@ -44,15 +67,8 @@ lora-data-maker clean-tags
 lora-data-maker caption
 ~~~
 
-CLI overrides are also available:
+The tagger returns structured JSON internally and maps it into the existing `TagResult`. The later `clean-tags` stage remains responsible for dataset subject/trigger injection.
 
-~~~bash
-lora-data-maker tag --backend llama_cpp
-lora-data-maker caption --backend llama_cpp
-~~~
+The captioner receives the processed image and existing tag hints, then enforces the dataset trigger as the first caption fragment after generation.
 
-The tagger asks for JSON and maps tags, scores, ratings, and characters into the existing TagResult. The later clean-tags stage still owns subject and trigger injection.
-
-The captioner receives the image plus existing tag hints and produces a concise comma-separated caption. The dataset trigger is enforced as the first caption fragment so the LLM cannot silently drop the training identity.
-
-No llama.cpp Python wheel is required. Install or build llama-server separately and point the config at its local /v1 endpoint.
+No `llama-server`, localhost port, REST client, or Python server extra is needed for this backend. The actual native runtime is loaded in-process by `llama-cpp-python`. citeturn596160search0turn270397search0
