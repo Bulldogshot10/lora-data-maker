@@ -25,7 +25,7 @@ from .processing import (
     process_manifest,
     validate_image,
 )
-from .scrapers import ScraperError, ScraperManager
+from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
 from .taggers import (
     TAGGER_PRESETS,
     TaggerError,
@@ -83,7 +83,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     scrape_parser.add_argument(
         "backend",
-        choices=("google", "duckduckgo", "chromium", "playwright-bing", "playwright-google", "direct"),
+        choices=SCRAPER_BACKENDS,
         help="scraper backend",
     )
     scrape_parser.add_argument(
