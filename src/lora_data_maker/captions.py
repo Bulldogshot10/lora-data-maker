@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Iterable
 
+from .llama_cpp import LlamaCppError, LlamaCppRuntime
 from .paths import manifest_path
 from .taggers.filters import normalize_tag
 
@@ -109,7 +110,11 @@ def write_caption(path: Path | str, caption: str) -> Path:
     return target
 
 
-def build_captioner(config: dict[str, Any]) -> "Captioner | None":
+def build_captioner(
+    config: dict[str, Any],
+    *,
+    runtime: "LlamaCppRuntime | None" = None,
+) -> "Captioner | None":
     """Build the configured non-deterministic captioner backend."""
     backend = str(config.get("backend", "deterministic")).strip().lower()
 
@@ -124,15 +129,33 @@ def build_captioner(config: dict[str, Any]) -> "Captioner | None":
         from .captioners.llama_cpp import LlamaCppCaptioner
 
         seed_value = llama_config.get("seed")
-        return LlamaCppCaptioner(
-            base_url=str(
-                llama_config.get(
-                    "base_url",
-                    "http://127.0.0.1:8080/v1",
+        selected_runtime = runtime
+        if selected_runtime is None:
+            try:
+                selected_runtime = LlamaCppRuntime(
+                    model_path=str(llama_config.get("model_path", "")),
+                    mmproj_path=(
+                        str(llama_config["mmproj_path"])
+                        if llama_config.get("mmproj_path")
+                        else None
+                    ),
+                    n_ctx=int(llama_config.get("n_ctx", 4096)),
+                    n_threads=(
+                        int(llama_config["n_threads"])
+                        if llama_config.get("n_threads") is not None
+                        else None
+                    ),
+                    n_gpu_layers=int(llama_config.get("n_gpu_layers", 0)),
+                    verbose=bool(llama_config.get("verbose", False)),
+                    seed=int(seed_value) if seed_value is not None else None,
+                    temperature=float(llama_config.get("temperature", 0.2)),
+                    max_tokens=int(llama_config.get("max_tokens", 128)),
                 )
-            ),
-            model=str(llama_config.get("model", "local-model")),
-            timeout=float(llama_config.get("timeout", 120.0)),
+            except (LlamaCppError, ValueError) as exc:
+                raise ValueError(str(exc)) from exc
+
+        return LlamaCppCaptioner(
+            runtime=selected_runtime,
             temperature=float(llama_config.get("temperature", 0.2)),
             max_tokens=int(llama_config.get("max_tokens", 128)),
             system_prompt=llama_config.get("system_prompt"),
