@@ -947,7 +947,7 @@ def test_playwright_bing_extracts_original_urls():
 
     body = """
     <a class="iusc x" m='{"murl":"https://cdn.example.com/a.jpg"}'></a>
-    <a m='{"murl":"https://cdn.example.com/ignored.jpg"}' class="iusc"></a>
+    <a m='{"murl":"https://cdn.example.com/b.jpg"}' class="iusc"></a>
     <a class="iusc" m='{"murl":"https://tse1.mm.bing.net/thumb.jpg"}'></a>
     <a class="iusc" m='{"murl":"https://cdn.example.com/a.jpg"}'></a>
     """
