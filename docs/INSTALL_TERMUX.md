@@ -71,6 +71,33 @@ Test Google:
 lora-data-maker scrape playwright-google "julia russian woman" --count 10
 ~~~
 
+For a Google session you already logged into, use the same Chromium profile
+and enable local CDP before starting the scraper:
+
+~~~bash
+export DISPLAY=:1
+export CHROME_USER_DATA_DIR="$HOME/.local/share/lora-data-maker/google-profile"
+export CHROME_DEBUG_PORT=9222
+
+chromium-browser \
+  --user-data-dir="$CHROME_USER_DATA_DIR" \
+  --remote-debugging-port="$CHROME_DEBUG_PORT" \
+  --remote-debugging-address=127.0.0.1 \
+  --no-first-run \
+  --no-default-browser-check
+~~~
+
+Keep that Chromium process running, then run:
+
+~~~bash
+lora-data-maker scrape playwright-google "julia russian woman" --count 10
+~~~
+
+If Chromium was already running from the same profile without remote
+debugging, close that instance and restart it with the flags above. The
+`playwright-google` backend attaches to the existing browser and does not
+launch or delete a replacement profile.
+
 Google verification/consent pages are treated as a source failure. The scraper does not attempt to bypass them.
 
 ## Optional tagger runtime
