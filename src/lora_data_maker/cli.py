@@ -577,10 +577,20 @@ def command_tag(args: argparse.Namespace) -> int:
     if not isinstance(tagger_config, dict):
         raise LoraDataMakerError("config section [tagger] must be a table")
 
-    selected_preset = getattr(args, "preset", None) or str(
-        tagger_config.get("preset", "sweetspot")
-    )
-    resolved_preset = resolve_tagger_preset(selected_preset)
+    selected_backend = getattr(args, "backend", None) or str(
+        tagger_config.get("backend", "wd14")
+    ).strip().lower()
+    tagger_config = dict(tagger_config)
+    tagger_config["backend"] = selected_backend
+
+    resolved_preset = None
+    if selected_backend == "wd14":
+        selected_preset = getattr(args, "preset", None) or str(
+            tagger_config.get("preset", "sweetspot")
+        )
+        resolved_preset = resolve_tagger_preset(selected_preset)
+    elif getattr(args, "preset", None):
+        raise TaggerError("--preset can only be used with the wd14 tagger backend")
 
     tagger = build_tagger(
         tagger_config,
@@ -594,18 +604,29 @@ def command_tag(args: argparse.Namespace) -> int:
         tagger=tagger,
     )
 
-    project.manifest.source.update(
-        {
-            "last_tag_scanned": summary.scanned,
-            "last_tag_tagged": summary.tagged,
-            "last_tag_failed": summary.failed,
-            "last_tag_skipped": summary.skipped,
-            "last_tag_backend": str(tagger_config.get("backend", "wd14")),
-            "last_tag_preset": resolved_preset.name,
-            "last_tag_model": resolved_preset.repo_id,
-            "last_tag_revision": resolved_preset.revision,
-        }
-    )
+    source = {
+        "last_tag_scanned": summary.scanned,
+        "last_tag_tagged": summary.tagged,
+        "last_tag_failed": summary.failed,
+        "last_tag_skipped": summary.skipped,
+        "last_tag_backend": selected_backend,
+    }
+    if resolved_preset is not None:
+        source.update(
+            {
+                "last_tag_preset": resolved_preset.name,
+                "last_tag_model": resolved_preset.repo_id,
+                "last_tag_revision": resolved_preset.revision,
+            }
+        )
+    else:
+        source.update(
+            {
+                "last_tag_model": getattr(tagger, "model", ""),
+                "last_tag_endpoint": getattr(tagger, "base_url", ""),
+            }
+        )
+    project.manifest.source.update(source)
     project.save()
 
     print(f"scanned: {summary.scanned}")
