@@ -51,7 +51,7 @@ def test_yolox_output_decode_416():
 
     decoded = detector._decode_outputs(raw, (416, 416))
     assert decoded.shape == (1, 5)
-    assert decoded[0, 4] > 0.95
+    assert decoded[0, 4] == pytest.approx(0.81, rel=1e-5)
     assert decoded[0, 0] < 90
     assert decoded[0, 1] < 90
 
@@ -67,12 +67,10 @@ def test_person_detector_fake_session():
         def run(self, output_names, inputs):
             raw = np.zeros((1, 3549, 85), dtype=np.float32)
             raw[0, 0, :4] = [10, 10, 3, 3]
-            raw[0, 0, 4] = 8
-            raw[0, 0, 5] = 8
+            raw[0, 0, 4] = 0.9
+            raw[0, 0, 5] = 0.9
             return [raw]
 
-    model = pytest.importorskip("tempfile")
-    del model
     detector = YOLOXNanoPersonDetector.__new__(YOLOXNanoPersonDetector)
     detector._session = FakeSession()
     detector._input_name = "images"
@@ -81,7 +79,7 @@ def test_person_detector_fake_session():
 
     boxes = detector.detect(Image.new("RGB", (416, 416), "white"))
     assert len(boxes) == 1
-    assert boxes[0].confidence > 0.95
+    assert boxes[0].confidence == pytest.approx(0.81, rel=1e-5)
 
 
 def test_sha256_helper(tmp_path):
