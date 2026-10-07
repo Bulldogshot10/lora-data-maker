@@ -31,9 +31,9 @@ For direct scraping, provide a text file with one URL per line.
 
 Zero new downloads during an incremental run can simply mean every returned source URL is already known.
 
-## Scraper hits verification
+## Scraper source is blocked or returns no candidates
 
-The built-in scraper does not bypass CAPTCHA, login, or provider verification. Retry later, reduce request volume, or use a prepared direct URL list.
+Chromium mode tries DuckDuckGo Images first and Bing Images second. A provider can still return a temporary block, challenge, or empty result set. The scraper treats a failed provider as a source-level fallback condition when another provider is available. For repeated failures, retry later, reduce request volume, or use a prepared direct URL list.
 
 ## Validation rejects images
 
