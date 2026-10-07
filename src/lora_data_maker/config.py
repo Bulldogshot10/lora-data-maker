@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import tempfile
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -137,8 +139,37 @@ def write_default_config(
     )
 
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    config_path.write_text(text, encoding="utf-8")
+    _atomic_write_text(config_path, text)
     return config_path
+
+    
+def _atomic_write_text(path: Path, text: str) -> None:
+    fd = -1
+    temp_name: str | None = None
+    try:
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{path.name}.",
+            suffix=".tmp",
+            dir=path.parent,
+            text=True,
+        )
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = -1
+            handle.write(text)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temp_name, path)
+        temp_name = None
+    except OSError as exc:
+        raise ConfigError(f"could not write config {path}: {exc}") from exc
+    finally:
+        if fd >= 0:
+            os.close(fd)
+        if temp_name is not None:
+            try:
+                os.unlink(temp_name)
+            except OSError:
+                pass
 
 
 def _toml_string(value: str) -> str:
