@@ -52,3 +52,85 @@ def test_quality_accepts_good_image(tmp_path):
     assert result.valid is True
     assert result.width == 640
     assert result.height == 640
+
+
+
+def test_quality_rejects_multiple_people(tmp_path):
+    from lora_data_maker.processing.person import PersonBox
+
+    class Detector:
+        def detect(self, image):
+            return (
+                PersonBox(20, 20, 500, 600, 0.95),
+                PersonBox(100, 60, 450, 520, 0.90),
+            )
+
+    path = tmp_path / "multiple.png"
+    _make_checkerboard(640).save(path)
+
+    result = evaluate_quality(
+        path,
+        person_detector=Detector(),
+        max_persons=1,
+    )
+
+    assert result.valid is False
+    assert result.person_count == 2
+    assert "multiple people" in (result.reason or "")
+    assert "multiple people" in result.reasons
+
+
+def test_quality_rejects_missing_subject(tmp_path):
+    class Detector:
+        def detect(self, image):
+            return ()
+
+    path = tmp_path / "empty.png"
+    _make_checkerboard(640).save(path)
+
+    result = evaluate_quality(path, person_detector=Detector())
+
+    assert result.valid is False
+    assert result.person_count == 0
+    assert result.subject_visibility is None
+    assert "subject not visible" in (result.reason or "")
+
+
+def test_quality_rejects_tiny_subject(tmp_path):
+    from lora_data_maker.processing.person import PersonBox
+
+    class Detector:
+        def detect(self, image):
+            return (PersonBox(300, 300, 350, 350, 0.95),)
+
+    path = tmp_path / "tiny.png"
+    _make_checkerboard(640).save(path)
+
+    result = evaluate_quality(
+        path,
+        person_detector=Detector(),
+        min_subject_area=0.12,
+    )
+
+    assert result.valid is False
+    assert result.person_count == 1
+    assert result.subject_area_ratio < 0.12
+    assert "subject too small" in (result.reason or "")
+
+
+def test_quality_accepts_visible_single_subject(tmp_path):
+    from lora_data_maker.processing.person import PersonBox
+
+    class Detector:
+        def detect(self, image):
+            return (PersonBox(120, 40, 520, 610, 0.95),)
+
+    path = tmp_path / "person.png"
+    _make_checkerboard(640).save(path)
+
+    result = evaluate_quality(path, person_detector=Detector())
+
+    assert result.valid is True
+    assert result.person_count == 1
+    assert result.subject_visibility is not None
+    assert 0.0 <= result.quality_score <= 1.0
