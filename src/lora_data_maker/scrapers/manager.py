@@ -10,6 +10,7 @@ from .direct import DirectURLScraper
 from .duckduckgo import DuckDuckGoImagesScraper
 from .downloader import DownloadResult, ImageDownloader
 from .google import DEFAULT_USER_AGENT, GoogleImagesScraper
+from .playwright import PlaywrightImagesScraper
 
 
 class ScraperManager:
@@ -53,11 +54,25 @@ class ScraperManager:
                 delay=delay,
                 user_agent=effective_user_agent,
             )
+        elif backend == "playwright-bing":
+            self.scraper = PlaywrightImagesScraper(
+                provider="bing",
+                timeout=timeout,
+                retries=retries,
+                delay=delay,
+            )
+        elif backend == "playwright-google":
+            self.scraper = PlaywrightImagesScraper(
+                provider="google",
+                timeout=timeout,
+                retries=retries,
+                delay=delay,
+            )
         elif backend == "direct":
             self.scraper = DirectURLScraper()
         else:
             raise ScraperError(
-                f"unknown scraper backend {backend!r}; expected google, duckduckgo, chromium, or direct"
+                f"unknown scraper backend {backend!r}; expected google, duckduckgo, chromium, playwright-bing, playwright-google, or direct"
             )
 
         self.downloader = ImageDownloader(
