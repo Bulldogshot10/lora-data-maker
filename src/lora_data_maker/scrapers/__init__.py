@@ -1,4 +1,4 @@
-from .base import ImageResult, Scraper, ScraperError
+from .base import SCRAPER_BACKENDS, ImageResult, Scraper, ScraperError
 from .chromium import ChromiumImagesScraper
 from .direct import DirectURLScraper
 from .duckduckgo import DuckDuckGoImagesScraper
@@ -16,4 +16,5 @@ __all__ = [
     "Scraper",
     "ScraperError",
     "ScraperManager",
+    "SCRAPER_BACKENDS",
 ]
