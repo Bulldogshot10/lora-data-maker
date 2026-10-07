@@ -26,3 +26,6 @@ dataset/
 # Local model/cache data
 .lora-data-maker/
 models/
+
+# Local browser session profiles
+google-profile/
