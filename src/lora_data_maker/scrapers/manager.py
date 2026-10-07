@@ -89,31 +89,39 @@ class ScraperManager:
 
         print(f"scrape: searching for up to {search_limit} candidates...", flush=True)
 
-        for result in self.scraper.search(query, limit=search_limit):
-            if result.image_url in self.archive or result.image_url in known_url_set:
-                continue
-
-            try:
-                downloaded = self.downloader.download(
-                    result.image_url,
-                    self.output_dir,
-                    index=next_index,
-                    archive=self.archive,
-                )
-                if downloaded is None:
+        try:
+            candidates = self.scraper.search(query, limit=search_limit)
+            for result in candidates:
+                if result.image_url in self.archive or result.image_url in known_url_set:
                     continue
-                downloads.append(downloaded)
-                next_index += 1
-                print(
-                    f"scrape: downloaded {len(downloads)}/{count}",
-                    flush=True,
-                )
-            except ScraperError as exc:
-                failures.append((result, str(exc)))
-                continue
 
-            if len(downloads) >= count:
-                break
+                try:
+                    downloaded = self.downloader.download(
+                        result.image_url,
+                        self.output_dir,
+                        index=next_index,
+                        archive=self.archive,
+                    )
+                    if downloaded is None:
+                        continue
+                    downloads.append(downloaded)
+                    next_index += 1
+                    print(
+                        f"scrape: downloaded {len(downloads)}/{count}",
+                        flush=True,
+                    )
+                except ScraperError as exc:
+                    failures.append((result, str(exc)))
+                    print(
+                        f"scrape: skipped failed image: {result.image_url} :: {exc}",
+                        flush=True,
+                    )
+                    continue
+
+                if len(downloads) >= count:
+                    break
+        except ScraperError:
+            raise
 
         return downloads, failures
 
