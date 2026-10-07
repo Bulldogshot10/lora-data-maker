@@ -3,6 +3,7 @@ from .chromium import ChromiumImagesScraper
 from .direct import DirectURLScraper
 from .duckduckgo import DuckDuckGoImagesScraper
 from .google import GoogleImagesScraper
+from .playwright import PlaywrightImagesScraper
 from .manager import ScraperManager
 
 __all__ = [
@@ -10,6 +11,7 @@ __all__ = [
     "DirectURLScraper",
     "DuckDuckGoImagesScraper",
     "GoogleImagesScraper",
+    "PlaywrightImagesScraper",
     "ImageResult",
     "Scraper",
     "ScraperError",
