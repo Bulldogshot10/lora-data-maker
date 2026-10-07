@@ -98,11 +98,10 @@ class PlaywrightImagesScraper(Scraper):
             flush=True,
         )
 
-        browser = None
         page = None
         try:
-            browser = Chromium(headless=True)
-            page = browser.new_page()
+            with Chromium(headless=True) as browser:
+                page = browser.new_page()
             page.goto(search_url, timeout=self.timeout)
 
             seen: set[str] = set()
@@ -161,7 +160,7 @@ class PlaywrightImagesScraper(Scraper):
                         int(max(self.delay, 0.5) * 1000)
                     )
 
-            return results
+                return results
         except ScraperError:
             raise
         except Exception as exc:
@@ -172,11 +171,6 @@ class PlaywrightImagesScraper(Scraper):
             if page is not None:
                 try:
                     page.close()
-                except Exception:
-                    pass
-            if browser is not None:
-                try:
-                    browser.close()
                 except Exception:
                     pass
 
