@@ -136,6 +136,12 @@ Scrapers implement a common interface and produce download records plus source m
 
 Google Images is its own backend. External downloaders such as gallery-dl may be integrated as optional backends for sources they support, but the Google backend must not depend on them.
 
+The `playwright-google` backend normally uses an isolated Termux-native
+Chromium profile. When `CHROME_USER_DATA_DIR` is explicitly set, it instead
+attaches to an already-running local Chromium instance over CDP so an existing
+Google login/session can be reused. The authenticated profile is never copied
+or deleted by the scraper, and CDP is restricted to a loopback endpoint.
+
 ## Non-goals
 
 The following are out of scope for v1:
