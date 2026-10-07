@@ -239,6 +239,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="exported dataset directory; defaults to the last export",
     )
 
+    web_parser = subparsers.add_parser(
+        "web", help="start the localhost WebUI"
+    )
+    web_parser.add_argument(
+        "--path",
+        default=".",
+        help="dataset project directory (default: current directory)",
+    )
+    web_parser.add_argument("--host", default="127.0.0.1")
+    web_parser.add_argument("--port", type=int, default=8787)
+
     return parser
 
 
@@ -998,6 +1009,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return command_export(args)
         if args.command == "pack":
             return command_pack(args)
+        if args.command == "web":
+            from .web import serve
+            serve(args.path, host=args.host, port=args.port)
+            return 0
     except KeyboardInterrupt:
         logger.error("operation cancelled by user")
         return 130
