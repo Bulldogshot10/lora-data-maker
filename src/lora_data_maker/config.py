@@ -63,6 +63,15 @@ use_mcut = false
 batch_size = 1
 download_timeout = 60
 
+[tagger.llama_cpp]
+base_url = "http://127.0.0.1:8080/v1"
+model = "local-model"
+timeout = 120
+temperature = 0.0
+max_tokens = 256
+max_tags = 64
+seed = 0
+
 [tag_rules]
 remove = [
   "watermark",
@@ -72,9 +81,18 @@ remove = [
 ]
 
 [caption]
+backend = "deterministic"
 separator = ", "
 subject_position = "first"
 trigger_from_subject = true
+
+[caption.llama_cpp]
+base_url = "http://127.0.0.1:8080/v1"
+model = "local-model"
+timeout = 120
+temperature = 0.2
+max_tokens = 128
+seed = 0
 
 [export]
 repeats = 1
