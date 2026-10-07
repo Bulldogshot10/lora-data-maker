@@ -62,6 +62,12 @@ class DatasetProject:
         return cls(paths, load_manifest(paths.root / MANIFEST_FILENAME))
 
     def save(self) -> Path:
+        try:
+            self.manifest.config_snapshot = load_config(self.paths.config)
+        except Exception as exc:
+            raise ProjectError(
+                f"could not refresh manifest config snapshot: {exc}"
+            ) from exc
         self.manifest.touch()
         return save_manifest(self.manifest, self.manifest_path)
 
