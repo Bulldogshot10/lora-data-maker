@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 from ..captions import resolve_trigger
-from ..llama_cpp import LlamaCppClient, LlamaCppError
+from ..llama_cpp import LlamaCppError, LlamaCppRuntime
 from .base import Captioner
 
 
@@ -16,26 +16,18 @@ DEFAULT_SYSTEM_PROMPT = (
 
 
 class LlamaCppCaptioner(Captioner):
-    """Vision captioner backed by llama.cpp's multimodal chat endpoint."""
+    """Vision captioner backed by an embedded llama.cpp runtime."""
 
     def __init__(
         self,
         *,
-        base_url: str = "http://127.0.0.1:8080/v1",
-        model: str = "local-model",
-        timeout: float = 120.0,
+        runtime: LlamaCppRuntime,
         temperature: float = 0.2,
         max_tokens: int = 128,
         system_prompt: str | None = None,
         seed: int | None = None,
-        session=None,
     ) -> None:
-        self.client = LlamaCppClient(
-            base_url=base_url,
-            model=model,
-            timeout=timeout,
-            session=session,
-        )
+        self.runtime = runtime
         self.temperature = float(temperature)
         self.max_tokens = int(max_tokens)
         self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
@@ -43,11 +35,7 @@ class LlamaCppCaptioner(Captioner):
 
     @property
     def model(self) -> str:
-        return self.client.model
-
-    @property
-    def base_url(self) -> str:
-        return self.client.base_url
+        return str(self.runtime.model_path)
 
     def caption_image(
         self,
@@ -78,7 +66,7 @@ class LlamaCppCaptioner(Captioner):
         )
 
         try:
-            generated = self.client.chat_with_image(
+            generated = self.runtime.chat_with_image(
                 path,
                 prompt,
                 system_prompt=self.system_prompt,
