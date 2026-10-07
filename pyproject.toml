@@ -30,6 +30,9 @@ chromium = [
 playwright = [
   "playwright-termux==2.0.0",
 ]
+llama_cpp = [
+  "llama-cpp-python>=0.3.36,<0.4",
+]
 dev = [
   "numpy>=1.26,<3",
   "pytest>=8,<9",
