@@ -190,7 +190,7 @@ def build_parser() -> argparse.ArgumentParser:
         "--to-stage",
         choices=BUILD_STAGES,
         default=BUILD_STAGES[-1],
-        help="last stage to run (default: caption)",
+        help="last stage to run (default: pack)",
     )
     build_parser.add_argument(
         "--skip",
