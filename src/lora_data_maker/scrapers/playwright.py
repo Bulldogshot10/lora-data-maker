@@ -252,7 +252,7 @@ class PlaywrightImagesScraper(Scraper):
         # Google image results commonly embed the original URL in an "ou"
         # field. Prefer it so thumbnails are never sent to the downloader.
         pattern = re.compile(
-            r"""[\\"']ou[\\"']\\s*:\\s*[\\"']((?:\\\\.|[^\\"'])+)[\\"']"""
+            r"""["']ou["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
         )
         for raw in pattern.findall(page_html):
             value = PlaywrightImagesScraper._decode_json_string(raw)
