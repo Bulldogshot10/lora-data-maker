@@ -8,6 +8,7 @@ from typing import Sequence
 from . import __version__
 from .build import BUILD_STAGES, run_build
 from .captions import CaptionConfig, build_captioner, caption_manifest
+from .llama_cpp import LlamaCppError
 from .export import export_manifest, kohya_folder_name, safe_component
 from .config import load_config, write_default_config
 from .dataset import DatasetProject
@@ -1058,6 +1059,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         KeyError,
         ScraperError,
         TaggerError,
+        LlamaCppError,
     ) as exc:
         logger.error(str(exc))
         return 1
