@@ -1,0 +1,32 @@
+name: WebUI smoke
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src/lora_data_maker/web.py"
+      - "src/lora_data_maker/cli.py"
+      - "pyproject.toml"
+      - "tests/test_web.py"
+      - ".github/workflows/web-smoke.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/lora_data_maker/web.py"
+      - "src/lora_data_maker/cli.py"
+      - "pyproject.toml"
+      - "tests/test_web.py"
+      - ".github/workflows/web-smoke.yml"
+  workflow_dispatch:
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: python -m pip install --upgrade pip
+      - run: pip install -e ".[web,tagger,dev]"
+      - run: pytest -q tests/test_web.py
