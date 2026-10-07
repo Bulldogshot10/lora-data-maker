@@ -90,3 +90,24 @@ def test_sha256_helper(tmp_path):
     assert _sha256_file(path) == (
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     )
+
+
+def test_yolox_preprocess_matches_model_contract():
+    detector = YOLOXNanoPersonDetector.__new__(YOLOXNanoPersonDetector)
+    detector._np = np
+    detector.INPUT_SIZE = (416, 416)
+
+    image = Image.new("RGB", (208, 416), (255, 0, 0))
+    tensor = detector._preprocess(image)
+
+    assert tensor.shape == (1, 3, 416, 416)
+    assert tensor.dtype == np.float32
+    assert tensor.flags["C_CONTIGUOUS"]
+    # YOLOX deployment preprocessing keeps uint8 scale as float32 and
+    # places the resized image at the top-left of the padded canvas.
+    assert tensor[0, 0, 0, 0] == pytest.approx(0.0)
+    assert tensor[0, 2, 0, 0] == pytest.approx(255.0)
+    assert tensor[0, 0, 0, 415] == pytest.approx(0.0)
+    assert tensor[0, 2, 0, 415] == pytest.approx(255.0)
+    assert tensor[0, 0, 415, 0] == pytest.approx(0.0)
+    assert tensor[0, 2, 415, 0] == pytest.approx(255.0)
