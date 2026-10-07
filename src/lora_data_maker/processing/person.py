@@ -136,6 +136,7 @@ class YOLOXNanoPersonDetector:
         return str(inputs[0].name)
 
     def _preprocess(self, image: Image.Image) -> np.ndarray:
+        np = self._np
         working = np.asarray(image.convert("RGB"), dtype=np.uint8)[..., ::-1]
         original_height, original_width = working.shape[:2]
         target_width, target_height = self.INPUT_SIZE
@@ -172,6 +173,7 @@ class YOLOXNanoPersonDetector:
         output: np.ndarray,
         image_size: tuple[int, int],
     ) -> np.ndarray:
+        np = self._np
         output_array = np.asarray(output)
         if output_array.ndim == 3:
             output_array = output_array[0]
