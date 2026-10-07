@@ -47,8 +47,8 @@ def test_yolox_output_decode_416():
 
     raw = np.zeros((1, 3549, 85), dtype=np.float32)
     raw[0, 0, :4] = [10.0, 10.0, 1.0, 1.0]
-    raw[0, 0, 4] = 8.0
-    raw[0, 0, 5] = 8.0
+    raw[0, 0, 4] = 0.9
+    raw[0, 0, 5] = 0.9
 
     decoded = detector._decode_outputs(raw, (416, 416))
     assert decoded.shape == (1, 5)
