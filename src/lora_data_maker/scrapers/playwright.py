@@ -103,7 +103,7 @@ class PlaywrightImagesScraper(Scraper):
         try:
             browser = Chromium(headless=True)
             page = browser.new_page()
-            page.goto(search_url)
+            page.goto(search_url, timeout=self.timeout)
 
             seen: set[str] = set()
             results: list[ImageResult] = []
