@@ -4,152 +4,89 @@ import pytest
 
 from lora_data_maker.captioners import LlamaCppCaptioner
 from lora_data_maker.captions import CaptionConfig, build_captioner, caption_manifest
-from lora_data_maker.llama_cpp import LlamaCppClient, LlamaCppError
+from lora_data_maker.llama_cpp import LlamaCppError, LlamaCppRuntime
 from lora_data_maker.models import ImageRecord, ProjectManifest
 from lora_data_maker.taggers import LlamaCppVLMTagger, TaggerError
 
 
-class FakeResponse:
-    def __init__(self, payload, *, status=200):
-        self.payload = payload
-        self.status = status
-
-    @property
-    def ok(self):
-        return self.status < 400
-
-    def raise_for_status(self):
-        if self.status >= 400:
-            import requests
-            raise requests.HTTPError(f"HTTP {self.status}")
-
-    def json(self):
-        return self.payload
-
-
-class FakeSession:
-    def __init__(self, content):
-        self.content = content
+class FakeRuntime:
+    def __init__(self, response):
+        self.response = response
         self.calls = []
 
-    def post(self, url, *, json, timeout):
-        self.calls.append((url, json, timeout))
-        return FakeResponse(
-            {
-                "choices": [
-                    {
-                        "message": {
-                            "content": self.content,
-                        }
-                    }
-                ]
-            }
+        self.model_path = Path("/models/vision.gguf")
+        self.mmproj_path = Path("/models/mmproj.gguf")
+
+    def chat_with_image(self, path, prompt, **kwargs):
+        self.calls.append((Path(path), prompt, kwargs))
+        return self.response
+
+
+def test_runtime_rejects_missing_model(tmp_path):
+    with pytest.raises(LlamaCppError, match="model not found"):
+        LlamaCppRuntime(model_path=tmp_path / "missing.gguf")
+
+
+def test_runtime_rejects_missing_mmproj(tmp_path):
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"model")
+
+    with pytest.raises(LlamaCppError, match="mmproj not found"):
+        LlamaCppRuntime(
+            model_path=model,
+            mmproj_path=tmp_path / "missing-mmproj.gguf",
         )
-
-    def get(self, url, *, timeout):
-        self.calls.append((url, timeout))
-        return FakeResponse({"data": []})
-
-
-def test_llama_cpp_client_sends_openai_compatible_image_payload(tmp_path):
-    image = tmp_path / "image.jpg"
-    image.write_bytes(b"fake-jpeg")
-    session = FakeSession("ok")
-
-    client = LlamaCppClient(
-        base_url="http://127.0.0.1:8080/v1/",
-        model="qwen-vl",
-        timeout=9,
-        session=session,
-    )
-
-    result = client.chat_with_image(
-        image,
-        "Describe this image",
-        system_prompt="System",
-        temperature=0.1,
-        max_tokens=32,
-        seed=7,
-    )
-
-    assert result == "ok"
-    url, payload, timeout = session.calls[0]
-    assert url == "http://127.0.0.1:8080/v1/chat/completions"
-    assert timeout == 9
-    assert payload["model"] == "qwen-vl"
-    assert payload["temperature"] == 0.1
-    assert payload["max_tokens"] == 32
-    assert payload["seed"] == 7
-    assert payload["messages"][0]["role"] == "system"
-    content = payload["messages"][1]["content"]
-    assert content[0]["type"] == "image_url"
-    assert content[0]["image_url"]["url"].startswith("data:image/jpeg;base64,")
-    assert content[1]["text"] == "Describe this image"
-
-
-def test_llama_cpp_client_health_uses_models_endpoint():
-    session = FakeSession("ok")
-    client = LlamaCppClient(session=session)
-
-    assert client.health() is True
-    assert session.calls[0][0] == "http://127.0.0.1:8080/v1/models"
 
 
 def test_llama_cpp_tagger_parses_json_and_normalizes_tags(tmp_path):
     image = tmp_path / "image.jpg"
     image.write_bytes(b"fake")
-    session = FakeSession(
+
+    runtime = FakeRuntime(
         '{"tags":["blue_eyes","blue eyes","portrait"],'
         '"ratings":{"safe":0.99},"characters":{"someone":0.91}}'
     )
+    tagger = LlamaCppVLMTagger(runtime=runtime, seed=1)
 
-    tagger = LlamaCppVLMTagger(
-        model="vision-model",
-        session=session,
-        seed=1,
-    )
     result = tagger.tag_image(image)
 
     assert result.tags == ["blue eyes", "portrait"]
     assert result.ratings == {"safe": 0.99}
     assert result.characters == {"someone": 0.91}
-    assert session.calls[0][1]["response_format"] == {"type": "json_object"}
+    assert runtime.calls[0][2]["response_format"] == {"type": "json_object"}
+    assert runtime.calls[0][0] == image
 
 
 def test_llama_cpp_tagger_rejects_invalid_json(tmp_path):
     image = tmp_path / "image.jpg"
     image.write_bytes(b"fake")
-    tagger = LlamaCppVLMTagger(session=FakeSession("not-json"))
+
+    tagger = LlamaCppVLMTagger(
+        runtime=FakeRuntime("not-json"),
+    )
 
     with pytest.raises(TaggerError, match="invalid JSON"):
         tagger.tag_image(image)
 
 
-def test_build_tagger_supports_llama_cpp_backend():
-    from lora_data_maker.taggers import build_tagger
+def test_llama_cpp_tagger_can_share_runtime(tmp_path):
+    image = tmp_path / "image.jpg"
+    image.write_bytes(b"fake")
 
-    tagger = build_tagger(
-        {
-            "backend": "llama_cpp",
-            "llama_cpp": {
-                "base_url": "http://127.0.0.1:8080/v1",
-                "model": "vision-model",
-            },
-        }
-    )
+    runtime = FakeRuntime('{"tags":["portrait"]}')
+    tagger = LlamaCppVLMTagger(runtime=runtime)
 
-    assert isinstance(tagger, LlamaCppVLMTagger)
-    assert tagger.model == "vision-model"
+    assert tagger.runtime is runtime
 
 
 def test_llama_cpp_captioner_adds_trigger_prefix(tmp_path):
     image = tmp_path / "image.jpg"
     image.write_bytes(b"fake")
-    session = FakeSession("blonde hair, white top, portrait.")
+
+    runtime = FakeRuntime("blonde hair, white top, portrait.")
 
     captioner = LlamaCppCaptioner(
-        model="vision-model",
-        session=session,
+        runtime=runtime,
     )
     result = captioner.caption_image(
         image,
@@ -161,20 +98,51 @@ def test_llama_cpp_captioner_adds_trigger_prefix(tmp_path):
     )
 
     assert result == "julia, blonde hair, white top, portrait"
+    assert runtime.calls[0][0] == image
+    assert "Existing tag hints: blonde hair, portrait" in runtime.calls[0][1]
 
 
-def test_build_captioner_supports_llama_cpp_backend():
+def test_build_tagger_supports_llama_cpp_backend(tmp_path):
+    from lora_data_maker.taggers import build_tagger
+
+    model = tmp_path / "vision.gguf"
+    mmproj = tmp_path / "mmproj.gguf"
+    model.write_bytes(b"model")
+    mmproj.write_bytes(b"mmproj")
+
+    tagger = build_tagger(
+        {
+            "backend": "llama_cpp",
+            "llama_cpp": {
+                "model_path": str(model),
+                "mmproj_path": str(mmproj),
+            },
+        }
+    )
+
+    assert isinstance(tagger, LlamaCppVLMTagger)
+    assert tagger.runtime.model_path == model.resolve()
+    assert tagger.runtime.mmproj_path == mmproj.resolve()
+
+
+def test_build_captioner_supports_llama_cpp_backend(tmp_path):
+    model = tmp_path / "caption.gguf"
+    mmproj = tmp_path / "mmproj.gguf"
+    model.write_bytes(b"model")
+    mmproj.write_bytes(b"mmproj")
+
     captioner = build_captioner(
         {
             "backend": "llama_cpp",
             "llama_cpp": {
-                "model": "caption-model",
+                "model_path": str(model),
+                "mmproj_path": str(mmproj),
             },
         }
     )
 
     assert isinstance(captioner, LlamaCppCaptioner)
-    assert captioner.model == "caption-model"
+    assert captioner.runtime.model_path == model.resolve()
 
 
 def test_caption_manifest_uses_llama_cpp_captioner(tmp_path):
@@ -196,9 +164,8 @@ def test_caption_manifest_uses_llama_cpp_captioner(tmp_path):
     )
     manifest.add_image(image)
 
-    captioner = LlamaCppCaptioner(
-        session=FakeSession("portrait, blonde hair."),
-    )
+    runtime = FakeRuntime("portrait, blonde hair.")
+    captioner = LlamaCppCaptioner(runtime=runtime)
     summary = caption_manifest(
         manifest,
         root=tmp_path,
@@ -213,14 +180,15 @@ def test_caption_manifest_uses_llama_cpp_captioner(tmp_path):
         (tmp_path / image.caption_path).read_text(encoding="utf-8")
         == "julia, portrait, blonde hair\n"
     )
+    assert runtime.calls[0][0] == image_path
 
 
-def test_llama_cpp_rejects_http_errors():
-    class ErrorSession:
-        def post(self, url, *, json, timeout):
-            return FakeResponse({}, status=503)
+def test_runtime_import_is_lazy(tmp_path, monkeypatch):
+    model = tmp_path / "model.gguf"
+    model.write_bytes(b"model")
+    runtime = LlamaCppRuntime(model_path=model)
 
-    client = LlamaCppClient(session=ErrorSession())
+    monkeypatch.setitem(__import__("sys").modules, "llama_cpp", None)
 
-    with pytest.raises(LlamaCppError, match="request failed"):
-        client.chat([{"role": "user", "content": "hi"}])
+    with pytest.raises(LlamaCppError, match="requires llama-cpp-python"):
+        runtime.load()
