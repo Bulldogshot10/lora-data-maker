@@ -973,6 +973,21 @@ def test_playwright_bing_parser_handles_html_entities_and_quote_styles():
     ]
 
 
+
+def test_playwright_url_filters_use_hostname_boundaries():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    assert PlaywrightImagesScraper._valid_image_candidate(
+        "https://evilgoogle.com/image.jpg", set()
+    )
+    assert not PlaywrightImagesScraper._valid_image_candidate(
+        "https://gstatic.com/image.jpg", set()
+    )
+    assert PlaywrightImagesScraper._extract_bing_urls(
+        '<a class="iusc" m=\'{"murl":"https://evilbing.com/image.jpg"}\'></a>'
+    ) == ["https://evilbing.com/image.jpg"]
+
+
 def test_playwright_manager_passes_max_scrolls(monkeypatch, tmp_path):
     import lora_data_maker.scrapers.manager as manager_module
 
