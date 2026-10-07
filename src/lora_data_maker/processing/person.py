@@ -32,6 +32,67 @@ class PersonBox:
 
 
 class PersonDetector(Protocol):
+    def detect(self, image: Image.Image) -> Sequence[PersonBox]:
+        """Return person bounding boxes in source-image coordinates."""
+
+
+class YOLOXNanoPersonDetector:
+    """YOLOX-Nano COCO person detector using ONNX Runtime only."""
+
+    MODEL_FILENAME = "yolox_nano.onnx"
+    MODEL_URL = (
+        "https://huggingface.co/hr16/yolox-onnx/resolve/"
+        "761141cbf90ddd9438943b3cd1b1c46ade29c714/yolox_nano.onnx"
+    )
+    MODEL_SHA256 = (
+        "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d"
+    )
+    MODEL_REVISION = "761141cbf90ddd9438943b3cd1b1c46ade29c714"
+    INPUT_SIZE = (416, 416)
+    PERSON_CLASS_ID = 0
+
+    def __init__(
+        self,
+        *,
+        cache_dir: Path | str | None = None,
+        model_path: Path | str | None = None,
+        confidence_threshold: float = 0.35,
+        nms_threshold: float = 0.45,
+        providers: Sequence[str] | None = None,
+        session_factory: Callable[..., object] | None = None,
+    ) -> None:
+        if not 0 < confidence_threshold <= 1:
+            raise ValueError("confidence_threshold must be between 0 and 1")
+        if not 0 < nms_threshold <= 1:
+            raise ValueError("nms_threshold must be between 0 and 1")
+
+        self.confidence_threshold = float(confidence_threshold)
+        self.nms_threshold = float(nms_threshold)
+        self.model_path = self._resolve_model_path(
+            cache_dir=cache_dir,
+            model_path=model_path,
+        )
+
+        try:
+            import numpy as np
+            import onnxruntime as ort
+        except ImportError as exc:
+            raise RuntimeError(
+                "person quality checks require NumPy and ONNX Runtime; "
+                "install: python -m pip install '.[quality]'"
+            ) from exc
+
+        factory = session_factory or ort.InferenceSession
+        if providers is None:
+            providers = ("CPUExecutionProvider",)
+        self._np = np
+        self._session = factory(
+            str(self.model_path),
+            sess_options=None,
+            providers=list(providers),
+        )
+        self._input_name = self._get_input_name()
+
     def _resolve_model_path(
         self,
         *,
@@ -117,74 +178,13 @@ class PersonDetector(Protocol):
             except FileNotFoundError:
                 pass
             raise
-    def detect(self, image: Image.Image) -> Sequence[PersonBox]:
-        """Return person bounding boxes in source-image coordinates."""
-
-
-class YOLOXNanoPersonDetector:
-    """YOLOX-Nano COCO person detector using ONNX Runtime only."""
-
-    MODEL_FILENAME = "yolox_nano.onnx"
-    MODEL_URL = (
-        "https://huggingface.co/hr16/yolox-onnx/resolve/"
-        "761141cbf90ddd9438943b3cd1b1c46ade29c714/yolox_nano.onnx"
-    )
-    MODEL_SHA256 = (
-        "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d"
-    )
-    MODEL_REVISION = "761141cbf90ddd9438943b3cd1b1c46ade29c714"
-    INPUT_SIZE = (416, 416)
-    PERSON_CLASS_ID = 0
-
-    def __init__(
-        self,
-        *,
-        cache_dir: Path | str | None = None,
-        model_path: Path | str | None = None,
-        confidence_threshold: float = 0.35,
-        nms_threshold: float = 0.45,
-        providers: Sequence[str] | None = None,
-        session_factory: Callable[..., object] | None = None,
-    ) -> None:
-        if not 0 < confidence_threshold <= 1:
-            raise ValueError("confidence_threshold must be between 0 and 1")
-        if not 0 < nms_threshold <= 1:
-            raise ValueError("nms_threshold must be between 0 and 1")
-
-        self.confidence_threshold = float(confidence_threshold)
-        self.nms_threshold = float(nms_threshold)
-        self.model_path = self._resolve_model_path(
-            cache_dir=cache_dir,
-            model_path=model_path,
-        )
-
-        try:
-            import numpy as np
-            import onnxruntime as ort
-        except ImportError as exc:
-            raise RuntimeError(
-                "person quality checks require NumPy and ONNX Runtime; "
-                "install: python -m pip install '.[quality]'"
-            ) from exc
-
-        factory = session_factory or ort.InferenceSession
-        session_options = None
-        if providers is None:
-            providers = ("CPUExecutionProvider",)
-        self._np = np
-        self._session = factory(
-            str(self.model_path),
-            sess_options=session_options,
-            providers=list(providers),
-        )
-
-        self._input_name = self._get_input_name()
 
     def detect(self, image: Image.Image) -> Sequence[PersonBox]:
         array = self._preprocess(image)
         outputs = self._session.run(None, {self._input_name: array})
         if not outputs:
             return ()
+
         decoded = self._decode_outputs(outputs[0], image.size)
         if decoded.size == 0:
             return ()
@@ -220,7 +220,7 @@ class YOLOXNanoPersonDetector:
             raise RuntimeError("YOLOX-Nano model has no inputs")
         return str(inputs[0].name)
 
-    def _preprocess(self, image: Image.Image) -> np.ndarray:
+    def _preprocess(self, image: Image.Image) -> "np.ndarray":
         np = self._np
         working = np.asarray(image.convert("RGB"), dtype=np.uint8)[..., ::-1]
         original_height, original_width = working.shape[:2]
@@ -255,9 +255,9 @@ class YOLOXNanoPersonDetector:
 
     def _decode_outputs(
         self,
-        output: np.ndarray,
+        output: "np.ndarray",
         image_size: tuple[int, int],
-    ) -> np.ndarray:
+    ) -> "np.ndarray":
         np = self._np
         output_array = np.asarray(output)
         if output_array.ndim == 3:
@@ -274,8 +274,8 @@ class YOLOXNanoPersonDetector:
             )
 
         count = output_array.shape[0]
-        grids: list[np.ndarray] = []
-        expanded_strides: list[np.ndarray] = []
+        grids: list["np.ndarray"] = []
+        expanded_strides: list["np.ndarray"] = []
         for stride in (8, 16, 32):
             height = self.INPUT_SIZE[1] // stride
             width = self.INPUT_SIZE[0] // stride
@@ -300,7 +300,9 @@ class YOLOXNanoPersonDetector:
 
         decoded = output_array.astype(np.float32, copy=True)
         decoded[:, :2] = (decoded[:, :2] + grid_array) * stride_array
-        decoded[:, 2:4] = np.exp(np.clip(decoded[:, 2:4], -10, 10)) * stride_array
+        decoded[:, 2:4] = np.exp(
+            np.clip(decoded[:, 2:4], -10, 10)
+        ) * stride_array
 
         objectness = decoded[:, 4]
         class_scores = decoded[:, 5:]
@@ -338,6 +340,7 @@ def _nms(
     threshold: float,
 ) -> list[int]:
     import numpy as np
+
     if len(boxes) == 0:
         return []
 
