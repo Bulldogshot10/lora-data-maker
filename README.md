@@ -200,7 +200,8 @@ direct
 
 `chromium` is the existing Selenium backend. The Playwright backends use
 Termux-native Chromium and extract original image URLs from the rendered
-Google or Bing Images pages.
+Google or Bing Images pages. The Playwright navigation layer uses direct CDP navigation
+because the Termux adapter's stock navigation waiter can race lifecycle events.
 
 Example:
 
@@ -252,7 +253,7 @@ python -m pip install ".[dev]"
 pytest -q
 ~~~
 
-The project CI smoke-tests Python 3.12 and 3.13, including package installation, compilation, tests, CLI entry points, documentation files, and project initialization.
+The project CI smoke-tests Python 3.12, 3.13, and 3.14, including package installation, compilation, tests, CLI entry points, documentation files, and project initialization.
 
 ## License
 
