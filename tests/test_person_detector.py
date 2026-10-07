@@ -113,7 +113,7 @@ def test_yolox_preprocess_matches_model_contract():
     assert tensor[0, :, 415, 0].tolist() == pytest.approx([0.0, 0.0, 255.0])
 
 
-def test_yolox_real_model_smoke(tmp_path, monkeypatch):
+def test_yolox_real_model_smoke(tmp_path):
     model_path = os.environ.get("LORA_DATA_MAKER_YOLOX_MODEL")
     if not model_path:
         pytest.skip("real YOLOX model not provided")
