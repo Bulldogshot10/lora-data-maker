@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import Tagger, TaggerError
+from .llama_cpp import LlamaCppVLMTagger
 from .mobile import MobileWD14Tagger
 from .model import HuggingFaceModelCache
 from .presets import resolve_tagger_preset
@@ -17,9 +18,27 @@ def build_tagger(
     preset: str | None = None,
 ) -> Tagger:
     backend = str(config.get("backend", "wd14")).strip().lower()
+    if backend == "llama_cpp":
+        llama_config = config.get("llama_cpp", {})
+        if not isinstance(llama_config, dict):
+            raise TaggerError("config section [tagger.llama_cpp] must be a table")
+
+        seed_value = llama_config.get("seed")
+        return LlamaCppVLMTagger(
+            base_url=str(llama_config.get("base_url", "http://127.0.0.1:8080/v1")),
+            model=str(llama_config.get("model", "local-model")),
+            timeout=float(llama_config.get("timeout", 120.0)),
+            temperature=float(llama_config.get("temperature", 0.0)),
+            max_tokens=int(llama_config.get("max_tokens", 256)),
+            system_prompt=llama_config.get("system_prompt"),
+            prompt=llama_config.get("prompt"),
+            seed=int(seed_value) if seed_value is not None else None,
+            max_tags=int(llama_config.get("max_tags", 64)),
+        )
+
     if backend != "wd14":
         raise TaggerError(
-            f"unsupported tagger backend {backend!r}; expected 'wd14'"
+            f"unsupported tagger backend {backend!r}; expected 'wd14' or 'llama_cpp'"
         )
 
     profile = resolve_tagger_preset(
