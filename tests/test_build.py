@@ -170,3 +170,67 @@ def test_build_tag_command_namespace_works_without_preset(tmp_path, monkeypatch)
     )
 
     assert command_tag(Namespace(path=str(root))) == 1
+
+
+def test_run_build_does_not_validate_unused_scraper_config(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia-set",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace('[scraper]\nbackend = "duckduckgo"', '[scraper]\nbackend = "not-a-real-backend"')
+    config_path.write_text(config, encoding="utf-8")
+
+    import lora_data_maker.cli as cli
+
+    calls = []
+
+    def fake_command(name):
+        def runner(args):
+            calls.append(name)
+            return 0
+        return runner
+
+    for stage in BUILD_STAGES:
+        monkeypatch.setattr(cli, f"command_{stage.replace('-', '_')}", fake_command(stage))
+
+    summary = run_build(
+        path=root,
+        from_stage="validate",
+        to_stage="validate",
+    )
+
+    assert summary.success is True
+    assert calls == ["validate"]
+
+
+def test_dataset_save_refreshes_config_snapshot(tmp_path):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia-set",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace('name = "julia-set"', 'name = "changed-name"', 1)
+    config_path.write_text(config, encoding="utf-8")
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    project.save()
+
+    refreshed = DatasetProject.open(ProjectPaths.from_root(root))
+    assert refreshed.manifest.config_snapshot["project"]["name"] == "changed-name"
