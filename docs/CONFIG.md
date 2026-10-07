@@ -114,7 +114,18 @@ batch_size = 1
 download_timeout = 60
 ~~~
 
-Built-in presets pin the model repository, revision, filenames, and model SHA-256. Use sweetspot for the default WD ViT tagger or potato for the smallest mobile SwinV2 tagger.
+For JoyTag:
+
+~~~toml
+[tagger]
+backend = "joytag"
+preset = "joytag"
+threshold = 0.4
+batch_size = 1
+download_timeout = 60
+~~~
+
+Built-in presets pin the model repository, revision, filenames, and model SHA-256. Use sweetspot for the default WD ViT tagger, potato for the smallest mobile SwinV2 tagger, or joytag for the JoyTag ViT-B/16 ONNX tagger. JoyTag uses a 0.4 default threshold when no threshold is configured.
 
 For chromium, the optional Selenium dependency is required. The backend expects
 chromium-browser and chromedriver on PATH by default. Selenium manages the temporary browser profile.
