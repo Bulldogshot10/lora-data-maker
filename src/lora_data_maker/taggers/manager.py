@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import Tagger, TaggerError
+from ..llama_cpp import LlamaCppError, LlamaCppRuntime
 from .llama_cpp import LlamaCppVLMTagger
 from .mobile import MobileWD14Tagger
 from .model import HuggingFaceModelCache
@@ -23,16 +24,44 @@ def build_tagger(
         if not isinstance(llama_config, dict):
             raise TaggerError("config section [tagger.llama_cpp] must be a table")
 
-        seed_value = llama_config.get("seed")
+        try:
+            runtime = LlamaCppRuntime(
+                model_path=str(llama_config.get("model_path", "")),
+                mmproj_path=(
+                    str(llama_config["mmproj_path"])
+                    if llama_config.get("mmproj_path")
+                    else None
+                ),
+                n_ctx=int(llama_config.get("n_ctx", 4096)),
+                n_threads=(
+                    int(llama_config["n_threads"])
+                    if llama_config.get("n_threads") is not None
+                    else None
+                ),
+                n_gpu_layers=int(llama_config.get("n_gpu_layers", 0)),
+                verbose=bool(llama_config.get("verbose", False)),
+                seed=(
+                    int(llama_config["seed"])
+                    if llama_config.get("seed") is not None
+                    else None
+                ),
+                temperature=float(llama_config.get("temperature", 0.0)),
+                max_tokens=int(llama_config.get("max_tokens", 256)),
+            )
+        except (LlamaCppError, ValueError) as exc:
+            raise TaggerError(str(exc)) from exc
+
         return LlamaCppVLMTagger(
-            base_url=str(llama_config.get("base_url", "http://127.0.0.1:8080/v1")),
-            model=str(llama_config.get("model", "local-model")),
-            timeout=float(llama_config.get("timeout", 120.0)),
+            runtime=runtime,
             temperature=float(llama_config.get("temperature", 0.0)),
             max_tokens=int(llama_config.get("max_tokens", 256)),
             system_prompt=llama_config.get("system_prompt"),
             prompt=llama_config.get("prompt"),
-            seed=int(seed_value) if seed_value is not None else None,
+            seed=(
+                int(llama_config["seed"])
+                if llama_config.get("seed") is not None
+                else None
+            ),
             max_tags=int(llama_config.get("max_tags", 64)),
         )
 
