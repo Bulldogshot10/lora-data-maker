@@ -92,6 +92,28 @@ class YOLOXNanoPersonDetector:
             providers=list(providers),
         )
         self._input_name = self._get_input_name()
+        self._validate_session_contract()
+
+    def _validate_session_contract(self) -> None:
+        inputs = self._session.get_inputs()
+        outputs = self._session.get_outputs()
+        if not inputs or not outputs:
+            raise RuntimeError("YOLOX-Nano model must expose input and output tensors")
+
+        input_shape = list(getattr(inputs[0], "shape", []) or [])
+        if input_shape != [1, 3, self.INPUT_SIZE[1], self.INPUT_SIZE[0]]:
+            raise RuntimeError(
+                "unexpected YOLOX-Nano input shape: "
+                f"{input_shape}; expected "
+                f"[1, 3, {self.INPUT_SIZE[1]}, {self.INPUT_SIZE[0]}]"
+            )
+
+        output_shape = list(getattr(outputs[0], "shape", []) or [])
+        if output_shape != [1, 3549, 85]:
+            raise RuntimeError(
+                "unexpected YOLOX-Nano output shape: "
+                f"{output_shape}; expected [1, 3549, 85]"
+            )
 
     def _resolve_model_path(
         self,
