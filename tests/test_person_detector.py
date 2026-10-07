@@ -40,6 +40,7 @@ def test_nms_keeps_highest_overlapping_box():
 
 def test_yolox_output_decode_416():
     detector = YOLOXNanoPersonDetector.__new__(YOLOXNanoPersonDetector)
+    detector._np = np
     detector.INPUT_SIZE = (416, 416)
     detector.PERSON_CLASS_ID = 0
     detector.confidence_threshold = 0.5
@@ -74,6 +75,7 @@ def test_person_detector_fake_session():
     detector = YOLOXNanoPersonDetector.__new__(YOLOXNanoPersonDetector)
     detector._session = FakeSession()
     detector._input_name = "images"
+    detector._np = np
     detector.confidence_threshold = 0.5
     detector.nms_threshold = 0.45
 
