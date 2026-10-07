@@ -5,7 +5,7 @@ import re
 from pathlib import Path
 from typing import Any, Mapping
 
-from ..llama_cpp import LlamaCppClient, LlamaCppError
+from ..llama_cpp import LlamaCppError, LlamaCppRuntime
 from .base import TagResult, Tagger, TaggerError
 from .filters import normalize_tag
 
@@ -31,31 +31,23 @@ Rules:
 
 
 class LlamaCppVLMTagger(Tagger):
-    """Image tagger backed by llama.cpp's multimodal chat endpoint."""
+    """Image tagger backed by an embedded llama.cpp multimodal runtime."""
 
     def __init__(
         self,
         *,
-        base_url: str = "http://127.0.0.1:8080/v1",
-        model: str = "local-model",
-        timeout: float = 120.0,
+        runtime: LlamaCppRuntime,
         temperature: float = 0.0,
         max_tokens: int = 256,
         system_prompt: str | None = None,
         prompt: str | None = None,
         seed: int | None = None,
         max_tags: int = 64,
-        session=None,
     ) -> None:
         if max_tags <= 0:
             raise ValueError("max_tags must be greater than zero")
 
-        self.client = LlamaCppClient(
-            base_url=base_url,
-            model=model,
-            timeout=timeout,
-            session=session,
-        )
+        self.runtime = runtime
         self.temperature = float(temperature)
         self.max_tokens = int(max_tokens)
         self.system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
@@ -65,15 +57,11 @@ class LlamaCppVLMTagger(Tagger):
 
     @property
     def model(self) -> str:
-        return self.client.model
-
-    @property
-    def base_url(self) -> str:
-        return self.client.base_url
+        return str(self.runtime.model_path)
 
     def tag_image(self, path: Path | str) -> TagResult:
         try:
-            content = self.client.chat_with_image(
+            content = self.runtime.chat_with_image(
                 path,
                 self.prompt,
                 system_prompt=self.system_prompt,
