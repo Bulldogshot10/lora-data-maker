@@ -1,4 +1,5 @@
 from .base import TagResult, Tagger, TaggerError
+from .llama_cpp import LlamaCppVLMTagger
 from .mobile import MobileWD14Labels, MobileWD14Tagger
 from .clean_stage import TagCleanSummary, clean_tag_manifest
 from .filters import clean_tags, normalize_tag, normalize_tags, tag_set
@@ -18,6 +19,7 @@ __all__ = [
     "HuggingFaceModelCache",
     "ModelDownloadError",
     "ModelFiles",
+    "LlamaCppVLMTagger",
     "MobileWD14Labels",
     "MobileWD14Tagger",
     "POTATO",
