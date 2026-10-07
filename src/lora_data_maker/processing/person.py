@@ -8,12 +8,6 @@ from pathlib import Path
 from typing import Callable, Protocol, Sequence
 
 from PIL import Image
-import numpy as np
-
-try:
-    import numpy as _np
-except ImportError:
-    _np = None
 
 
 @dataclass(frozen=True)
@@ -80,6 +74,7 @@ class YOLOXNanoPersonDetector:
         )
 
         try:
+            import numpy as np
             import onnxruntime as ort
         except ImportError as exc:
             raise RuntimeError(
@@ -91,6 +86,7 @@ class YOLOXNanoPersonDetector:
         session_options = None
         if providers is None:
             providers = ("CPUExecutionProvider",)
+        self._np = np
         self._session = factory(
             str(self.model_path),
             sess_options=session_options,
@@ -98,7 +94,6 @@ class YOLOXNanoPersonDetector:
         )
 
         self._input_name = self._get_input_name()
-        self._np = _np if _np is not None else np
 
     def detect(self, image: Image.Image) -> Sequence[PersonBox]:
         array = self._preprocess(image)
@@ -220,12 +215,9 @@ class YOLOXNanoPersonDetector:
         decoded[:, :2] = (decoded[:, :2] + grid_array) * stride_array
         decoded[:, 2:4] = np.exp(np.clip(decoded[:, 2:4], -10, 10)) * stride_array
 
-        objectness = 1.0 / (1.0 + np.exp(-np.clip(decoded[:, 4], -60, 60)))
-        class_logits = decoded[:, 5:]
-        person_logits = class_logits[:, self.PERSON_CLASS_ID]
-        person_scores = 1.0 / (
-            1.0 + np.exp(-np.clip(person_logits, -60, 60))
-        )
+        objectness = decoded[:, 4]
+        class_scores = decoded[:, 5:]
+        person_scores = class_scores[:, self.PERSON_CLASS_ID]
         scores = objectness * person_scores
 
         centers = decoded[:, :2]
@@ -254,10 +246,11 @@ class YOLOXNanoPersonDetector:
 
 
 def _nms(
-    boxes: np.ndarray,
-    scores: np.ndarray,
+    boxes: "np.ndarray",
+    scores: "np.ndarray",
     threshold: float,
 ) -> list[int]:
+    import numpy as np
     if len(boxes) == 0:
         return []
 
