@@ -177,6 +177,7 @@ class PlaywrightImagesScraper(Scraper):
         """Navigate without relying on playwright-termux Page.goto()."""
         timeout = max(float(self.timeout), 1.0)
         navigation_timeout = min(timeout, 5.0)
+        initial_url = getattr(page, "url", "about:blank") or "about:blank"
         try:
             navigation = page.session.send(
                 "Page.navigate",
@@ -214,6 +215,7 @@ class PlaywrightImagesScraper(Scraper):
                     isinstance(value, list)
                     and len(value) == 2
                     and value[0] in {"interactive", "complete"}
+                    and str(value[1]) not in {"", initial_url, "about:blank"}
                 ):
                     page._url = str(value[1])
                     return
