@@ -243,15 +243,13 @@ class YOLOXNanoPersonDetector:
             dtype=np.uint8,
         )
         resized_array = np.asarray(resized, dtype=np.uint8)
-        pad_y = (target_height - resized_height) // 2
-        pad_x = (target_width - resized_width) // 2
-        canvas[
-            pad_y : pad_y + resized_height,
-            pad_x : pad_x + resized_width,
-        ] = resized_array
+        canvas[:resized_height, :resized_width] = resized_array
 
-        tensor = canvas.astype(np.float32) / 255.0
-        return tensor.transpose(2, 0, 1)[None, ...]
+        tensor = np.ascontiguousarray(
+            canvas.transpose(2, 0, 1),
+            dtype=np.float32,
+        )
+        return tensor[None, ...]
 
     def _decode_outputs(
         self,
