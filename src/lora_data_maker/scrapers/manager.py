@@ -24,6 +24,7 @@ class ScraperManager:
         retries: int = 3,
         delay: float = 1.0,
         user_agent: str | None = None,
+        max_scrolls: int = 30,
     ) -> None:
         self.backend = backend
         self.output_dir = Path(output_dir).expanduser().resolve()
@@ -60,6 +61,7 @@ class ScraperManager:
                 timeout=timeout,
                 retries=retries,
                 delay=delay,
+                max_scrolls=max_scrolls,
             )
         elif backend == "playwright-google":
             self.scraper = PlaywrightImagesScraper(
@@ -67,6 +69,7 @@ class ScraperManager:
                 timeout=timeout,
                 retries=retries,
                 delay=delay,
+                max_scrolls=max_scrolls,
             )
         elif backend == "direct":
             self.scraper = DirectURLScraper()
