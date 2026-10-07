@@ -196,7 +196,7 @@ class PlaywrightImagesScraper(Scraper):
             re.IGNORECASE | re.DOTALL,
         )
         murl_pattern = re.compile(
-            r"""\bm=["'](.*?)["']""",
+            r"""\bm=(["'])(.*?)\1""",
             re.IGNORECASE | re.DOTALL,
         )
         urls: list[str] = []
@@ -206,7 +206,7 @@ class PlaywrightImagesScraper(Scraper):
             match = murl_pattern.search(tag)
             if match is None:
                 continue
-            payload = html.unescape(match.group(1))
+            payload = html.unescape(match.group(2))
             try:
                 import json
 
