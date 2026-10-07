@@ -4,7 +4,7 @@ import html
 import re
 import time
 from typing import Iterator
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from .base import ImageResult, Scraper, ScraperError
 
@@ -102,7 +102,7 @@ class PlaywrightImagesScraper(Scraper):
             with Chromium(headless=True) as browser:
                 page = browser.new_page()
                 try:
-                    page.goto(search_url, timeout=self.timeout)
+                    self._goto(page, search_url)
 
                     seen: set[str] = set()
                     results: list[ImageResult] = []
@@ -173,6 +173,61 @@ class PlaywrightImagesScraper(Scraper):
                 f"Playwright {self.provider} browser error: {exc}"
             ) from exc
 
+    def _goto(self, page, url: str) -> None:
+        """Navigate without relying on playwright-termux Page.goto()."""
+        timeout = max(float(self.timeout), 1.0)
+        navigation_timeout = min(timeout, 5.0)
+        try:
+            navigation = page.session.send(
+                "Page.navigate",
+                {"url": url},
+                timeout=navigation_timeout,
+            )
+        except Exception as exc:
+            raise ScraperError(
+                f"Playwright {self.provider} navigation failed: {exc}"
+            ) from exc
+
+        if navigation.get("errorText"):
+            raise ScraperError(
+                f"Playwright {self.provider} navigation failed: "
+                f"{navigation['errorText']}"
+            )
+
+        deadline = time.monotonic() + timeout
+        last_error: Exception | None = None
+
+        while time.monotonic() < deadline:
+            try:
+                result = page.session.send(
+                    "Runtime.evaluate",
+                    {
+                        "expression": (
+                            "[document.readyState, location.href]"
+                        ),
+                        "returnByValue": True,
+                    },
+                    timeout=min(1.0, max(deadline - time.monotonic(), 0.1)),
+                )
+                value = result.get("result", {}).get("value")
+                if (
+                    isinstance(value, list)
+                    and len(value) == 2
+                    and value[0] in {"interactive", "complete"}
+                ):
+                    page._url = str(value[1])
+                    return
+            except Exception as exc:
+                last_error = exc
+
+            time.sleep(0.05)
+
+        raise ScraperError(
+            f"Playwright {self.provider} navigation timed out after "
+            f"{timeout:g}s"
+            + (f": {last_error}" if last_error else "")
+        )
+
     def _build_url(self, query: str) -> str:
         if self.provider == "bing":
             return f"{self.BING_URL}?{urlencode({'q': query, 'form': 'HDRSC2'})}"
@@ -212,8 +267,13 @@ class PlaywrightImagesScraper(Scraper):
                 continue
             if not image_url.startswith(("http://", "https://")):
                 continue
-            host = image_url.lower()
-            if "bing.com" in host or "bing.net" in host:
+            host = (urlparse(image_url).hostname or "").lower().rstrip(".")
+            if (
+                host == "bing.com"
+                or host.endswith(".bing.com")
+                or host == "bing.net"
+                or host.endswith(".bing.net")
+            ):
                 continue
             if image_url in seen:
                 continue
@@ -283,8 +343,13 @@ class PlaywrightImagesScraper(Scraper):
     def _valid_image_candidate(value: str, seen: set[str]) -> bool:
         if not value.startswith(("http://", "https://")):
             return False
-        lowered = value.lower()
-        if "google.com" in lowered or "gstatic.com" in lowered:
+        host = (urlparse(value).hostname or "").lower().rstrip(".")
+        if (
+            host == "google.com"
+            or host.endswith(".google.com")
+            or host == "gstatic.com"
+            or host.endswith(".gstatic.com")
+        ):
             return False
         if value in seen:
             return False
