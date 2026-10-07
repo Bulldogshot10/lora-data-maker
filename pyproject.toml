@@ -18,6 +18,7 @@ dependencies = [
 
 [project.scripts]
 lora-data-maker = "lora_data_maker.cli:main"
+lora-data-maker-web = "lora_data_maker.web:serve"
 
 [project.optional-dependencies]
 tagger = [
@@ -29,6 +30,11 @@ chromium = [
 ]
 playwright = [
   "playwright-termux==2.0.0",
+]
+web = [
+  "fastapi>=0.116,<1",
+  "python-multipart>=0.0.20,<1",
+  "uvicorn>=0.35,<1",
 ]
 dev = [
   "numpy>=1.26,<3",
