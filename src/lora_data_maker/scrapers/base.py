@@ -17,7 +17,14 @@ class ImageResult:
     metadata: dict[str, object] | None = None
 
 
-SCRAPER_BACKENDS = ("google", "duckduckgo", "chromium", "playwright-bing", "playwright-google", "direct")
+SCRAPER_BACKENDS = (
+    "google",
+    "duckduckgo",
+    "chromium",
+    "playwright-bing",
+    "playwright-google",
+    "direct",
+)
 
 
 class Scraper(Protocol):
