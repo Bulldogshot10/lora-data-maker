@@ -32,6 +32,91 @@ class PersonBox:
 
 
 class PersonDetector(Protocol):
+    def _resolve_model_path(
+        self,
+        *,
+        cache_dir: Path | str | None,
+        model_path: Path | str | None,
+    ) -> Path:
+        if model_path is not None:
+            resolved = Path(model_path).expanduser().resolve()
+            if not resolved.is_file():
+                raise RuntimeError(f"person detector model not found: {resolved}")
+            self._verify_model(resolved)
+            return resolved
+
+        root = (
+            Path(cache_dir).expanduser().resolve()
+            if cache_dir is not None
+            else Path.home() / ".cache" / "lora-data-maker" / "person"
+        )
+        root.mkdir(parents=True, exist_ok=True)
+        resolved = root / self.MODEL_FILENAME
+
+        if resolved.is_file() and self._matches_model(resolved):
+            return resolved
+
+        self._download_model(resolved)
+        return resolved
+
+    def _matches_model(self, path: Path) -> bool:
+        try:
+            return _sha256_file(path) == self.MODEL_SHA256
+        except OSError:
+            return False
+
+    def _verify_model(self, path: Path) -> None:
+        try:
+            digest = _sha256_file(path)
+        except OSError as exc:
+            raise RuntimeError(
+                f"could not read person detector model: {path}"
+            ) from exc
+
+        if digest != self.MODEL_SHA256:
+            raise RuntimeError(
+                "person detector model checksum mismatch: "
+                f"{path}"
+            )
+
+    def _download_model(self, destination: Path) -> None:
+        import requests
+
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{destination.name}.",
+            suffix=".part",
+            dir=str(destination.parent),
+        )
+        temp_path = Path(temp_name)
+
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                try:
+                    with requests.get(
+                        self.MODEL_URL,
+                        stream=True,
+                        timeout=(5, 60),
+                    ) as response:
+                        response.raise_for_status()
+                        for chunk in response.iter_content(chunk_size=64 * 1024):
+                            if chunk:
+                                handle.write(chunk)
+                except requests.RequestException as exc:
+                    raise RuntimeError(
+                        f"could not download person detector model: {exc}"
+                    ) from exc
+
+                handle.flush()
+                os.fsync(handle.fileno())
+
+            self._verify_model(temp_path)
+            os.replace(temp_path, destination)
+        except Exception:
+            try:
+                temp_path.unlink()
+            except FileNotFoundError:
+                pass
+            raise
     def detect(self, image: Image.Image) -> Sequence[PersonBox]:
         """Return person bounding boxes in source-image coordinates."""
 
