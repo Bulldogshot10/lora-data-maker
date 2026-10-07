@@ -879,7 +879,7 @@ def command_scrape(args: argparse.Namespace) -> int:
         count=count,
         known_urls=known_urls,
     )
-    search_error = manager.last_search_error
+    search_error = getattr(manager, "last_search_error", None)
 
     added_records = 0
     for result in downloads:
