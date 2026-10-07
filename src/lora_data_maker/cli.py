@@ -690,6 +690,12 @@ def command_caption(args: argparse.Namespace) -> int:
     if not isinstance(caption_config, dict):
         raise LoraDataMakerError("config section [caption] must be a table")
 
+    selected_backend = getattr(args, "backend", None) or str(
+        caption_config.get("backend", "deterministic")
+    ).strip().lower()
+    caption_config = dict(caption_config)
+    caption_config["backend"] = selected_backend
+
     separator = caption_config.get("separator", ", ")
     subject_position = caption_config.get("subject_position", "first")
     trigger_from_subject = caption_config.get("trigger_from_subject", True)
@@ -711,21 +717,24 @@ def command_caption(args: argparse.Namespace) -> int:
         trigger_from_subject=trigger_from_subject,
     )
 
+    captioner = build_captioner(caption_config)
+
     summary = caption_manifest(
         project.manifest,
         root=root,
         output_dir=paths.work / "captions",
         config=settings,
+        captioner=captioner,
     )
 
-    project.manifest.source.update(
-        {
-            "last_caption_scanned": summary.scanned,
-            "last_caption_captioned": summary.captioned,
-            "last_caption_failed": summary.failed,
-            "last_caption_skipped": summary.skipped,
-            "last_caption_separator": separator,
-            "last_caption_subject": project.manifest.subject,
+    source = {
+        "last_caption_scanned": summary.scanned,
+        "last_caption_captioned": summary.captioned,
+        "last_caption_failed": summary.failed,
+        "last_caption_skipped": summary.skipped,
+        "last_caption_backend": selected_backend,
+        "last_caption_separator": separator,
+        "last_caption_subject": project.manifest.subject,
             "last_caption_trigger": (
                 project.manifest.subject
                 if trigger_from_subject
@@ -734,6 +743,14 @@ def command_caption(args: argparse.Namespace) -> int:
             "last_caption_trigger_from_subject": trigger_from_subject,
         }
     )
+    if captioner is not None:
+        source.update(
+            {
+                "last_caption_model": getattr(captioner, "model", ""),
+                "last_caption_endpoint": getattr(captioner, "base_url", ""),
+            }
+        )
+    project.manifest.source.update(source)
     project.save()
 
     print(f"scanned: {summary.scanned}")
