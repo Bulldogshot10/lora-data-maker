@@ -36,9 +36,12 @@ count = 300
 timeout = 20
 retries = 3
 delay = 1.0
+max_scrolls = 30
 ~~~
 
-Built-in backends are google, duckduckgo, chromium, and direct. The chromium backend falls back from Google Images to Bing Images when Google presents a consent/verification page.
+Built-in backends are google, duckduckgo, chromium, playwright-bing, playwright-google, and direct.
+
+The existing `chromium` backend uses Selenium, DuckDuckGo first, and Bing Images as its browser fallback. The Playwright backends use Termux-native Chromium through the `playwright-termux` CDP adapter.
 
 ## validation
 
