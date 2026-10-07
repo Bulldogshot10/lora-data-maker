@@ -940,3 +940,211 @@ def test_scrape_command_fails_when_search_source_fails_without_downloads(tmp_pat
             path=str(root),
         )
     ) == 1
+
+
+def test_playwright_bing_extracts_original_urls():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = """
+    <a class="iusc x" m='{"murl":"https://cdn.example.com/a.jpg"}'></a>
+    <a m='{"murl":"https://cdn.example.com/b.jpg"}' class="iusc"></a>
+    <a class="iusc" m='{"murl":"https://tse1.mm.bing.net/thumb.jpg"}'></a>
+    <a class="iusc" m='{"murl":"https://cdn.example.com/a.jpg"}'></a>
+    """
+
+    assert PlaywrightImagesScraper._extract_bing_urls(body) == [
+        "https://cdn.example.com/a.jpg",
+        "https://cdn.example.com/b.jpg",
+    ]
+
+
+
+def test_playwright_bing_parser_handles_html_entities_and_quote_styles():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = r'''
+    <a class="iusc" m='{"murl":"https://cdn.example.com/single.jpg"}'></a>
+    <a class="x iusc y" m="{&quot;murl&quot;:&quot;https://cdn.example.com/double.png&quot;}"></a>
+    '''
+
+    assert PlaywrightImagesScraper._extract_bing_urls(body) == [
+        "https://cdn.example.com/single.jpg",
+        "https://cdn.example.com/double.png",
+    ]
+
+
+
+def test_playwright_url_filters_use_hostname_boundaries():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    assert PlaywrightImagesScraper._valid_image_candidate(
+        "https://evilgoogle.com/image.jpg", set()
+    )
+    assert not PlaywrightImagesScraper._valid_image_candidate(
+        "https://gstatic.com/image.jpg", set()
+    )
+    assert PlaywrightImagesScraper._extract_bing_urls(
+        '<a class="iusc" m=\'{"murl":"https://evilbing.com/image.jpg"}\'></a>'
+    ) == ["https://evilbing.com/image.jpg"]
+
+
+def test_playwright_manager_passes_max_scrolls(monkeypatch, tmp_path):
+    import lora_data_maker.scrapers.manager as manager_module
+
+    captured = {}
+
+    class FakePlaywrightScraper:
+        def __init__(self, **kwargs):
+            captured.update(kwargs)
+
+    monkeypatch.setattr(
+        manager_module,
+        "PlaywrightImagesScraper",
+        FakePlaywrightScraper,
+    )
+
+    manager_module.ScraperManager(
+        backend="playwright-bing",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        timeout=17,
+        retries=2,
+        delay=0.75,
+        max_scrolls=11,
+    )
+
+    assert captured == {
+        "provider": "bing",
+        "timeout": 17,
+        "retries": 2,
+        "delay": 0.75,
+        "max_scrolls": 11,
+    }
+
+
+def test_playwright_google_prefers_original_ou_url():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = r'''
+    <script>
+    {"ou":"https://cdn.example.com/original.jpg","tu":"https://encrypted-tbn.example/thumb.jpg"}
+    </script>
+    '''
+
+    assert PlaywrightImagesScraper._extract_google_urls(body) == [
+        "https://cdn.example.com/original.jpg"
+    ]
+
+
+def test_playwright_google_rejects_verification_page():
+    import pytest
+
+    from lora_data_maker.scrapers.base import ScraperError
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    with pytest.raises(ScraperError, match="verification"):
+        PlaywrightImagesScraper._extract_google_urls(
+            "Our systems have detected unusual traffic from your computer network"
+        )
+
+
+def test_playwright_scraper_uses_termux_chromium(monkeypatch):
+    import sys
+    import types
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakeSession:
+        def __init__(self):
+            self.evaluate_calls = 0
+
+        def send(self, method, params=None, timeout=None):
+            if method == "Page.navigate":
+                assert params["url"].startswith(
+                    "https://www.bing.com/images/search?"
+                )
+                return {"loaderId": "loader-1"}
+            if method == "Runtime.evaluate":
+                self.evaluate_calls += 1
+                href = (
+                    "about:blank"
+                    if self.evaluate_calls == 1
+                    else "https://www.bing.com/images/search?q=julia"
+                )
+                return {"result": {"value": ["complete", href]}}
+            raise AssertionError(f"unexpected CDP method: {method}")
+
+    class FakePage:
+        def __init__(self):
+            self.closed = False
+            self.session = FakeSession()
+            self.urls = []
+
+        def content(self):
+            return (
+                '<a class="iusc" m=\'{"murl":"https://cdn.example.com/a.jpg"}\'></a>'
+            )
+
+        def evaluate(self, _script):
+            return None
+
+        def wait_for_timeout(self, _ms):
+            return None
+
+        def close(self):
+            self.closed = True
+
+    class FakeBrowser:
+        def __init__(self):
+            self.page = FakePage()
+            self.closed = False
+
+        def new_page(self):
+            return self.page
+
+        def close(self):
+            self.closed = True
+
+    browser = FakeBrowser()
+
+    class FakeChromium:
+        def __init__(self, *, headless):
+            assert headless is True
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            browser.close()
+
+        def new_page(self):
+            return browser.new_page()
+
+    monkeypatch.setitem(
+        sys.modules,
+        "playwright_termux",
+        types.SimpleNamespace(Chromium=FakeChromium),
+    )
+
+    scraper = PlaywrightImagesScraper(
+        provider="bing",
+        retries=0,
+        delay=0,
+        max_scrolls=1,
+    )
+    results = list(scraper.search("julia", limit=1))
+
+    assert [item.image_url for item in results] == [
+        "https://cdn.example.com/a.jpg"
+    ]
+    assert browser.page.closed is True
+    assert browser.closed is True
+
+
+def test_playwright_scraper_validates_provider():
+    import pytest
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    with pytest.raises(ValueError, match="provider"):
+        PlaywrightImagesScraper(provider="duckduckgo")

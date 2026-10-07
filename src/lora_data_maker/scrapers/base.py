@@ -17,6 +17,16 @@ class ImageResult:
     metadata: dict[str, object] | None = None
 
 
+SCRAPER_BACKENDS = (
+    "google",
+    "duckduckgo",
+    "chromium",
+    "playwright-bing",
+    "playwright-google",
+    "direct",
+)
+
+
 class Scraper(Protocol):
     def search(self, query: str, *, limit: int) -> Iterator[ImageResult]:
         """Yield image results without downloading them."""

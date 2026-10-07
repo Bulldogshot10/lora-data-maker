@@ -1,5 +1,12 @@
 # Unreleased
 
+## Playwright image search
+
+- Added separate `playwright-bing` and `playwright-google` backends using Termux-native Chromium through CDP.
+- Pinned `playwright-termux==2.0.0` for deterministic Termux compatibility.
+- Added bounded direct-CDP navigation to avoid the adapter's lifecycle waiter race.
+- Added original-image URL extraction, Google verification detection, retry handling, and parser/config regression coverage.
+
 ## Scraper resilience
 
 - Failed individual image downloads are skipped and the scraper continues with later candidates.

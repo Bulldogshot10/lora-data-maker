@@ -109,6 +109,7 @@ def run_build(
     Existing stage implementations provide the resume behavior by operating
     only on records eligible for their current state.
     """
+    from .scrapers import SCRAPER_BACKENDS
     from .cli import (
         command_caption,
         command_clean,
@@ -151,10 +152,10 @@ def run_build(
         raise ValueError("config section [scraper] must be a table")
 
     backend = str(scraper_config.get("backend", "duckduckgo"))
-    if backend not in {"google", "duckduckgo", "chromium", "direct"}:
+    if backend not in SCRAPER_BACKENDS:
         raise ValueError(
             f"unsupported scraper backend {backend!r}; "
-            "expected 'google', 'duckduckgo', 'chromium', or 'direct'"
+            "expected one of: " + ", ".join(SCRAPER_BACKENDS)
         )
 
     project = DatasetProject.open(paths)

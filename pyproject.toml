@@ -27,6 +27,9 @@ tagger = [
 chromium = [
   "selenium>=4.37,<5",
 ]
+playwright = [
+  "playwright-termux==2.0.0",
+]
 dev = [
   "numpy>=1.26,<3",
   "pytest>=8,<9",

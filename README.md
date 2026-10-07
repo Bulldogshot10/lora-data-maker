@@ -84,12 +84,23 @@ cd lora-data-maker
 python -m pip install .
 ~~~
 
-For Chromium scraping support:
+For Chromium/Selenium scraping support:
 
 ~~~bash
 pkg install chromium
 python -m pip install ".[chromium]"
 ~~~
+
+For Playwright image-search support on Termux:
+
+~~~bash
+pkg install x11-repo chromium
+python -m pip install ".[playwright]"
+~~~
+
+The Playwright backend uses the native Termux Chromium package through the
+Termux-specific Playwright/CDP adapter. It does not run `playwright install`
+or download a glibc browser bundle.
 
 For tagging support:
 
@@ -182,10 +193,15 @@ Built-in scraper backends are:
 google
 duckduckgo
 chromium
+playwright-bing
+playwright-google
 direct
 ~~~
 
-Chromium mode uses DuckDuckGo Images first and falls back to Bing Images when DuckDuckGo cannot provide enough candidates.
+`chromium` is the existing Selenium backend. The Playwright backends use
+Termux-native Chromium and extract original image URLs from the rendered
+Google or Bing Images pages. The Playwright navigation layer uses direct CDP navigation
+because the Termux adapter's stock navigation waiter can race lifecycle events.
 
 Example:
 
@@ -237,7 +253,7 @@ python -m pip install ".[dev]"
 pytest -q
 ~~~
 
-The project CI smoke-tests Python 3.12 and 3.13, including package installation, compilation, tests, CLI entry points, documentation files, and project initialization.
+The project CI smoke-tests Python 3.12, 3.13, and 3.14, including package installation, compilation, tests, CLI entry points, documentation files, and project initialization.
 
 ## License
 

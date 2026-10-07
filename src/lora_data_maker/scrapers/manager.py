@@ -4,12 +4,13 @@ from pathlib import Path
 from collections.abc import Iterable
 
 from .archive import DownloadArchive
-from .base import ImageResult, Scraper, ScraperError
+from .base import SCRAPER_BACKENDS, ImageResult, Scraper, ScraperError
 from .chromium import ChromiumImagesScraper
 from .direct import DirectURLScraper
 from .duckduckgo import DuckDuckGoImagesScraper
 from .downloader import DownloadResult, ImageDownloader
 from .google import DEFAULT_USER_AGENT, GoogleImagesScraper
+from .playwright import PlaywrightImagesScraper
 
 
 class ScraperManager:
@@ -23,6 +24,7 @@ class ScraperManager:
         retries: int = 3,
         delay: float = 1.0,
         user_agent: str | None = None,
+        max_scrolls: int = 30,
     ) -> None:
         self.backend = backend
         self.output_dir = Path(output_dir).expanduser().resolve()
@@ -53,11 +55,28 @@ class ScraperManager:
                 delay=delay,
                 user_agent=effective_user_agent,
             )
+        elif backend == "playwright-bing":
+            self.scraper = PlaywrightImagesScraper(
+                provider="bing",
+                timeout=timeout,
+                retries=retries,
+                delay=delay,
+                max_scrolls=max_scrolls,
+            )
+        elif backend == "playwright-google":
+            self.scraper = PlaywrightImagesScraper(
+                provider="google",
+                timeout=timeout,
+                retries=retries,
+                delay=delay,
+                max_scrolls=max_scrolls,
+            )
         elif backend == "direct":
             self.scraper = DirectURLScraper()
         else:
             raise ScraperError(
-                f"unknown scraper backend {backend!r}; expected google, duckduckgo, chromium, or direct"
+                f"unknown scraper backend {backend!r}; expected "
+                + ", ".join(SCRAPER_BACKENDS)
             )
 
         self.downloader = ImageDownloader(
