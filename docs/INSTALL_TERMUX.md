@@ -56,6 +56,7 @@ pkg install x11-repo chromium
 python -m pip install ".[playwright]"
 ~~~
 
+This installs the pinned `playwright-termux` 2.0.0 CDP adapter used by the backend.
 Do not run `playwright install` for this backend.
 
 Test Bing:
