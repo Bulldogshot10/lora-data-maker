@@ -1,5 +1,13 @@
 # Unreleased
 
+## Embedded llama.cpp VLM runtime
+
+- Added an optional in-process `llama-cpp-python` runtime for multimodal GGUF models.
+- Added local VLM tagger and captioner backends using GGUF plus `mmproj` files.
+- Kept WD14 tagging and deterministic captioning as the existing defaults.
+- Added runtime reuse hooks so the future GUI can keep one loaded model for both tagging and captioning.
+
+
 ## Playwright image search
 
 - Added separate `playwright-bing` and `playwright-google` backends using Termux-native Chromium through CDP.
