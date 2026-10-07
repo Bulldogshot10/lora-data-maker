@@ -102,6 +102,34 @@ The Playwright backend uses the native Termux Chromium package through the
 Termux-specific Playwright/CDP adapter. It does not run `playwright install`
 or download a glibc browser bundle.
 
+For authenticated Google image search, set `CHROME_USER_DATA_DIR` to the
+Chromium profile you already logged into and start that same profile with a
+local CDP port:
+
+~~~bash
+export DISPLAY=:1
+export CHROME_USER_DATA_DIR="$HOME/.local/share/lora-data-maker/google-profile"
+export CHROME_DEBUG_PORT=9222
+
+chromium-browser \
+  --user-data-dir="$CHROME_USER_DATA_DIR" \
+  --remote-debugging-port="$CHROME_DEBUG_PORT" \
+  --remote-debugging-address=127.0.0.1 \
+  --no-first-run \
+  --no-default-browser-check
+~~~
+
+Then run:
+
+~~~bash
+lora-data-maker scrape playwright-google "julia russian woman" --count 10
+~~~
+
+When `CHROME_USER_DATA_DIR` is set, only `playwright-google` attaches to
+that already-running browser session. The normal Playwright/Bing backend keeps
+its isolated temporary browser profile. The Google profile is never copied
+into the repository or stored in the project manifest.
+
 For tagging support:
 
 ~~~bash
