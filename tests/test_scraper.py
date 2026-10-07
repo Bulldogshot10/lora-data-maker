@@ -1029,11 +1029,14 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
         def __init__(self, *, headless):
             assert headless is True
 
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            browser.close()
+
         def new_page(self):
             return browser.new_page()
-
-        def close(self):
-            browser.close()
 
     monkeypatch.setitem(
         sys.modules,
