@@ -40,6 +40,8 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
             "width": 768,
             "height": 512,
             "quality": 92,
+            "face_crop": False,
+            "face_padding": 1.75,
         },
     )
     assert settings.status_code == 200
@@ -49,3 +51,20 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert updated["processing"]["width"] == 768
     assert updated["processing"]["height"] == 512
     assert updated["processing"]["quality"] == 92
+
+
+def test_new_project_switches_active_project(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    response = client.post(
+        "/api/project/new",
+        json={"name": "second", "subject": "cat", "trigger": "catx"},
+    )
+    assert response.status_code == 200
+    assert response.json()["name"] == "second"
+
+    state = client.get("/api/state").json()
+    assert state["project"]["name"] == "second"
+    assert state["project"]["subject"] == "cat"
+    assert state["project"]["trigger"] == "catx"
