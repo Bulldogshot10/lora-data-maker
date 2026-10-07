@@ -1,123 +1,185 @@
 from __future__ import annotations
 
-import base64
-import mimetypes
 from pathlib import Path
+from threading import RLock
 from typing import Any, Mapping, Sequence
-
-import requests
 
 
 class LlamaCppError(RuntimeError):
-    """Raised when a llama.cpp server request fails."""
+    """Raised when the embedded llama.cpp runtime cannot infer."""
 
 
-class LlamaCppClient:
-    """Small OpenAI-compatible client for a local llama-server instance."""
+class LlamaCppRuntime:
+    """Embedded llama.cpp runtime backed by llama-cpp-python."""
 
     def __init__(
         self,
         *,
-        base_url: str = "http://127.0.0.1:8080/v1",
-        model: str = "local-model",
-        timeout: float = 120.0,
-        session: requests.Session | None = None,
-    ) -> None:
-        value = str(base_url).strip().rstrip("/")
-        if not value:
-            raise ValueError("base_url must not be empty")
-        if not str(model).strip():
-            raise ValueError("model must not be empty")
-        if timeout <= 0:
-            raise ValueError("timeout must be greater than zero")
-
-        self.base_url = value
-        self.model = str(model).strip()
-        self.timeout = float(timeout)
-        self.session = session or requests.Session()
-
-    @property
-    def chat_url(self) -> str:
-        return f"{self.base_url}/chat/completions"
-
-    @property
-    def models_url(self) -> str:
-        return f"{self.base_url}/models"
-
-    def health(self) -> bool:
-        """Return whether the configured llama-server responds successfully."""
-        try:
-            response = self.session.get(self.models_url, timeout=self.timeout)
-            return response.ok
-        except requests.RequestException:
-            return False
-
-    def chat(
-        self,
-        messages: Sequence[Mapping[str, Any]],
-        *,
+        model_path: Path | str,
+        mmproj_path: Path | str | None = None,
+        n_ctx: int = 4096,
+        n_threads: int | None = None,
+        n_gpu_layers: int = 0,
+        verbose: bool = False,
+        seed: int | None = None,
         temperature: float = 0.2,
         max_tokens: int = 128,
-        response_format: Mapping[str, Any] | None = None,
-        seed: int | None = None,
-    ) -> str:
+    ) -> None:
+        self.model_path = Path(model_path).expanduser().resolve()
+        self.mmproj_path = (
+            Path(mmproj_path).expanduser().resolve()
+            if mmproj_path
+            else None
+        )
+        if not self.model_path.is_file():
+            raise LlamaCppError(f"llama.cpp model not found: {self.model_path}")
+        if self.mmproj_path is not None and not self.mmproj_path.is_file():
+            raise LlamaCppError(
+                f"llama.cpp mmproj not found: {self.mmproj_path}"
+            )
+        if n_ctx <= 0:
+            raise ValueError("n_ctx must be greater than zero")
+        if n_threads is not None and n_threads <= 0:
+            raise ValueError("n_threads must be greater than zero")
+        if n_gpu_layers < -1:
+            raise ValueError("n_gpu_layers must be -1 or greater")
         if temperature < 0:
             raise ValueError("temperature cannot be negative")
         if max_tokens <= 0:
             raise ValueError("max_tokens must be greater than zero")
 
-        payload: dict[str, Any] = {
-            "model": self.model,
-            "messages": list(messages),
-            "temperature": float(temperature),
-            "max_tokens": int(max_tokens),
+        self.n_ctx = int(n_ctx)
+        self.n_threads = n_threads
+        self.n_gpu_layers = int(n_gpu_layers)
+        self.verbose = bool(verbose)
+        self.seed = seed
+        self.temperature = float(temperature)
+        self.max_tokens = int(max_tokens)
+
+        self._llm = None
+        self._lock = RLock()
+
+    @property
+    def loaded(self) -> bool:
+        return self._llm is not None
+
+    def load(self) -> "LlamaCppRuntime":
+        if self._llm is not None:
+            return self
+
+        try:
+            from llama_cpp import Llama
+        except ImportError as exc:
+            raise LlamaCppError(
+                "embedded llama.cpp runtime requires llama-cpp-python; "
+                "install the optional llama_cpp dependency"
+            ) from exc
+
+        chat_handler = None
+        if self.mmproj_path is not None:
+            try:
+                from llama_cpp.llama_chat_format import MTMDChatHandler
+
+                chat_handler = MTMDChatHandler(
+                    clip_model_path=str(self.mmproj_path),
+                    verbose=self.verbose,
+                    use_gpu=self.n_gpu_layers != 0,
+                )
+            except ImportError as exc:
+                raise LlamaCppError(
+                    "this llama-cpp-python build does not provide MTMD "
+                    "multimodal support"
+                ) from exc
+
+        kwargs: dict[str, Any] = {
+            "model_path": str(self.model_path),
+            "n_ctx": self.n_ctx,
+            "n_gpu_layers": self.n_gpu_layers,
+            "verbose": self.verbose,
         }
-        if response_format is not None:
-            payload["response_format"] = dict(response_format)
-        if seed is not None:
-            payload["seed"] = int(seed)
+        if self.n_threads is not None:
+            kwargs["n_threads"] = self.n_threads
+        if chat_handler is not None:
+            kwargs["chat_handler"] = chat_handler
 
         try:
-            response = self.session.post(
-                self.chat_url,
-                json=payload,
-                timeout=self.timeout,
-            )
-            response.raise_for_status()
-        except (requests.RequestException, OSError) as exc:
+            self._llm = Llama(**kwargs)
+        except Exception as exc:
+            self._llm = None
             raise LlamaCppError(
-                f"llama.cpp request failed at {self.chat_url}: {exc}"
+                f"failed to load embedded llama.cpp model: {exc}"
             ) from exc
 
-        try:
-            data = response.json()
-        except ValueError as exc:
-            raise LlamaCppError(
-                "llama.cpp returned a non-JSON response"
-            ) from exc
+        return self
+
+    def close(self) -> None:
+        with self._lock:
+            llm = self._llm
+            self._llm = None
+            if llm is not None:
+                close = getattr(llm, "close", None)
+                if callable(close):
+                    close()
+
+    def __enter__(self) -> "LlamaCppRuntime":
+        return self.load()
+
+    def __exit__(self, exc_type, exc, tb) -> None:
+        self.close()
+
+    def chat(
+        self,
+        messages: Sequence[Mapping[str, Any]],
+        *,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        response_format: Mapping[str, Any] | None = None,
+        seed: int | None = None,
+    ) -> str:
+        with self._lock:
+            llm = self.load()._llm
+            try:
+                response = llm.create_chat_completion(
+                    messages=list(messages),
+                    temperature=(
+                        self.temperature
+                        if temperature is None
+                        else float(temperature)
+                    ),
+                    max_tokens=(
+                        self.max_tokens
+                        if max_tokens is None
+                        else int(max_tokens)
+                    ),
+                    response_format=response_format,
+                    seed=self.seed if seed is None else seed,
+                )
+            except Exception as exc:
+                raise LlamaCppError(
+                    f"embedded llama.cpp inference failed: {exc}"
+                ) from exc
 
         try:
-            content = data["choices"][0]["message"]["content"]
+            content = response["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise LlamaCppError(
                 "llama.cpp response is missing choices[0].message.content"
             ) from exc
 
         if isinstance(content, str):
-            result = content.strip()
+            text = content.strip()
         elif isinstance(content, list):
-            text_parts = [
+            text = "".join(
                 str(item.get("text", ""))
                 for item in content
                 if isinstance(item, Mapping) and item.get("type") == "text"
-            ]
-            result = "".join(text_parts).strip()
+            ).strip()
         else:
-            result = ""
+            text = ""
 
-        if not result:
+        if not text:
             raise LlamaCppError("llama.cpp returned an empty completion")
-        return result
+        return text
 
     def chat_with_image(
         self,
@@ -125,8 +187,8 @@ class LlamaCppClient:
         prompt: str,
         *,
         system_prompt: str | None = None,
-        temperature: float = 0.2,
-        max_tokens: int = 128,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
         response_format: Mapping[str, Any] | None = None,
         seed: int | None = None,
     ) -> str:
@@ -136,9 +198,17 @@ class LlamaCppClient:
         if not prompt.strip():
             raise ValueError("prompt must not be empty")
 
-        data_url = _image_data_url(path)
-        messages: list[dict[str, Any]] = []
+        import base64
+        import mimetypes
 
+        mime_type, _ = mimetypes.guess_type(path.name)
+        if not mime_type or not mime_type.startswith("image/"):
+            mime_type = "image/jpeg"
+
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        data_url = f"data:{mime_type};base64,{encoded}"
+
+        messages: list[dict[str, Any]] = []
         if system_prompt and system_prompt.strip():
             messages.append(
                 {
@@ -151,13 +221,10 @@ class LlamaCppClient:
             {
                 "role": "user",
                 "content": [
+                    {"type": "text", "text": prompt.strip()},
                     {
                         "type": "image_url",
                         "image_url": {"url": data_url},
-                    },
-                    {
-                        "type": "text",
-                        "text": prompt.strip(),
                     },
                 ],
             }
@@ -170,12 +237,3 @@ class LlamaCppClient:
             response_format=response_format,
             seed=seed,
         )
-
-
-def _image_data_url(path: Path) -> str:
-    mime_type, _ = mimetypes.guess_type(path.name)
-    if not mime_type or not mime_type.startswith("image/"):
-        mime_type = "image/jpeg"
-
-    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-    return f"data:{mime_type};base64,{encoded}"
