@@ -107,7 +107,7 @@ def test_yolox_preprocess_matches_model_contract():
     # places the resized image at the top-left of the padded canvas.
     assert tensor[0, 0, 0, 0] == pytest.approx(0.0)
     assert tensor[0, 2, 0, 0] == pytest.approx(255.0)
-    assert tensor[0, 0, 0, 415] == pytest.approx(0.0)
-    assert tensor[0, 2, 0, 415] == pytest.approx(255.0)
-    assert tensor[0, 0, 415, 0] == pytest.approx(0.0)
-    assert tensor[0, 2, 415, 0] == pytest.approx(255.0)
+    assert tensor[0, 0, 0, 207] == pytest.approx(0.0)
+    assert tensor[0, 2, 0, 207] == pytest.approx(255.0)
+    assert tensor[0, :, 0, 208].tolist() == pytest.approx([114.0, 114.0, 114.0])
+    assert tensor[0, :, 415, 0].tolist() == pytest.approx([0.0, 0.0, 255.0])
