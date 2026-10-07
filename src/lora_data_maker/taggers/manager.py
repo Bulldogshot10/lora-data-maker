@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from .base import Tagger, TaggerError
+from .joytag import JoyTagTagger
 from .mobile import MobileWD14Tagger
 from .model import HuggingFaceModelCache
 from .presets import resolve_tagger_preset
@@ -17,9 +18,9 @@ def build_tagger(
     preset: str | None = None,
 ) -> Tagger:
     backend = str(config.get("backend", "wd14")).strip().lower()
-    if backend != "wd14":
+    if backend not in {"wd14", "joytag"}:
         raise TaggerError(
-            f"unsupported tagger backend {backend!r}; expected 'wd14'"
+            f"unsupported tagger backend {backend!r}; expected 'wd14' or 'joytag'"
         )
 
     profile = resolve_tagger_preset(
@@ -37,7 +38,7 @@ def build_tagger(
             / ".cache"
             / "lora-data-maker"
             / "taggers"
-            / "wd14"
+            / ("joytag" if profile.kind == "joytag" else "wd14")
         )
 
     model_cache = HuggingFaceModelCache(
@@ -52,11 +53,23 @@ def build_tagger(
     common = {
         "model_cache": model_cache,
         "model_sha256": profile.model_sha256,
-        "threshold": float(config.get("threshold", 0.35)),
-        "character_threshold": float(
-            config.get("character_threshold", 0.85)
+        "threshold": float(
+            config.get("threshold", profile.default_threshold)
         ),
     }
+
+    if profile.kind == "joytag":
+        return JoyTagTagger(
+            **common,
+            batch_size=int(config.get("batch_size", 1)),
+        )
+
+    common["character_threshold"] = float(
+        config.get(
+            "character_threshold",
+            profile.default_character_threshold,
+        )
+    )
 
     if profile.kind == "mobile":
         return MobileWD14Tagger(**common)

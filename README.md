@@ -12,7 +12,7 @@ Model training and image generation are outside the scope of this project.
 
 ## Current state
 
-v1.3.0 adds two mobile-friendly WD14 tagger presets:
+v1.3.0 includes two mobile-friendly WD14 tagger presets plus a JoyTag ONNX backend:
 
 - **sweetspot**: SmilingWolf WD ViT Tagger v3, a compact general-purpose WD14-compatible ONNX tagger.
 - **potato**: QUINT8 mobile SwinV2 tagger for the smallest built-in footprint.
@@ -29,6 +29,12 @@ The default preset is **sweetspot**. The CLI supports the complete dataset-prepa
 - Makes taggers and image-processing backends replaceable.
 
 ## Tagger presets
+
+The built-in taggers are:
+
+- **sweetspot**: SmilingWolf WD ViT Tagger v3, a compact general-purpose WD14-compatible ONNX tagger.
+- **potato**: QUINT8 mobile SwinV2 tagger for the smallest built-in footprint.
+- **joytag**: JoyTag ViT-B/16 ONNX tagger for tag-style image descriptions across illustrated and photographic images.
 
 Run the default tagger:
 
@@ -48,6 +54,12 @@ Select the smallest built-in tagger:
 lora-data-maker tag --preset potato
 ~~~
 
+Select JoyTag:
+
+~~~bash
+lora-data-maker tag --preset joytag
+~~~
+
 The preset can also be stored in a project's `config.toml`:
 
 ~~~toml
@@ -61,14 +73,28 @@ batch_size = 1
 download_timeout = 60
 ~~~
 
+For JoyTag:
+
+~~~toml
+[tagger]
+backend = "joytag"
+preset = "joytag"
+threshold = 0.4
+batch_size = 1
+download_timeout = 60
+~~~
+
 **sweetspot** downloads the pinned WD ViT Tagger v3 ONNX model (about 379 MB) plus its tag mapping.
 
 **potato** downloads the pinned QUINT8 mobile SwinV2 ONNX model (about 176 MB) plus its `tags.json` mapping. The mobile model accepts RGB uint8 images and performs its own preprocessing inside ONNX.
+
+**joytag** downloads the pinned JoyTag `model.onnx` (about 366 MB) plus `top_tags.txt`. JoyTag uses 448×448 input, 5813 labels, and a default threshold of 0.4. The official model is Apache-2.0 licensed and is trained for a mix of illustrated and photographic images.
 
 Tagger models are cached under:
 
 ~~~text
 ~/.cache/lora-data-maker/taggers/wd14/
+~/.cache/lora-data-maker/taggers/joytag/
 ~~~
 
 ## Quick start
@@ -273,7 +299,7 @@ From an initialized dataset project:
 
 Then open http://127.0.0.1:8787 in the browser.
 
-The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 preset selection, validation, staging, tagging, tag cleaning, caption generation, Kohya export, ZIP packaging, gallery preview, and ZIP download.
+The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection, validation, staging, tagging, tag cleaning, caption generation, Kohya export, ZIP packaging, gallery preview, and ZIP download.
 
 The one-click Prepare Dataset flow runs:
 

@@ -12,6 +12,8 @@ class TaggerPreset:
     model_filename: str
     labels_filename: str
     model_sha256: str
+    default_threshold: float = 0.35
+    default_character_threshold: float = 0.85
 
 
 SWEETSPOT = TaggerPreset(
@@ -38,9 +40,23 @@ POTATO = TaggerPreset(
     ),
 )
 
+JOYTAG = TaggerPreset(
+    name="joytag",
+    kind="joytag",
+    repo_id="fancyfeast/joytag",
+    revision="6b7f16331a6ccf0fdce37d5a9564715f6e772b22",
+    model_filename="model.onnx",
+    labels_filename="top_tags.txt",
+    model_sha256=(
+        "f85b7130e6e549b5b0822537007b7482e8c4c8e754c8d9a5bee08e27050e1097"
+    ),
+    default_threshold=0.4,
+)
+
 TAGGER_PRESETS = {
     SWEETSPOT.name: SWEETSPOT,
     POTATO.name: POTATO,
+    JOYTAG.name: JOYTAG,
 }
 
 

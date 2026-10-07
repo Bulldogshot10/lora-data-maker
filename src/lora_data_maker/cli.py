@@ -581,10 +581,17 @@ def command_tag(args: argparse.Namespace) -> int:
     )
     resolved_preset = resolve_tagger_preset(selected_preset)
 
+    cache_root = (
+        Path.home()
+        / ".cache"
+        / "lora-data-maker"
+        / "taggers"
+        / ("joytag" if resolved_preset.kind == "joytag" else "wd14")
+    )
     tagger = build_tagger(
         tagger_config,
-        cache_root=Path.home() / ".cache" / "lora-data-maker" / "taggers" / "wd14",
-        preset=getattr(args, "preset", None),
+        cache_root=cache_root,
+        preset=resolved_preset.name,
     )
 
     summary = tag_manifest(

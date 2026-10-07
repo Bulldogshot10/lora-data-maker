@@ -90,10 +90,18 @@ Output goes under work/processed/. Supported resize modes are cover, fit, and st
 
 ## tag
 
-Run the configured WD14-compatible ONNX tagger.
+Run the configured ONNX image tagger. Built-in presets are `sweetspot`, `potato`, and `joytag`.
 
 ~~~bash
-lora-data-maker tag [--path PATH]
+lora-data-maker tag [--path PATH] [--preset PRESET]
+~~~
+
+Examples:
+
+~~~bash
+lora-data-maker tag --preset sweetspot
+lora-data-maker tag --preset potato
+lora-data-maker tag --preset joytag
 ~~~
 
 The model is cached under the user cache and tagger metadata is stored in the manifest.

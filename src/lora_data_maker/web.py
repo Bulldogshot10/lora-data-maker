@@ -20,7 +20,7 @@ from .pack import pack_dataset
 from .paths import ProjectPaths, manifest_path
 from .processing import ProcessConfig, YuNetFaceDetector, clean_manifest, process_manifest, validate_image
 from .reconcile import reconcile_raw
-from .taggers import build_tagger, clean_tag_manifest, tag_manifest
+from .taggers import build_tagger, clean_tag_manifest, resolve_tagger_preset, tag_manifest
 
 HTML = r"""
 <!doctype html>
@@ -195,7 +195,7 @@ a.download{
       <div><label>name</label><input id="name"></div>
       <div><label>subject</label><input id="subject"></div>
       <div><label>trigger</label><input id="trigger"></div>
-      <div><label>wd14 preset</label><select id="preset"><option value="sweetspot">sweetspot</option><option value="potato">potato</option></select></div>
+      <div><label>tagger</label><select id="preset"><option value="sweetspot">wd14 · sweetspot</option><option value="potato">wd14 · potato</option><option value="joytag">joytag</option></select></div>
     </div>
     <div class="grid-2" style="margin-top:12px">
       <div>
@@ -240,7 +240,7 @@ a.download{
       <button class="step primary" onclick="run('prepare')"><div class="n">ALL</div><div class="name">prepare dataset</div><span class="hint">validate → process → tag → clean → caption → export → ZIP</span></button>
       <button class="step" onclick="run('validate')"><div class="n">01</div><div class="name">validate</div><span class="hint">scan raw images</span></button>
       <button class="step" onclick="run('process')"><div class="n">02</div><div class="name">stage / resize</div><span class="hint">make training images</span></button>
-      <button class="step" onclick="run('tag')"><div class="n">03</div><div class="name">tag</div><span class="hint">WD14 auto tags</span></button>
+      <button class="step" onclick="run('tag')"><div class="n">03</div><div class="name">tag</div><span class="hint">automatic image tags</span></button>
       <button class="step" onclick="run('clean-tags')"><div class="n">04</div><div class="name">clean tags</div><span class="hint">apply tag rules</span></button>
       <button class="step" onclick="run('caption')"><div class="n">05</div><div class="name">caption</div><span class="hint">write .txt captions</span></button>
       <button class="step" onclick="run('export')"><div class="n">06</div><div class="name">export</div><span class="hint">Kohya-ready folder</span></button>
@@ -469,7 +469,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
         return {
             "project": {"name": p.manifest.project_name, "subject": p.manifest.subject, "trigger": p.manifest.trigger},
             "processing": {"mode": str(processing.get("resize_mode", "cover")), "width": int(processing.get("target_width", 512)), "height": int(processing.get("target_height", 512)), "quality": int(processing.get("jpeg_quality", 95)), "face_crop": bool(processing.get("face_crop", False)), "face_padding": float(processing.get("face_padding", 1.75))},
-            "tagger": {"preset": str(tagger.get("preset", "sweetspot"))},
+            "tagger": {"backend": str(tagger.get("backend", "wd14")), "preset": str(tagger.get("preset", "sweetspot"))},
             "counts": p.counts(),
             "images": [{"id": x.image_id, "path": x.processed_path or x.path, "status": x.status} for x in sorted(p.manifest.images.values(), key=lambda x: x.path) if x.status != "rejected"],
             "archive": Path(str(p.manifest.source.get("last_pack_archive", ""))).name if p.manifest.source.get("last_pack_archive") else None,
@@ -480,6 +480,10 @@ def create_app(root: Path | str = ".") -> FastAPI:
         name, subject = str(payload.get("name", "")).strip(), str(payload.get("subject", "")).strip()
         trigger = str(payload.get("trigger", "")).strip() or subject
         mode, preset = str(payload.get("mode", "cover")).lower(), str(payload.get("preset", "sweetspot"))
+        try:
+            resolved_preset = resolve_tagger_preset(preset)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
         width, height, quality = int(payload.get("width", 512)), int(payload.get("height", 512)), int(payload.get("quality", 95))
         face_crop = bool(payload.get("face_crop", False))
         face_padding = float(payload.get("face_padding", 1.75))
@@ -487,7 +491,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
             raise HTTPException(400, "invalid settings")
         set_config("project", {"name": name, "subject": subject, "trigger": trigger})
         set_config("processing", {"resize_mode": mode, "target_width": width, "target_height": height, "jpeg_quality": quality, "face_crop": face_crop, "face_padding": face_padding})
-        set_config("tagger", {"preset": preset})
+        set_config("tagger", {"backend": "joytag" if resolved_preset.kind == "joytag" else "wd14", "preset": preset})
         p = project()
         p.manifest.project_name, p.manifest.subject, p.manifest.trigger = name, subject, trigger
         p.save()
@@ -561,7 +565,19 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 return "staged " + str(done) + ", failed " + str(failed) + ", skipped " + str(skipped)
             if stage == "tag":
                 tc = cfg.get("tagger", {})
-                tagger = build_tagger(tc, cache_root=Path.home() / ".cache" / "lora-data-maker" / "taggers" / "wd14", preset=str(tc.get("preset", "sweetspot")))
+                selected = resolve_tagger_preset(str(tc.get("preset", "sweetspot")))
+                cache_root = (
+                    Path.home()
+                    / ".cache"
+                    / "lora-data-maker"
+                    / "taggers"
+                    / ("joytag" if selected.kind == "joytag" else "wd14")
+                )
+                tagger = build_tagger(
+                    tc,
+                    cache_root=cache_root,
+                    preset=selected.name,
+                )
                 s = tag_manifest(p.manifest, root=project_root, tagger=tagger)
                 p.save()
                 return "tagged " + str(s.tagged) + ", skipped " + str(s.skipped)
