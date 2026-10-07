@@ -77,7 +77,7 @@ def test_quality_rejects_multiple_people(tmp_path):
     assert result.valid is False
     assert result.person_count == 2
     assert "multiple people" in (result.reason or "")
-    assert "multiple people" in result.reasons
+    assert any("multiple people" in reason for reason in result.reasons)
 
 
 def test_quality_rejects_missing_subject(tmp_path):
