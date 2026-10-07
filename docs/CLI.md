@@ -39,10 +39,10 @@ lora-data-maker info [path]
 Download images through a built-in backend.
 
 ~~~bash
-lora-data-maker scrape {google,duckduckgo,chromium,direct} [query] [--count COUNT] [--path PATH]
+lora-data-maker scrape {google,duckduckgo,chromium,playwright-bing,playwright-google,direct} [query] [--count COUNT] [--path PATH]
 ~~~
 
-Google uses query text with the legacy HTTP parser. DuckDuckGo uses query text and its image JSON endpoint. Chromium mode uses DuckDuckGo Images first, then starts local headless Chromium for Bing Images when more candidates are needed; it auto-scrolls and extracts original image URLs. Direct uses a text file containing source URLs.
+Google uses query text with the legacy HTTP parser. DuckDuckGo uses query text and its image JSON endpoint. Chromium mode uses DuckDuckGo Images first, then local headless Chromium for Bing Images. The Playwright backends use the Termux-native Chromium CDP adapter directly for Bing or Google Images. Direct uses a text file containing source URLs.
 
 Scrape is add-only. Known manifest source URLs and archived URLs are skipped.
 
