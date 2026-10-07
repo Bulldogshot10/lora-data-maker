@@ -111,3 +111,14 @@ def test_yolox_preprocess_matches_model_contract():
     assert tensor[0, 2, 0, 207] == pytest.approx(255.0)
     assert tensor[0, :, 0, 208].tolist() == pytest.approx([114.0, 114.0, 114.0])
     assert tensor[0, :, 415, 0].tolist() == pytest.approx([0.0, 0.0, 255.0])
+
+
+def test_yolox_real_model_smoke(tmp_path, monkeypatch):
+    model_path = os.environ.get("LORA_DATA_MAKER_YOLOX_MODEL")
+    if not model_path:
+        pytest.skip("real YOLOX model not provided")
+
+    detector = YOLOXNanoPersonDetector(model_path=model_path)
+    boxes = detector.detect(Image.new("RGB", (416, 416), "black"))
+
+    assert isinstance(boxes, tuple)
