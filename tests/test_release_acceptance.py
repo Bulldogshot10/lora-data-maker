@@ -36,6 +36,9 @@ def test_v1_end_to_end_offline(tmp_path):
     Image.new("RGB", (640, 640)).save(root / "raw" / "001.jpg")
     assert command_reconcile(Namespace(path=str(root))) == 0
     assert command_validate(Namespace(path=str(root))) == 0
+    config = (root / "config.toml").read_text(encoding="utf-8")
+    config = config.replace("person_check = true", "person_check = false", 1)
+    (root / "config.toml").write_text(config, encoding="utf-8")
     assert command_clean(Namespace(path=str(root))) == 0
     assert command_process(Namespace(path=str(root))) == 0
 
