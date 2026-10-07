@@ -4,12 +4,13 @@ import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Any, Iterable
 
 from .paths import manifest_path
 from .taggers.filters import normalize_tag
 
 if TYPE_CHECKING:
+    from .captioners.base import Captioner
     from .models import ProjectManifest
 
 
@@ -108,12 +109,49 @@ def write_caption(path: Path | str, caption: str) -> Path:
     return target
 
 
+def build_captioner(config: dict[str, Any]) -> "Captioner | None":
+    """Build the configured non-deterministic captioner backend."""
+    backend = str(config.get("backend", "deterministic")).strip().lower()
+
+    if backend == "deterministic":
+        return None
+
+    if backend == "llama_cpp":
+        llama_config = config.get("llama_cpp", {})
+        if not isinstance(llama_config, dict):
+            raise ValueError("config section [caption.llama_cpp] must be a table")
+
+        from .captioners.llama_cpp import LlamaCppCaptioner
+
+        seed_value = llama_config.get("seed")
+        return LlamaCppCaptioner(
+            base_url=str(
+                llama_config.get(
+                    "base_url",
+                    "http://127.0.0.1:8080/v1",
+                )
+            ),
+            model=str(llama_config.get("model", "local-model")),
+            timeout=float(llama_config.get("timeout", 120.0)),
+            temperature=float(llama_config.get("temperature", 0.2)),
+            max_tokens=int(llama_config.get("max_tokens", 128)),
+            system_prompt=llama_config.get("system_prompt"),
+            seed=int(seed_value) if seed_value is not None else None,
+        )
+
+    raise ValueError(
+        f"unsupported caption backend {backend!r}; "
+        "expected 'deterministic' or 'llama_cpp'"
+    )
+
+
 def caption_manifest(
     manifest: "ProjectManifest",
     *,
     root: Path | str,
     output_dir: Path | str,
     config: CaptionConfig | None = None,
+    captioner: "Captioner | None" = None,
 ) -> CaptionSummary:
     """Write deterministic captions for tagged/captioned records."""
     root_path = Path(root).expanduser().resolve()
@@ -130,12 +168,25 @@ def caption_manifest(
     )
 
     for image in candidates:
-        caption = build_caption(
-            image.tags,
-            subject=manifest.subject,
-            trigger=manifest.trigger,
-            config=settings,
-        )
+        if captioner is None:
+            caption = build_caption(
+                image.tags,
+                subject=manifest.subject,
+                trigger=manifest.trigger,
+                config=settings,
+            )
+        else:
+            source_path = root_path / (
+                image.processed_path or image.path
+            )
+            caption = captioner.caption_image(
+                source_path,
+                tags=list(image.tags),
+                subject=manifest.subject,
+                trigger=manifest.trigger,
+                separator=settings.separator,
+                trigger_from_subject=settings.trigger_from_subject,
+            )
 
         target = caption_root / f"{image.image_id}.txt"
         write_caption(target, caption)
