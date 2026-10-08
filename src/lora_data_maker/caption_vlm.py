@@ -44,8 +44,12 @@ class VlmConfig:
     runtime: str = "llama_cpp"
     chat_format: str = "mtmd"
     prompt: str = DEFAULT_VLM_PROMPT
-    max_tokens: int = 128
+    max_tokens: int = 64
     temperature: float = 0.1
+    api_key_env: str = ""
+    api_model: str = ""
+    api_base_url: str = ""
+    api_timeout: float = 120.0
     top_p: float = 0.95
     top_k: int = 40
     n_ctx: int = 4096
@@ -54,9 +58,9 @@ class VlmConfig:
     seed: int = 42
 
     def __post_init__(self) -> None:
-        if self.runtime not in {"llama_cpp", "onnx"}:
+        if self.runtime not in {"llama_cpp", "onnx", "gemini", "openai_compatible"}:
             raise ValueError(
-                "caption.vlm.runtime must be one of 'llama_cpp' or 'onnx'"
+                "caption.vlm.runtime must be one of 'llama_cpp', 'onnx', 'gemini', or 'openai_compatible'"
             )
         if self.chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5", "smolvlm"}:
             raise ValueError(
@@ -86,6 +90,13 @@ class VlmConfig:
             raise ValueError("caption.vlm.n_ctx must be >= 256")
         if self.n_threads < 1:
             raise ValueError("caption.vlm.n_threads must be greater than zero")
+        if self.api_timeout <= 0.0:
+            raise ValueError("caption.vlm.api_timeout must be greater than zero")
+        if self.runtime in {"gemini", "openai_compatible"}:
+            if not self.api_key_env.strip():
+                raise ValueError("caption.vlm.api_key_env must not be empty for API runtimes")
+            if not self.api_model.strip():
+                raise ValueError("caption.vlm.api_model must not be empty for API runtimes")
 
 
 def _data_uri(path: Path) -> str:
