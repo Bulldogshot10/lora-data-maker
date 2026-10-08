@@ -525,6 +525,12 @@ def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: P
         assert response.content
 
 
+def test_webui_preserves_saved_api_model_when_provider_omits_it(tmp_path: Path) -> None:
+    html = TestClient(create_app(make_project(tmp_path))).get("/").text
+    assert 'option.textContent=selected+" (saved, not currently listed by API)"' in html
+    assert 'if(selected)select.value=selected;' in html
+
+
 def test_webui_javascript_syntax_when_node_is_available(tmp_path: Path) -> None:
     node = shutil.which("node")
     if not node:
