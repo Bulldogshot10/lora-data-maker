@@ -405,7 +405,11 @@ def combine_caption_sources(
         parts.append(value)
     parts.extend(normalized_tags)
 
-    return truncate_caption(config.separator.join(parts), config.max_tokens)
+    return truncate_caption(
+        config.separator.join(parts),
+        config.max_tokens,
+        separator=config.separator,
+    )
 
 
 def write_caption(path: Path | str, caption: str) -> Path:
