@@ -7,6 +7,7 @@ from .manager import build_tagger
 from .model import HuggingFaceModelCache, ModelDownloadError, ModelFiles
 from .presets import (
     JOYTAG,
+    TAGGER_OFF,
     POTATO,
     SWEETSPOT,
     TAGGER_PRESETS,
@@ -20,6 +21,7 @@ __all__ = [
     "HuggingFaceModelCache",
     "JOYTAG_DEFAULT_THRESHOLD",
     "JOYTAG",
+    "TAGGER_OFF",
     "JoyTagLabels",
     "JoyTagTagger",
     "ModelDownloadError",
