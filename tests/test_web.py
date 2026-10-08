@@ -320,6 +320,38 @@ def test_webui_api_runtime_switch_uses_matching_api_key_env(tmp_path: Path, monk
     assert 'api_key_env = "OPENAI_API_KEY"' in config
 
 
+def test_webui_state_handles_missing_api_key_for_api_runtime(tmp_path: Path, monkeypatch) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    saved = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "trigger": "person",
+            "preset": "off",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+            "caption_backend": "vlm",
+            "caption_runtime": "gemini",
+            "caption_api_model": "gemini-3.5-flash-lite",
+            "caption_max_tokens": 77,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert saved.status_code == 200
+
+    state = client.get("/api/state")
+    assert state.status_code == 200
+    assert state.json()["caption"]["api_key_set"] is False
+
+
 def test_webui_vlm_file_uploads_store_relative_paths(tmp_path: Path) -> None:
     root = make_project(tmp_path)
     client = TestClient(create_app(root))
