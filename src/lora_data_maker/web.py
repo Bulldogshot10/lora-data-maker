@@ -5,6 +5,7 @@ import mimetypes
 import re
 import threading
 import uuid
+from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
@@ -20,6 +21,7 @@ from .pack import pack_dataset
 from .paths import ProjectPaths, manifest_path
 from .processing import ProcessConfig, YOLOXNanoPersonDetector, YuNetFaceDetector, clean_manifest, process_manifest, validate_image
 from .reconcile import reconcile_raw
+from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
 from .taggers import build_tagger, clean_tag_manifest, resolve_tagger_preset, tag_manifest
 
 HTML = r"""
@@ -126,6 +128,19 @@ button:disabled{opacity:.42;cursor:not-allowed}
   display:flex;align-items:flex-start;gap:9px;margin-top:12px;
   color:var(--muted);min-height:20px;
 }
+.progress-panel{margin-top:12px}
+.progress-head{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--muted);margin-bottom:7px}
+.progress-value{font-variant-numeric:tabular-nums}
+.progress-track{height:8px;overflow:hidden;border-radius:999px;background:#0a0b0e;border:1px solid var(--line)}
+.progress-fill{height:100%;width:0;border-radius:999px;background:var(--accent);transition:width .2s ease}
+.progress-fill.done{background:var(--ok)}
+.progress-fill.bad{background:var(--bad)}
+.progress-fill.indeterminate{width:35%;animation:progress-indeterminate 1.15s ease-in-out infinite}
+@keyframes progress-indeterminate{
+  0%{transform:translateX(-120%)}
+  50%{transform:translateX(150%)}
+  100%{transform:translateX(300%)}
+}
 .dot{width:8px;height:8px;border-radius:999px;background:#666;margin-top:5px;flex:0 0 auto}
 .dot.running{background:var(--accent);box-shadow:0 0 12px rgba(155,135,255,.7)}
 .dot.ok{background:var(--ok)}
@@ -224,6 +239,36 @@ a.download{
     <div class="row save"><button onclick="saveSettings()">save settings</button><span class="note">settings are written back to config.toml</span></div>
   </section>
 
+
+  <section class="card">
+    <div class="card-title">scraper</div>
+    <div class="grid-2">
+      <div>
+        <label>backend</label>
+        <select id="scraper_backend">
+          <option value="duckduckgo">duckduckgo</option>
+          <option value="google">google</option>
+          <option value="chromium">chromium</option>
+          <option value="playwright-bing">playwright · bing</option>
+          <option value="playwright-google">playwright · google</option>
+          <option value="direct">direct URLs</option>
+        </select>
+      </div>
+      <div>
+        <label>count</label>
+        <input id="scrape_count" type="number" min="1" step="1">
+      </div>
+      <div style="grid-column:span 2">
+        <label>query</label>
+        <input id="scrape_query" placeholder="julia russian woman portrait">
+      </div>
+    </div>
+    <div class="row save">
+      <button onclick="run('scrape')">scrape images</button>
+      <span class="note">downloads land in <code>raw/</code> and get added to the manifest.</span>
+    </div>
+  </section>
+
   <section class="card">
     <div class="card-title">input</div>
     <div class="drop" id="drop">
@@ -241,6 +286,10 @@ a.download{
     <div class="card-title">dataset status</div>
     <div class="stats" id="stats"></div>
     <div class="status"><span class="dot" id="dot"></span><span id="status">ready</span></div>
+    <div class="progress-panel">
+      <div class="progress-head"><span id="progress-label">idle</span><span class="progress-value" id="progress-value">0%</span></div>
+      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+    </div>
   </section>
 
   <section class="card">
@@ -284,6 +333,9 @@ function applySettings(s){
   $("height").value=s.processing.height;
   $("quality").value=s.processing.quality;
   $("qv").textContent=s.processing.quality;
+  $("scraper_backend").value=s.scraper.backend;
+  $("scrape_query").value=s.scraper.query;
+  $("scrape_count").value=s.scraper.count;
   $("face_crop").checked=!!s.processing.face_crop;
   $("face_padding").value=s.processing.face_padding;
   $("person_check").checked=!!s.quality.person_check;
@@ -295,6 +347,22 @@ function applySettings(s){
 function renderStats(counts){
   const keys=["discovered","validated","processed","tagged","captioned","exported"];
   $("stats").innerHTML=keys.map(k=>'<div class="stat"><b>'+esc(counts[k]??0)+'</b><span>'+esc(k)+'</span></div>').join("");
+}
+function renderProgress(progress,status){
+  const p=progress||{};
+  const current=Number(p.current||0);
+  const total=Number(p.total||0);
+  const percent=total>0 ? Math.max(0,Math.min(100,Number(p.percent ?? (current/total*100)))) : 0;
+  const fill=$("progress-fill");
+  const label=$("progress-label");
+  const value=$("progress-value");
+  label.textContent=p.label||status||"idle";
+  value.textContent=total>0 ? Math.round(percent)+"%" : (status==="running" ? "…" : "");
+  fill.className="progress-fill";
+  if(status==="done") fill.classList.add("done");
+  if(status==="failed") fill.classList.add("bad");
+  if(status==="running" && total<=0) fill.classList.add("indeterminate");
+  fill.style.width=total>0 ? percent+"%" : "35%";
 }
 function renderGallery(images){
   if(!images.length){
@@ -330,6 +398,9 @@ async function saveSettings(){
         subject:$("subject").value.trim(),
         trigger:$("trigger").value.trim(),
         preset:$("preset").value,
+        scraper_backend:$("scraper_backend").value,
+        scrape_query:$("scrape_query").value.trim(),
+        scrape_count:+$("scrape_count").value,
         mode:$("mode").value,
         width:+$("width").value,
         height:+$("height").value,
@@ -345,7 +416,8 @@ async function saveSettings(){
     });
     setStatus("settings saved","ok");
     refresh();
-  }catch(e){setStatus(e.message,"bad")}
+    return true;
+  }catch(e){setStatus(e.message,"bad");return false}
 }
 async function upload(){
   const fs=$("files").files;
@@ -362,9 +434,10 @@ async function upload(){
 }
 async function run(stage){
   try{
-    await saveSettings();
+    if(!(await saveSettings())) return;
     const d=await api("/api/run/"+stage,{method:"POST"});
     setStatus(d.message,"running");
+    renderProgress(d.progress,"running");
     poll(d.job_id);
   }catch(e){setStatus(e.message,"bad")}
 }
@@ -373,6 +446,7 @@ async function poll(id){
     const d=await api("/api/jobs/"+id);
     const cls=d.status==="failed"?"bad":d.status==="done"?"ok":"running";
     setStatus(d.message||d.status,cls);
+    renderProgress(d.progress,d.status);
     if(d.status==="running"){setTimeout(()=>poll(id),900)}
     else{refresh()}
   }catch(e){setStatus(e.message,"bad")}
@@ -417,13 +491,41 @@ class JobStore:
             if any(job["status"] == "running" for job in self.jobs.values()):
                 raise RuntimeError("another job is already running")
             job_id = uuid.uuid4().hex
-            self.jobs[job_id] = {"status": "running", "message": label}
+            self.jobs[job_id] = {
+                "status": "running",
+                "message": label,
+                "progress": {
+                    "current": 0,
+                    "total": 0,
+                    "percent": 0,
+                    "label": label,
+                },
+            }
         threading.Thread(target=self._worker, args=(job_id, fn), daemon=True).start()
         return job_id
 
+    def update_progress(self, job_id: str, current: int, total: int, label: str) -> None:
+        current = max(0, int(current))
+        total = max(0, int(total))
+        percent = round((current / total) * 100, 1) if total else 0
+        with self.lock:
+            job = self.jobs.get(job_id)
+            if job is None:
+                return
+            job["message"] = label
+            job["progress"] = {
+                "current": current,
+                "total": total,
+                "percent": percent,
+                "label": label,
+            }
+
     def _worker(self, job_id: str, fn) -> None:
+        def progress(current: int, total: int, label: str) -> None:
+            self.update_progress(job_id, current, total, label)
+
         try:
-            result = fn()
+            result = fn(progress)
             with self.lock:
                 self.jobs[job_id].update({"status": "done", "message": result or "done"})
         except Exception as exc:
@@ -489,6 +591,12 @@ def create_app(root: Path | str = ".") -> FastAPI:
             "project": {"name": p.manifest.project_name, "subject": p.manifest.subject, "trigger": p.manifest.trigger},
             "processing": {"mode": str(processing.get("resize_mode", "cover")), "width": int(processing.get("target_width", 512)), "height": int(processing.get("target_height", 512)), "quality": int(processing.get("jpeg_quality", 95)), "face_crop": bool(processing.get("face_crop", False)), "face_padding": float(processing.get("face_padding", 1.75))},
             "tagger": {"backend": str(tagger.get("backend", "wd14")), "preset": str(tagger.get("preset", "sweetspot"))},
+            "scraper": {
+                "backend": str(cfg.get("scraper", {}).get("backend", "duckduckgo")),
+                "query": str(cfg.get("scraper", {}).get("query", p.manifest.subject)),
+                "count": int(cfg.get("scraper", {}).get("count", 300)),
+                "max_scrolls": int(cfg.get("scraper", {}).get("max_scrolls", 30)),
+            },
             "quality": {
                 "person_check": bool(cfg.get("quality", {}).get("person_check", True)),
                 "person_threshold": float(cfg.get("quality", {}).get("person_threshold", 0.35)),
@@ -506,6 +614,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
         name, subject = str(payload.get("name", "")).strip(), str(payload.get("subject", "")).strip()
         trigger = str(payload.get("trigger", "")).strip() or subject
         mode, preset = str(payload.get("mode", "cover")).lower(), str(payload.get("preset", "sweetspot"))
+        scraper_backend = str(payload.get("scraper_backend", "duckduckgo")).lower()
+        scrape_query = str(payload.get("scrape_query", "")).strip()
+        scrape_count = int(payload.get("scrape_count", 300))
         try:
             resolved_preset = resolve_tagger_preset(preset)
         except ValueError as exc:
@@ -524,6 +635,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
             or mode not in {"cover", "fit", "stretch"}
             or width < 1
             or height < 1
+            or scraper_backend not in SCRAPER_BACKENDS
+            or not scrape_query
+            or scrape_count < 1
             or not 1 <= quality <= 100
             or face_padding <= 0
             or max_persons < 1
@@ -535,6 +649,14 @@ def create_app(root: Path | str = ".") -> FastAPI:
         set_config("project", {"name": name, "subject": subject, "trigger": trigger})
         set_config("processing", {"resize_mode": mode, "target_width": width, "target_height": height, "jpeg_quality": quality, "face_crop": face_crop, "face_padding": face_padding})
         set_config("tagger", {"backend": "joytag" if resolved_preset.kind == "joytag" else "wd14", "preset": preset})
+        set_config(
+            "scraper",
+            {
+                "backend": scraper_backend,
+                "query": scrape_query,
+                "count": scrape_count,
+            },
+        )
         set_config(
             "quality",
             {
@@ -580,8 +702,101 @@ def create_app(root: Path | str = ".") -> FastAPI:
         return {"uploaded": uploaded, "skipped": skipped}
 
     def make_job(stage: str):
-        def run_stage() -> str:
+        def run_stage(progress: Callable[[int, int, str], None]) -> str:
             p, ps, cfg = project(), paths(), load_config(project_root / "config.toml")
+            if stage == "scrape":
+                sc = cfg.get("scraper", {})
+                if not isinstance(sc, dict):
+                    raise RuntimeError("config section [scraper] must be a table")
+                backend = str(sc.get("backend", "duckduckgo"))
+                query = str(sc.get("query", p.manifest.subject)).strip()
+                count = int(sc.get("count", 300))
+                if backend not in SCRAPER_BACKENDS:
+                    raise RuntimeError("unknown scraper backend: " + backend)
+                if not query:
+                    raise RuntimeError("scrape query is required")
+                if count < 1:
+                    raise RuntimeError("scrape count must be greater than zero")
+
+                timeout = float(sc.get("timeout", 20))
+                retries = int(sc.get("retries", 3))
+                delay = float(sc.get("delay", 1.0))
+                max_scrolls = int(sc.get("max_scrolls", 30))
+                manager = ScraperManager(
+                    backend=backend,
+                    output_dir=ps.raw,
+                    cache_dir=ps.cache,
+                    timeout=timeout,
+                    retries=retries,
+                    delay=delay,
+                    max_scrolls=max_scrolls,
+                )
+                known_urls = {
+                    record.source_url
+                    for record in p.manifest.images.values()
+                    if record.source_url
+                }
+
+                progress(0, count, f"searching with {backend}...")
+                downloads, failures = manager.run(
+                    query,
+                    count=count,
+                    known_urls=known_urls,
+                    progress=progress,
+                )
+                search_error = manager.last_search_error
+
+                added_records = 0
+                for result in downloads:
+                    relative_path = manifest_path(project_root, result.path)
+                    record = find_image_by_source_url(p.manifest, result.url)
+                    if record is None:
+                        record = register_image(
+                            p.manifest,
+                            path=relative_path,
+                            source_url=result.url,
+                            source_query=query,
+                            status="downloaded",
+                        )
+                        added_records += 1
+                    record.sha256 = result.sha256
+                    record.file_size = result.file_size
+                    record.mime_type = result.content_type
+
+                p.manifest.source.update(
+                    {
+                        "backend": backend,
+                        "query": query,
+                        "last_scrape_requested": count,
+                        "last_scrape_downloaded": len(downloads),
+                        "last_scrape_added_records": added_records,
+                        "last_scrape_failed": len(failures),
+                    }
+                )
+                p.save()
+
+                if len(downloads) >= count:
+                    return f"scrape complete: downloaded {len(downloads)}/{count}"
+                if search_error and not downloads:
+                    raise RuntimeError(
+                        f"scrape failed: downloaded 0/{count}; source error: {search_error}"
+                    )
+                if not downloads and known_urls and not failures:
+                    return "no new images downloaded"
+                if downloads:
+                    if search_error:
+                        return (
+                            f"scrape complete with source error: downloaded {len(downloads)}/{count}; "
+                            f"skipped {len(failures)} failed candidates; source: {search_error}"
+                        )
+                    return (
+                        f"scrape complete with skips: downloaded {len(downloads)}/{count}; "
+                        f"skipped {len(failures)} failed candidates"
+                    )
+                raise RuntimeError(
+                    f"scrape failed: downloaded 0/{count}; failed candidates: {len(failures)}"
+                )
+
             if stage == "validate":
                 v = cfg.get("validation", {})
                 reconcile_raw(p.manifest, root=project_root, raw_dir=ps.raw)
@@ -681,14 +896,14 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 return "ZIP ready: " + archive.name
             if stage == "prepare":
                 for part in ("validate", "process", "tag", "clean-tags", "caption", "export", "pack"):
-                    make_job(part)()
+                    make_job(part)(progress)
                 return "dataset ready"
             raise RuntimeError("unknown stage: " + stage)
         return run_stage
 
     @app.post("/api/run/{stage}")
     def run(stage: str):
-        allowed = {"prepare", "validate", "clean", "process", "tag", "clean-tags", "caption", "export", "pack"}
+        allowed = {"scrape", "prepare", "validate", "clean", "process", "tag", "clean-tags", "caption", "export", "pack"}
         if stage not in allowed: raise HTTPException(404, "unknown stage")
         try: job_id = jobs.start("running " + stage + "...", make_job(stage))
         except RuntimeError as exc: raise HTTPException(409, str(exc))
