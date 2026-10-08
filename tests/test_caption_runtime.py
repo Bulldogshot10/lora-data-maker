@@ -248,7 +248,11 @@ def test_onnx_model_resolver_auto_downloads_default_repo(tmp_path, monkeypatch):
     import sys
     import types
 
-    from lora_data_maker.caption_onnx import SmolVlmOnnxCaptioner
+    from lora_data_maker.caption_onnx import (
+        SmolVlmOnnxCaptioner,
+        _session_inputs,
+        _session_outputs,
+    )
 
     snapshot_root = tmp_path / "hf-snapshot"
     calls = {}
@@ -326,7 +330,7 @@ def test_onnx_caption_end_to_end_uses_prefill_and_kv_cache(tmp_path):
         tokenizer = FakeTokenizer()
 
         def apply_chat_template(self, messages, **kwargs):
-            assert messages[0]["content"][0]["image"] is image
+            assert isinstance(messages[0]["content"][0]["image"], Image.Image)
             assert kwargs["add_generation_prompt"] is True
             assert kwargs["tokenize"] is True
             assert kwargs["return_dict"] is True
@@ -405,7 +409,6 @@ def test_onnx_caption_end_to_end_uses_prefill_and_kv_cache(tmp_path):
     image_path.parent.mkdir(parents=True, exist_ok=True)
     Image.new("RGB", (16, 16), "white").save(image_path)
 
-    image = Image.open(image_path).convert("RGB")
     runtime = SmolVlmOnnxCaptioner.__new__(SmolVlmOnnxCaptioner)
     runtime.config = VlmConfig(runtime="onnx", max_tokens=4)
     runtime._processor = FakeProcessor()
@@ -422,10 +425,7 @@ def test_onnx_caption_end_to_end_uses_prefill_and_kv_cache(tmp_path):
     runtime._image_token_id = 49190
     runtime._eos_token_id = 49279
 
-    try:
-        caption = runtime.caption(image_path)
-    finally:
-        image.close()
+    caption = runtime.caption(image_path)
 
     assert caption.startswith("pose: standing")
     assert len(runtime._decoder.calls) == 2
