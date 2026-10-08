@@ -29,6 +29,7 @@ from .processing import (
 from .processing.text import PPOCRTextDetector
 from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
 from .taggers import (
+    TAGGER_OFF,
     TAGGER_PRESETS,
     TaggerError,
     build_tagger,
@@ -151,7 +152,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tag_parser.add_argument(
         "--preset",
-        choices=tuple(TAGGER_PRESETS),
+        choices=(TAGGER_OFF, *TAGGER_PRESETS),
         default=None,
         help="tagger preset (default: config, otherwise sweetspot)",
     )
@@ -655,6 +656,9 @@ def command_tag(args: argparse.Namespace) -> int:
     selected_preset = getattr(args, "preset", None) or str(
         tagger_config.get("preset", "sweetspot")
     )
+    if selected_preset.strip().lower() == TAGGER_OFF:
+        print("tagging disabled")
+        return 0
     resolved_preset = resolve_tagger_preset(selected_preset)
 
     cache_root = (
@@ -703,6 +707,20 @@ def command_clean_tags(args: argparse.Namespace) -> int:
     config = load_config(root / "config.toml")
     paths = ProjectPaths.from_root(root, config.get("paths", {}))
     project = DatasetProject.open(paths)
+
+    tagger_config = config.get("tagger", {})
+    if not isinstance(tagger_config, dict):
+        raise LoraDataMakerError("config section [tagger] must be a table")
+    if str(tagger_config.get("preset", "")).strip().lower() == TAGGER_OFF:
+        print("tag cleaning skipped: tagger disabled")
+        return 0
+
+    caption_config = config.get("caption", {})
+    if isinstance(caption_config, dict) and str(
+        caption_config.get("backend", "deterministic")
+    ).strip().lower() == "vlm":
+        print("tag cleaning skipped: VLM caption backend is VLM-only")
+        return 0
 
     tag_rules = config.get("tag_rules", {})
     if not isinstance(tag_rules, dict):
