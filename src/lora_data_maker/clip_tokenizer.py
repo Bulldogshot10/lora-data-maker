@@ -3,11 +3,13 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Any
 
+from .exceptions import LoraDataMakerError
+
 CLIP_TOKENIZER_ID = "openai/clip-vit-large-patch14"
 CLIP_CONTEXT_LENGTH = 77
 
 
-class ClipTokenizerError(RuntimeError):
+class ClipTokenizerError(LoraDataMakerError):
     """Raised when the exact SD1.x CLIP tokenizer is unavailable."""
 
 
