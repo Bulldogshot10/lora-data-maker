@@ -31,7 +31,7 @@ class TextRegion:
         return self.width * self.height
 
 
-class PP OCRTextDetector:
+class PPOCRTextDetector:
     """PP-OCRv3 English scene-text detector via OpenCV DNN."""
 
     MODEL_FILENAME = "text_detection_en_ppocrv3_2023may.onnx"
