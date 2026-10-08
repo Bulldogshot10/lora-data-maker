@@ -189,7 +189,7 @@ For API runtimes, api_key_env names the environment variable holding the API key
 
 Local VLM runtimes use the structured four-field caption contract: pose, clothing, expression, background; pose includes a camera view term when visible; background includes lighting; hair color, eye color, face, age, and gender are excluded. Local parsing keeps this structure because local runtimes need an explicit output contract.
 
-API VLM runtimes use a separate thin contract. The API receives the image plus a built-in four-field caption prompt and returns exactly four fields: pose, clothing, expression, background. API requests do not expose local sampling/runtime settings such as temperature, top-p, top-k, seed, context size, or chat format. A small internal output-token guardrail is used by the API adapter. The backend parses the four fields, tolerates harmless formatting differences, and injects the resolved dataset trigger first.
+API VLM runtimes use a separate thin contract. The API receives the image plus a built-in four-field caption prompt and returns exactly four fields: pose, clothing, expression, background. API requests do not expose local sampling/runtime settings such as temperature, top-p, top-k, seed, context size, or chat format. The API adapter sends only the image, the fixed prompt, and the selected API model. The backend parses the four fields, tolerates harmless formatting differences, and injects the resolved dataset trigger first.
 
 Install the local runtime with:
 
