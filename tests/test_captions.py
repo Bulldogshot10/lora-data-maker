@@ -159,7 +159,7 @@ def test_default_vlm_prompt_uses_five_structured_fields():
     assert "do not mention hair color, eye color, face, age, or gender" in DEFAULT_VLM_PROMPT
 
 
-def test_parse_vlm_caption_normalizes_four_fields():
+def test_parse_vlm_caption_normalizes_five_fields():
     assert parse_vlm_caption(
         "pose: standing with arms raised\n"
         "angle camera: straight-on\n"
@@ -339,6 +339,7 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path):
             assert Path(image_path) == processed.resolve()
             return (
                 "pose: standing with arms raised\n"
+                "angle camera: straight-on\n"
                 "clothing: white halter top, black skirt\n"
                 "expression: slight smile\n"
                 "background: indoors, soft window lighting"
@@ -557,6 +558,7 @@ def test_vlm_caption_ignores_tagger_tags_and_max_token_setting():
     )
     caption = build_vlm_caption(
         "pose: standing\n"
+        "angle camera: straight-on\n"
         "clothing: black dress\n"
         "expression: smiling\n"
         "background: indoors soft lighting",
