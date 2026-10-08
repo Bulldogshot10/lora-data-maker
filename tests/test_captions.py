@@ -10,7 +10,6 @@ from lora_data_maker.captions import (
     build_vlm_caption,
     caption_config_from_dict,
     caption_manifest,
-    clean_api_vlm_caption,
     clean_vlm_caption,
     estimate_caption_tokens,
     parse_vlm_caption,
@@ -250,16 +249,6 @@ def test_build_api_vlm_caption_injects_trigger_from_four_fields():
         config=config,
     ) == "julia, standing in place, white top, smiling, indoors with soft lighting"
 
-
-
-def test_clean_api_vlm_caption_removes_wrappers_and_thinking():
-    fence = "\x60\x60\x60"
-    assert clean_api_vlm_caption(
-        "<think>internal reasoning</think>\n"
-        + fence + "text\n"
-        + "Caption: standing, smiling\n"
-        + fence
-    ) == "standing, smiling"
 
 
 def test_build_vlm_caption_removes_repeated_trigger_mentions():
