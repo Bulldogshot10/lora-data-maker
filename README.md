@@ -126,9 +126,9 @@ n_gpu_layers = 0
 seed = 42
 ~~~
 
-Supported chat formats are `mtmd`, `qwen2.5-vl`, and `gemma4`. The VLM receives only the processed image and the configured caption prompt. The prompt requests exactly four short fields: pose, clothing, expression, and background with lighting. Hair color, eye color, face, age, and gender are excluded from the VLM output. Tagger output is not read or merged by the VLM caption backend.
+Supported chat formats are `mtmd`, `qwen3.5`, `qwen2.5-vl`, and `gemma4`. The VLM receives only the processed image and the configured caption prompt. The prompt requests exactly four short fields: pose, clothing, expression, and background with lighting. Hair color, eye color, face, age, and gender are excluded from the VLM output. Tagger output is not read or merged by the VLM caption backend.
 
-The four VLM fields are parsed and their labels are removed. VLM mode does not use WD14 or JoyTag at all. The final caption is ordered as trigger → pose → clothing → expression → background, then packed with the exact Hugging Face CLIPTokenizer from openai/clip-vit-large-patch14 under the 1–77 token budget. When one image fails VLM inference or returns malformed fields, that image is marked failed and can be retried. There is no deterministic tag fallback in VLM mode.
+The four VLM fields are parsed and their labels are removed. VLM mode does not use WD14 or JoyTag at all. The final caption is ordered as trigger → pose → clothing → expression → background. VLM mode does not use a CLIP tokenizer or the deterministic caption.max_tokens budget. Each field is capped at five words by the strict parser. When one image fails VLM inference or returns malformed fields, that image is marked failed and can be retried. There is no deterministic tag fallback in VLM mode.
 
 Tagger models are cached under:
 
@@ -239,7 +239,7 @@ clean
 process
   ├────────────→ tag → clean-tags ───→ deterministic caption → trigger → .txt
   │
-  └────────────→ local VLM → strict fields → exact CLIP budget → trigger → .txt
+  └────────────→ local VLM → strict fields → trigger → .txt
   ↓
 export
   ↓
