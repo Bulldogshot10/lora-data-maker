@@ -70,10 +70,14 @@ person_threshold = 0.35
 max_persons = 1
 min_subject_area = 0.12
 min_subject_visibility = 0.35
+text_check = true
+text_confidence = 0.5
+text_min_area_ratio = 0.0004
 ~~~
 
 A zero blur threshold disables blur rejection.
 A zero max aspect ratio disables that upper bound.
+When text_check is true, the clean stage runs the pinned PP-OCRv3 text detector and rejects images with detected text regions. text_confidence controls the minimum detector confidence and text_min_area_ratio ignores extremely small detected regions.
 When person_check is true, the quality gate runs YOLOX-Nano through ONNX Runtime and rejects images with no detected person, more than max_persons people, or a primary subject that is too small/poorly visible. The detector is cached under cache/person/ and verified against its pinned SHA-256 checksum.
 
 ## processing
