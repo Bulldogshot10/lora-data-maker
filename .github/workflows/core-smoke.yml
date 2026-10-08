@@ -93,6 +93,32 @@ jobs:
           lora-data-maker info .smoke-project
 
 
+  yolox-smoke:
+    name: YOLOX person detector smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install quality runtime
+        run: python -m pip install ".[quality,dev]"
+
+      - name: Download pinned YOLOX-Nano model
+        run: |
+          curl -L --fail --retry 3 -o yolox_nano.onnx \
+            "https://huggingface.co/hr16/yolox-onnx/resolve/761141cbf90ddd9438943b3cd1b1c46ade29c714/yolox_nano.onnx"
+          echo "c789161ed43c8269fcd4e67c67eeeb4e80c622da2eb296a20bc6007bd18a0b7d  yolox_nano.onnx" | sha256sum -c -
+
+      - name: Run real YOLOX smoke test
+        env:
+          LORA_DATA_MAKER_YOLOX_MODEL: ${{ github.workspace }}/yolox_nano.onnx
+        run: pytest -q tests/test_person_detector.py -k real_model_smoke
+
   face-smoke:
     name: YuNet face smoke
     runs-on: ubuntu-latest
