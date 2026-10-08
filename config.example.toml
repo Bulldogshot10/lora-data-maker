@@ -78,10 +78,13 @@ trigger_from_subject = true
 max_tokens = 77
 
 [caption.vlm]
+runtime = "llama_cpp"
 model_path = ""
 mmproj_path = ""
 chat_format = "mtmd"
-# supported: mtmd, qwen2.5-vl, gemma4, qwen3.5, smolvlm
+# runtime = "llama_cpp": model_path is a GGUF and mmproj_path is required.
+# runtime = "onnx": model_path is a local SmolVLM2 model directory; mmproj_path is unused.
+# supported chat formats for llama_cpp: mtmd, qwen2.5-vl, gemma4, qwen3.5, smolvlm
 max_tokens = 128
 temperature = 0.1
 top_p = 0.95
