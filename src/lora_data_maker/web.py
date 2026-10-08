@@ -943,7 +943,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
             <div class="field">
               <label>person quality gate</label>
               <label class="check"><input id="person_check" type="checkbox"> enable</label>
-              <div class="field-note">keep disabled unless you explicitly want person-count filtering.</div>
+              <div class="field-note">YOLOX person-count and subject-visibility filter.</div>
             </div>
             <div class="field"><label for="max_persons">max people</label><input id="max_persons" type="number" min="1" step="1"></div>
             <div class="field"><label for="person_threshold">person confidence</label><input id="person_threshold" type="number" min="0.01" max="1" step="0.01"></div>
@@ -951,6 +951,15 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
           <div class="form-grid" style="margin-top:12px">
             <div class="field"><label for="min_subject_area">min subject area</label><input id="min_subject_area" type="number" min="0" max="1" step="0.01"></div>
             <div class="field"><label for="min_subject_visibility">min subject visibility</label><input id="min_subject_visibility" type="number" min="0" max="1" step="0.01"></div>
+          </div>
+          <div class="form-grid three" style="margin-top:12px">
+            <div class="field">
+              <label>text quality gate</label>
+              <label class="check"><input id="text_check" type="checkbox"> enable</label>
+              <div class="field-note">PP-OCRv3 rejects images with detected visible text before processing/export.</div>
+            </div>
+            <div class="field"><label for="text_confidence">text confidence</label><input id="text_confidence" type="number" min="0.01" max="1" step="0.01"></div>
+            <div class="field"><label for="text_min_area_ratio">min text area</label><input id="text_min_area_ratio" type="number" min="0" max="1" step="0.0001"></div>
           </div>
         </div>
       </details>
@@ -1055,7 +1064,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio").forEach(el=>{
     if(el)el.disabled=busy;
   });
 }
@@ -1081,6 +1090,9 @@ function applySettings(s,force=false){
   $("person_threshold").value=s.quality.person_threshold;
   $("min_subject_area").value=s.quality.min_subject_area;
   $("min_subject_visibility").value=s.quality.min_subject_visibility;
+  $("text_check").checked=!!s.quality.text_check;
+  $("text_confidence").value=s.quality.text_confidence;
+  $("text_min_area_ratio").value=s.quality.text_min_area_ratio;
   appState.settingsDirty=false;
   updateDirtyUI();
 }
@@ -1257,8 +1269,10 @@ async function saveSettings(){
   const personThreshold=Number($("person_threshold").value);
   const minArea=Number($("min_subject_area").value);
   const minVisibility=Number($("min_subject_visibility").value);
+  const textConfidence=Number($("text_confidence").value);
+  const textMinArea=Number($("text_min_area_ratio").value);
   const scrapeCount=Number($("scrape_count").value);
-  if(!Number.isFinite(width)||!Number.isFinite(height)||!Number.isFinite(quality)||!Number.isFinite(facePadding)||!Number.isFinite(maxPersons)||!Number.isFinite(personThreshold)||!Number.isFinite(minArea)||!Number.isFinite(minVisibility)||!Number.isFinite(scrapeCount)){
+  if(!Number.isFinite(width)||!Number.isFinite(height)||!Number.isFinite(quality)||!Number.isFinite(facePadding)||!Number.isFinite(maxPersons)||!Number.isFinite(personThreshold)||!Number.isFinite(minArea)||!Number.isFinite(minVisibility)||!Number.isFinite(textConfidence)||!Number.isFinite(textMinArea)||!Number.isFinite(scrapeCount)){
     toast("please fill every numeric setting with a valid value.","bad");
     return false;
   }
@@ -1285,7 +1299,10 @@ async function saveSettings(){
         max_persons:maxPersons,
         person_threshold:personThreshold,
         min_subject_area:minArea,
-        min_subject_visibility:minVisibility
+        min_subject_visibility:minVisibility,
+        text_check:$("text_check").checked,
+        text_confidence:textConfidence,
+        text_min_area_ratio:textMinArea
       })
     });
     appState.settingsDirty=false;
@@ -1566,7 +1583,8 @@ $("quality").addEventListener("input",()=>{$("qv").textContent=$("quality").valu
 [
   "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count",
   "mode","width","height","quality","face_crop","face_padding","person_check",
-  "max_persons","person_threshold","min_subject_area","min_subject_visibility"
+  "max_persons","person_threshold","min_subject_area","min_subject_visibility",
+  "text_check","text_confidence","text_min_area_ratio"
 ].forEach(id=>{
   $(id).addEventListener("input",markDirty);
   $(id).addEventListener("change",markDirty);
@@ -1880,6 +1898,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     "max_persons": 1,
                     "min_subject_area": 0.12,
                     "min_subject_visibility": 0.35,
+                    "text_check": True,
+                    "text_confidence": 0.5,
+                    "text_min_area_ratio": 0.0004,
                 },
                 "counts": {
                     "discovered": 0,
@@ -1931,6 +1952,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 "max_persons": int(cfg.get("quality", {}).get("max_persons", 1)),
                 "min_subject_area": float(cfg.get("quality", {}).get("min_subject_area", 0.12)),
                 "min_subject_visibility": float(cfg.get("quality", {}).get("min_subject_visibility", 0.35)),
+                "text_check": bool(cfg.get("quality", {}).get("text_check", True)),
+                "text_confidence": float(cfg.get("quality", {}).get("text_confidence", 0.5)),
+                "text_min_area_ratio": float(cfg.get("quality", {}).get("text_min_area_ratio", 0.0004)),
             },
             "counts": p.counts(),
             "workspace": workspace_root.as_posix(),
@@ -2016,6 +2040,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
         person_threshold = float(payload.get("person_threshold", 0.35))
         min_subject_area = float(payload.get("min_subject_area", 0.12))
         min_subject_visibility = float(payload.get("min_subject_visibility", 0.35))
+        text_check = bool(payload.get("text_check", current_quality.get("text_check", True)))
+        text_confidence = float(payload.get("text_confidence", 0.5))
+        text_min_area_ratio = float(payload.get("text_min_area_ratio", 0.0004))
         if (
             not name
             or not subject
@@ -2031,6 +2058,8 @@ def create_app(root: Path | str = ".") -> FastAPI:
             or not 0 < person_threshold <= 1
             or not 0 <= min_subject_area <= 1
             or not 0 <= min_subject_visibility <= 1
+            or not 0 < text_confidence <= 1
+            or not 0 <= text_min_area_ratio <= 1
         ):
             raise HTTPException(400, "invalid settings")
         set_config("project", {"name": name, "subject": subject, "trigger": trigger}, current_root)
@@ -2053,6 +2082,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 "max_persons": max_persons,
                 "min_subject_area": min_subject_area,
                 "min_subject_visibility": min_subject_visibility,
+                "text_check": text_check,
+                "text_confidence": text_confidence,
+                "text_min_area_ratio": text_min_area_ratio,
             },
             current_root,
         )
@@ -2272,10 +2304,17 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 c, q, proc = cfg.get("dedup", {}), cfg.get("quality", {}), cfg.get("processing", {})
                 person_check = bool(q.get("person_check", True))
                 person_detector = None
+                text_detector = None
                 if person_check:
                     person_detector = YOLOXNanoPersonDetector(
                         cache_dir=ps.cache / "person",
                         confidence_threshold=float(q.get("person_threshold", 0.35)),
+                    )
+                if bool(q.get("text_check", True)):
+                    text_detector = PPOCRTextDetector(
+                        cache_dir=ps.cache / "text",
+                        confidence_threshold=float(q.get("text_confidence", 0.5)),
+                        min_area_ratio=float(q.get("text_min_area_ratio", 0.0004)),
                     )
                 s = clean_manifest(
                     p.manifest,
@@ -2291,6 +2330,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     max_persons=int(q.get("max_persons", 1)),
                     min_subject_area=float(q.get("min_subject_area", 0.12)),
                     min_subject_visibility=float(q.get("min_subject_visibility", 0.35)),
+                    text_detector=text_detector,
                 )
                 p.save()
                 return "cleaned " + str(s.kept) + "; exact dup " + str(s.exact_duplicates) + "; perceptual dup " + str(s.perceptual_duplicates) + "; quality rejected " + str(s.quality_rejected)
