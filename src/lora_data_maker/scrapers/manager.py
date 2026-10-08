@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from .archive import DownloadArchive
 from .base import SCRAPER_BACKENDS, ImageResult, Scraper, ScraperError
@@ -94,6 +94,7 @@ class ScraperManager:
         *,
         count: int,
         known_urls: Iterable[str] = (),
+        progress: Callable[[int, int, str], None] | None = None,
     ) -> tuple[list[DownloadResult], list[tuple[ImageResult, str]]]:
         if count <= 0:
             raise ScraperError("count must be greater than zero")
@@ -108,6 +109,8 @@ class ScraperManager:
         # candidates can already be archived or fail to download.
         search_limit = max(count, count * 3)
 
+        if progress is not None:
+            progress(0, count, f"searching for up to {search_limit} candidates...")
         print(f"scrape: searching for up to {search_limit} candidates...", flush=True)
 
         try:
@@ -127,8 +130,11 @@ class ScraperManager:
                         continue
                     downloads.append(downloaded)
                     next_index += 1
+                    message = f"downloaded {len(downloads)}/{count}"
+                    if progress is not None:
+                        progress(len(downloads), count, message)
                     print(
-                        f"scrape: downloaded {len(downloads)}/{count}",
+                        f"scrape: {message}",
                         flush=True,
                     )
                 except ScraperError as exc:
@@ -155,6 +161,12 @@ class ScraperManager:
                     flush=True,
                 )
 
+        if progress is not None and downloads:
+            progress(
+                len(downloads),
+                count,
+                f"scrape finished: downloaded {len(downloads)}/{count}",
+            )
         return downloads, failures
 
     def _next_index(self) -> int:
