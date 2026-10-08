@@ -18,6 +18,8 @@ def build_tagger(
     preset: str | None = None,
 ) -> Tagger:
     configured_backend = str(config.get("backend", "wd14")).strip().lower()
+    if configured_backend == "off" or str(preset or config.get("preset", "")).strip().lower() == "off":
+        raise TaggerError("tagger is disabled; do not build a tagger")
     if configured_backend not in {"wd14", "joytag"}:
         raise TaggerError(
             f"unsupported tagger backend {configured_backend!r}; "
