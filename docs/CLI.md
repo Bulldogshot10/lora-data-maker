@@ -118,13 +118,14 @@ The subject is inserted exactly once at the front.
 
 ## caption
 
-Write deterministic UTF-8 caption files.
+Write caption files from cleaned image records.
 
 ~~~bash
 lora-data-maker caption [--path PATH]
 ~~~
 
-Caption files are stored under work/captions/.
+The default caption.backend = "deterministic" builds captions from cleaned tags. With caption.backend = "vlm", the stage sends each processed image to the local llama-cpp-python VLM runtime, cleans the returned text, injects the canonical trigger, and writes the result under work/captions/.
+VLM inference errors are isolated per image and fall back to the deterministic tag caption.
 
 ## build
 
