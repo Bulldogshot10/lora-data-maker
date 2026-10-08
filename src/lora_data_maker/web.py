@@ -835,7 +835,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
           <button type="button" class="step primary" data-run-stage="prepare">
             <span class="step-number">all stages</span>
             <span class="step-name">prepare dataset</span>
-            <span class="step-hint">validate → clean / dedup → process → tag → clean tags → caption → export → ZIP</span>
+            <span class="step-hint">validate → clean / dedup → process → caption → export → ZIP when VLM mode is selected</span>
           </button>
           <button type="button" class="step" data-run-stage="validate">
             <span class="step-number">01 · input</span><span class="step-name">validate</span><span class="step-hint">scan and validate raw images</span>
@@ -847,10 +847,10 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
             <span class="step-number">03 · image</span><span class="step-name">stage / resize</span><span class="step-hint">make training-ready images</span>
           </button>
           <button type="button" class="step" data-run-stage="tag">
-            <span class="step-number">04 · metadata</span><span class="step-name">tag</span><span class="step-hint">generate automatic tags</span>
+            <span class="step-number">04 · metadata</span><span class="step-name">tag</span><span class="step-hint">deterministic mode only</span>
           </button>
           <button type="button" class="step" data-run-stage="clean-tags">
-            <span class="step-number">05 · metadata</span><span class="step-name">clean tags</span><span class="step-hint">apply tag removal rules</span>
+            <span class="step-number">05 · metadata</span><span class="step-name">clean tags</span><span class="step-hint">deterministic mode only</span>
           </button>
           <button type="button" class="step" data-run-stage="caption">
             <span class="step-number">06 · metadata</span><span class="step-name">caption</span><span class="step-hint">write .txt captions</span>
@@ -897,7 +897,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
       </section>
 
       <section class="card card-pad" style="margin-top:14px">
-        <div class="card-title">tagger</div>
+        <div class="card-title">tagger <span class="card-kicker">(deterministic mode only)</span></div>
         <div class="form-grid" style="margin-top:13px">
           <div class="field">
             <label for="preset">preset</label>
@@ -916,7 +916,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
             <label for="caption_backend">backend</label>
             <select id="caption_backend">
               <option value="deterministic">deterministic · tags only</option>
-              <option value="vlm">local VLM · tags + VLM</option>
+              <option value="vlm">local VLM · VLM only</option>
             </select>
           </div>
           <div class="field">
@@ -945,7 +945,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
             <input id="caption_mmproj_path" autocomplete="off" placeholder="/path/to/mmproj.gguf">
           </div>
         </div>
-        <div class="field-note" style="margin-top:9px">local VLM paths can be absolute or relative to the dataset root. final VLM + tagger + trigger output shares the 1–77 token budget.</div>
+        <div class="field-note" style="margin-top:9px">VLM mode skips WD14/JoyTag completely. captions are trigger → pose → clothing → expression → background, packed with the exact openai/clip-vit-large-patch14 tokenizer under the 1–77 token budget.</div>
       </section>
 
       <section class="card card-pad" style="margin-top:14px">
@@ -1105,6 +1105,13 @@ function updateBusyUI(){
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
   document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio").forEach(el=>{
     if(el)el.disabled=busy;
+  });
+  const vlmOnly=$("caption_backend").value==="vlm";
+  ["tag","clean-tags"].forEach(stage=>{
+    document.querySelectorAll('[data-run-stage="'+stage+'"]').forEach(button=>{
+      button.disabled=busy||vlmOnly;
+      button.title=vlmOnly?"not used with VLM captions":"";
+    });
   });
 }
 function applySettings(s,force=false){
@@ -2481,6 +2488,14 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 p.save()
                 return "staged " + str(done) + ", failed " + str(failed) + ", skipped " + str(skipped)
             if stage == "tag":
+                cc = cfg.get("caption", {})
+                caption_backend = (
+                    str(cc.get("backend", "deterministic")).strip().lower()
+                    if isinstance(cc, dict)
+                    else "deterministic"
+                )
+                if caption_backend == "vlm":
+                    return "tag skipped: VLM caption backend is VLM-only"
                 tc = cfg.get("tagger", {})
                 selected = resolve_tagger_preset(str(tc.get("preset", "sweetspot")))
                 cache_root = (
@@ -2499,6 +2514,14 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 p.save()
                 return "tagged " + str(s.tagged) + ", skipped " + str(s.skipped)
             if stage == "clean-tags":
+                cc = cfg.get("caption", {})
+                caption_backend = (
+                    str(cc.get("backend", "deterministic")).strip().lower()
+                    if isinstance(cc, dict)
+                    else "deterministic"
+                )
+                if caption_backend == "vlm":
+                    return "clean-tags skipped: VLM caption backend is VLM-only"
                 tc = cfg.get("tag_rules", {})
                 s = clean_tag_manifest(p.manifest, remove_tags=tc.get("remove", []))
                 p.save()
@@ -2515,11 +2538,17 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     config=settings,
                 )
                 p.save()
+                if s.failed:
+                    raise RuntimeError(
+                        "caption failed for "
+                        + str(s.failed)
+                        + " images"
+                    )
                 return (
                     "captioned "
                     + str(s.captioned)
-                    + ", fallback "
-                    + str(s.fallback)
+                    + ", failed "
+                    + str(s.failed)
                     + " via "
                     + settings.backend
                 )
@@ -2537,7 +2566,18 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 p.manifest.source.update({"last_pack_archive": manifest_path(root_path, archive), "last_pack_sha256": s.sha256}); p.save()
                 return "ZIP ready: " + archive.name
             if stage == "prepare":
-                for part in ("validate", "clean", "process", "tag", "clean-tags", "caption", "export", "pack"):
+                cc = cfg.get("caption", {})
+                caption_backend = (
+                    str(cc.get("backend", "deterministic")).strip().lower()
+                    if isinstance(cc, dict)
+                    else "deterministic"
+                )
+                parts = (
+                    ("validate", "clean", "process", "caption", "export", "pack")
+                    if caption_backend == "vlm"
+                    else ("validate", "clean", "process", "tag", "clean-tags", "caption", "export", "pack")
+                )
+                for part in parts:
                     make_job(part, root_path)(progress, cancel_event)
                 return "dataset ready"
             raise RuntimeError("unknown stage: " + stage)
