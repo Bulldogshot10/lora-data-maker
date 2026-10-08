@@ -291,7 +291,7 @@ The project includes an optional localhost WebUI. It is designed for local datas
 
 Install the WebUI and tagger extras:
 
-    pip install -e ".[web,tagger]"
+    pip install -e ".[web,tagger,quality]"
 
 Start the WebUI from a dataset workspace:
 
@@ -306,7 +306,7 @@ The one-click Prepare Dataset flow runs:
 
     validate -> clean / dedup -> stage -> tag -> clean tags -> caption -> export -> ZIP
 
-The clean stage includes the default PP-OCRv3 text gate. Install the quality extra before using the full pipeline: python -m pip install ".[quality]".
+The clean stage includes the default PP-OCRv3 text gate. Install the quality extra before using the full pipeline: python -m pip install ".[quality]". The bundled detector is the upstream English PP-OCRv3 model, so non-English text can be less reliable.
 
 The image quality/dedup cleaning stage remains an explicit optional button because a manually curated/cherry-picked image set may intentionally skip that stage.
 
