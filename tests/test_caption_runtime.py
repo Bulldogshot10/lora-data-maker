@@ -1,12 +1,6 @@
 from pathlib import Path
 
-from lora_data_maker.caption_vlm import (
-    LlamaCppVlmCaptioner,
-    VlmConfig,
-    _Qwen35NoThinkingChatHandler,
-    _qwen35_retry_prompt,
-    _strip_qwen35_thinking,
-)
+from lora_data_maker.caption_vlm import LlamaCppVlmCaptioner, VlmConfig
 from lora_data_maker.captions import caption_config_from_dict, caption_manifest
 from lora_data_maker.models import ImageRecord, ProjectManifest
 
@@ -60,63 +54,22 @@ def test_caption_config_accepts_smolvlm_chat_format(tmp_path):
     assert settings.vlm.chat_format == "smolvlm"
 
 
-def test_qwen35_handler_disables_thinking():
-    seen = {}
-
-    class FakeHandler:
-        def __call__(self, **kwargs):
-            seen.update(kwargs)
-            return "ok"
-
-    handler = _Qwen35NoThinkingChatHandler(FakeHandler())
-
-    assert handler(messages=[], temperature=0.1) == "ok"
-    assert seen["enable_thinking"] is False
-
-
-def test_qwen35_prompt_helpers():
-    assert _qwen35_retry_prompt("describe the image").endswith("\n/no_think")
-    assert _qwen35_retry_prompt("describe the image\n/no_think") == (
-        "describe the image\n/no_think"
-    )
-    assert _strip_qwen35_thinking(
-        "<think>internal</think>\npose: standing"
-    ) == "pose: standing"
-
-
-def test_qwen35_blank_caption_retries_without_thinking(tmp_path):
+def test_blank_vlm_completion_includes_generation_diagnostics(tmp_path):
     image = tmp_path / "image.jpg"
     image.write_bytes(b"image-data")
 
     class FakeLlm:
-        def __init__(self):
-            self.calls = []
-
         def create_chat_completion(self, **kwargs):
-            self.calls.append(kwargs)
-            if len(self.calls) == 1:
-                return {
-                    "choices": [
-                        {
-                            "message": {
-                                "content": "<think>\n\n</think>\n\n",
-                            }
-                        }
-                    ]
-                }
             return {
                 "choices": [
                     {
                         "message": {
-                            "content": (
-                                "pose: standing\n"
-                                "clothing: white top\n"
-                                "expression: neutral\n"
-                                "background: indoors"
-                            ),
-                        }
+                            "content": "<think>\n\n</think>\n\n",
+                        },
+                        "finish_reason": "stop",
                     }
-                ]
+                ],
+                "usage": {"completion_tokens": 0},
             }
 
     runtime = LlamaCppVlmCaptioner.__new__(LlamaCppVlmCaptioner)
@@ -127,17 +80,16 @@ def test_qwen35_blank_caption_retries_without_thinking(tmp_path):
     )
     runtime._llm = FakeLlm()
 
-    content = runtime.caption(image)
+    try:
+        runtime.caption(image)
+    except Exception as exc:
+        message = str(exc)
+    else:
+        raise AssertionError("expected blank completion to fail")
 
-    assert content.startswith("pose: standing")
-    assert len(runtime._llm.calls) == 2
-    retry = runtime._llm.calls[1]
-    retry_text = retry["messages"][0]["content"][1]["text"]
-    assert retry_text.endswith("/no_think")
-    assert retry["max_tokens"] == 256
-    assert retry["temperature"] == 0.7
-    assert retry["top_p"] == 0.8
-    assert retry["top_k"] == 20
+    assert "finish_reason='stop'" in message
+    assert "completion_tokens=0" in message
+    assert "raw_content='<think>\\n\\n</think>\\n\\n'" in message
 
 
 def test_caption_manifest_loads_owned_vlm_runtime_once(tmp_path, monkeypatch):
