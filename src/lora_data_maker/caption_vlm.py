@@ -40,7 +40,7 @@ class VlmConfig:
     temperature: float = 0.1
     top_p: float = 0.95
     top_k: int = 40
-    n_ctx: int = 2048
+    n_ctx: int = 4096
     n_threads: int = 4
     n_gpu_layers: int = 0
     seed: int = 42
