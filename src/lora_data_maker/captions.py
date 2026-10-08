@@ -499,6 +499,12 @@ def caption_manifest(
     runtime = captioner
     owns_runtime = False
     if settings.backend == "vlm" and runtime is None:
+        if progress is not None:
+            progress(
+                0,
+                len(candidates),
+                f"loading VLM runtime: {settings.vlm.runtime}",
+            )
         if settings.vlm.runtime == "onnx":
             from .caption_onnx import SmolVlmOnnxCaptioner
 
@@ -506,6 +512,12 @@ def caption_manifest(
         else:
             runtime = LlamaCppVlmCaptioner(settings.vlm)
         owns_runtime = True
+        if progress is not None:
+            progress(
+                0,
+                len(candidates),
+                f"VLM runtime ready: {settings.vlm.runtime}",
+            )
 
     hard_failures = 0
     captioned_count = 0
