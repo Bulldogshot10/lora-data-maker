@@ -1,4 +1,5 @@
-from lora_data_maker.clip_tokenizer import count_clip_tokens, pack_clip_caption
+from lora_data_maker.clip_tokenizer import ClipTokenizerError, count_clip_tokens, pack_clip_caption
+from lora_data_maker.exceptions import LoraDataMakerError
 
 
 class FakeClipTokenizer:
@@ -32,3 +33,7 @@ def test_pack_clip_caption_uses_custom_separator():
         tokenizer=tokenizer,
     )
     assert caption == "julia; standing; black dress"
+
+
+def test_clip_tokenizer_error_is_application_error():
+    assert issubclass(ClipTokenizerError, LoraDataMakerError)
