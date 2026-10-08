@@ -157,7 +157,7 @@ She is sitting outdoors."""
 def test_default_vlm_prompt_uses_four_structured_fields():
     assert "exactly these 4 fields, one per line" in DEFAULT_VLM_PROMPT
     assert "maximum of 5 words per field" in DEFAULT_VLM_PROMPT
-    assert "pose:\\nclothing:\\nexpression:\\nbackground:" in DEFAULT_VLM_PROMPT
+    assert "pose:\nclothing:\nexpression:\nbackground:" in DEFAULT_VLM_PROMPT
     assert "do not mention hair color, eye color, face, age, or gender" in DEFAULT_VLM_PROMPT
 
 
