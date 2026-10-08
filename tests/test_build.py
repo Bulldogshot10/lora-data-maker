@@ -314,3 +314,27 @@ def test_run_build_skips_tag_stages_when_tagger_is_off(tmp_path, monkeypatch):
     assert calls == [
         "validate", "clean", "process", "caption", "export", "pack"
     ]
+
+def test_command_tag_skips_when_tagger_is_off(tmp_path, monkeypatch):
+    from lora_data_maker.cli import command_tag
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace('backend = "wd14"\npreset = "sweetspot"', 'backend = "off"\npreset = "off"', 1)
+    config_path.write_text(config, encoding="utf-8")
+
+    def fail_if_built(*args, **kwargs):
+        raise AssertionError("disabled tagger must not be built")
+
+    monkeypatch.setattr("lora_data_maker.cli.build_tagger", fail_if_built)
+    assert command_tag(Namespace(path=str(root), preset=None)) == 0
