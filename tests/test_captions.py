@@ -232,10 +232,10 @@ def test_build_vlm_caption_removes_repeated_trigger_mentions():
     ) == "julia, portrait pose, black shirt, smiling, indoor room"
 
 
-def test_caption_config_rejects_vlm_without_paths():
+def test_caption_config_rejects_llama_vlm_without_paths():
     with pytest.raises(
         ValueError,
-        match="model_path and caption.vlm.mmproj_path are required",
+        match="caption.vlm.model_path is required for the llama_cpp runtime",
     ):
         CaptionConfig(backend="vlm")
 
