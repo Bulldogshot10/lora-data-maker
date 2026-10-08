@@ -51,10 +51,15 @@ class VlmConfig:
                 "caption.vlm.chat_format must be one of "
                 "'mtmd', 'qwen2.5-vl', or 'gemma4'"
             )
-        if not self.model_path.strip():
-            raise ValueError("caption.vlm.model_path is required for VLM captions")
-        if not self.mmproj_path.strip():
-            raise ValueError("caption.vlm.mmproj_path is required for VLM captions")
+
+        has_model = bool(self.model_path.strip())
+        has_mmproj = bool(self.mmproj_path.strip())
+        if has_model != has_mmproj:
+            raise ValueError(
+                "caption.vlm.model_path and caption.vlm.mmproj_path "
+                "must be configured together"
+            )
+
         if not self.prompt.strip():
             raise ValueError("caption.vlm.prompt must not be empty")
         if self.max_tokens < 1:
@@ -86,7 +91,6 @@ def _data_uri(path: Path) -> str:
 
 def _load_chat_handler(
     *,
-    llama_cpp: Any,
     chat_format: str,
     mmproj_path: str,
 ) -> Any:
@@ -142,7 +146,6 @@ class LlamaCppVlmCaptioner:
             ) from exc
 
         handler = _load_chat_handler(
-            llama_cpp=llama_cpp,
             chat_format=config.chat_format,
             mmproj_path=str(mmproj_path),
         )
