@@ -2213,7 +2213,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
         ).strip()
         if caption_backend not in {"deterministic", "vlm"}:
             raise HTTPException(400, "caption backend must be deterministic or vlm")
-        if caption_chat_format not in {"mtmd", "qwen2.5-vl", "gemma4"}:
+        if caption_chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5"}:
             raise HTTPException(400, "unsupported VLM chat format")
         if caption_backend == "vlm" and (not caption_model_path or not caption_mmproj_path):
             raise HTTPException(400, "VLM model and mmproj paths are required")
