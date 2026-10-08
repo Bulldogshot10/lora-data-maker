@@ -100,6 +100,39 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     )
     assert invalid_budget.status_code == 400
 
+    vlm = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "new_person",
+            "trigger": "new_person",
+            "preset": "joytag",
+            "mode": "cover",
+            "width": 768,
+            "height": 512,
+            "quality": 92,
+            "caption_backend": "vlm",
+            "caption_chat_format": "qwen2.5-vl",
+            "caption_model_path": "models/model.gguf",
+            "caption_mmproj_path": "models/mmproj.gguf",
+            "caption_max_tokens": 77,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert vlm.status_code == 200
+    vlm_state = client.get("/api/state").json()
+    assert vlm_state["caption"]["backend"] == "vlm"
+    assert vlm_state["caption"]["chat_format"] == "qwen2.5-vl"
+    assert vlm_state["caption"]["model_path"] == "models/model.gguf"
+    assert vlm_state["caption"]["mmproj_path"] == "models/mmproj.gguf"
+
+    config = (root / "config.toml").read_text(encoding="utf-8")
+    assert 'backend = "vlm"' in config
+    assert 'model_path = "models/model.gguf"' in config
+    assert 'mmproj_path = "models/mmproj.gguf"' in config
+    assert 'chat_format = "qwen2.5-vl"' in config
+
     joytag = client.post(
         "/api/settings",
         json={
@@ -136,6 +169,10 @@ def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: P
     assert 'aria-live="polite"' in html
     assert 'id="project_explorer"' in html
     assert 'id="progress-fill"' in html
+    assert 'id="caption_backend"' in html
+    assert 'id="caption_chat_format"' in html
+    assert 'id="caption_model_path"' in html
+    assert 'id="caption_mmproj_path"' in html
     assert 'id="caption_max_tokens"' in html
     assert 'max="77"' in html
     assert 'id="preview-modal"' in html
