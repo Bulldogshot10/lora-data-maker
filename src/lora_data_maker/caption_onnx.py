@@ -269,20 +269,24 @@ class SmolVlmOnnxCaptioner:
             {
                 "role": "user",
                 "content": [
-                    {"type": "image"},
+                    {"type": "image", "image": image},
                     {"type": "text", "text": self._prompt},
                 ],
             }
         ]
-        prompt = self._processor.apply_chat_template(
-            messages,
-            add_generation_prompt=True,
-        )
-        inputs = self._processor(
-            images=[image],
-            text=[prompt],
-            return_tensors="np",
-        )
+        try:
+            inputs = self._processor.apply_chat_template(
+                messages,
+                add_generation_prompt=True,
+                tokenize=True,
+                return_dict=True,
+                return_tensors="np",
+            )
+        except Exception as exc:
+            raise VlmCaptionerError(
+                f"SmolVLM2 processor failed to prepare multimodal inputs: {exc}"
+            ) from exc
+
         return {
             str(key): np.asarray(value)
             for key, value in inputs.items()
