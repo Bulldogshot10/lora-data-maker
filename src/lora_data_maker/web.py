@@ -16,7 +16,7 @@ from .captions import CaptionConfig, caption_manifest
 from .config import load_config, write_default_config
 from .dataset import DatasetProject
 from .export import export_manifest, safe_component
-from .manifest import register_image
+from .manifest import find_image_by_source_url, register_image
 from .pack import pack_dataset
 from .paths import ProjectPaths, manifest_path
 from .processing import ProcessConfig, YOLOXNanoPersonDetector, YuNetFaceDetector, clean_manifest, process_manifest, validate_image
