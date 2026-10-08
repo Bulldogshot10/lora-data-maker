@@ -931,6 +931,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
               <option value="mtmd">mtmd</option>
               <option value="qwen3.5">qwen3.5 · native mtmd</option>
               <option value="qwen2.5-vl">qwen2.5-vl</option>
+              <option value="smolvlm">smolvlm · native mtmd</option>
               <option value="gemma4">gemma4</option>
             </select>
           </div>
@@ -2213,7 +2214,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
         ).strip()
         if caption_backend not in {"deterministic", "vlm"}:
             raise HTTPException(400, "caption backend must be deterministic or vlm")
-        if caption_chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5"}:
+        if caption_chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5", "smolvlm"}:
             raise HTTPException(400, "unsupported VLM chat format")
         if caption_backend == "vlm" and (not caption_model_path or not caption_mmproj_path):
             raise HTTPException(400, "VLM model and mmproj paths are required")
