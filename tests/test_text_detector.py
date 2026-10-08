@@ -26,3 +26,40 @@ def test_text_detector_validates_parameters_before_runtime(tmp_path):
             model_path=model,
             min_area_ratio=-0.1,
         )
+
+
+def test_text_detector_scales_boxes_and_filters_small_regions():
+    import numpy as np
+
+    class CV2:
+        COLOR_RGB2BGR = 1
+        @staticmethod
+        def cvtColor(array, code):
+            return array[:, :, ::-1]
+        @staticmethod
+        def resize(array, size, interpolation=None):
+            return array
+        INTER_LINEAR = 1
+
+    class FakeDetector:
+        def detect(self, image):
+            return (
+                np.array([[10, 20], [110, 20], [110, 30], [10, 30]], dtype=np.float32),
+                np.array([0.9], dtype=np.float32),
+            )
+
+    detector = PPOCRTextDetector.__new__(PPOCRTextDetector)
+    detector._cv2 = CV2
+    detector._detector = FakeDetector()
+    detector.INPUT_SIZE = (736, 736)
+    detector.confidence_threshold = 0.5
+    detector.min_area_ratio = 0.0001
+
+    regions = detector.detect(Image.new("RGB", (1472, 736), "white"))
+
+    assert len(regions) == 1
+    assert regions[0].left == 20
+    assert regions[0].top == 20
+    assert regions[0].right == 220
+    assert regions[0].bottom == 30
+    assert regions[0].confidence == pytest.approx(0.9)
