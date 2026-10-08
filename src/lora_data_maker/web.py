@@ -991,7 +991,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
             <input id="caption_api_base_url" autocomplete="off" placeholder="https://api.openai.com/v1">
           </div>
         </div>
-        <div class="field-note" style="margin-top:9px">VLM uses the fixed caption constraint: exactly pose → clothing → expression → background, max 5 words per field; pose includes a camera view when visible; background includes lighting; hair color, eye color, face, age, and gender are excluded. final caption always starts with the resolved trigger.</div>
+        <div class="field-note" style="margin-top:9px">local VLM uses a structured pose → clothing → expression → background contract. API VLM sends the image plus a fixed caption prompt and returns one plain caption line. the backend injects the resolved trigger first.</div>
       </section>
 
       <section class="card card-pad" style="margin-top:14px">
