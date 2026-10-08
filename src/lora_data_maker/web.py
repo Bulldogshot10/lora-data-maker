@@ -935,7 +935,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
             </select>
           </div>
           <div class="field">
-            <label for="caption_max_tokens">max caption tokens</label>
+            <label for="caption_max_tokens">max caption tokens · deterministic</label>
             <div class="range">
               <input id="caption_max_tokens" type="range" min="1" max="77" step="1">
               <span class="range-value" id="caption_tokens_value"></span>
@@ -952,7 +952,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
             <div style="display:flex;gap:8px"><input id="caption_mmproj_path" autocomplete="off" placeholder="/path/to/mmproj.gguf"><button type="button" class="action-secondary" id="caption_mmproj_upload">upload</button></div><input id="caption_mmproj_file" type="file" accept=".gguf" hidden><div class="field-note" id="caption_mmproj_status">no mmproj uploaded</div>
           </div>
         </div>
-        <div class="field-note" style="margin-top:9px">VLM mode skips WD14/JoyTag completely. captions are trigger → pose → clothing → expression → background, packed with the exact openai/clip-vit-large-patch14 tokenizer under the 1–77 token budget.</div>
+        <div class="field-note" style="margin-top:9px">VLM mode skips WD14/JoyTag completely. captions are trigger → pose → clothing → expression → background. the max caption tokens setting applies only to deterministic captions.</div>
       </section>
 
       <section class="card card-pad" style="margin-top:14px">
