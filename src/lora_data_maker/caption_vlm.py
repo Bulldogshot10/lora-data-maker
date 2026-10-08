@@ -144,7 +144,7 @@ def _load_chat_handler(
             "clip_model_path": mmproj_path,
             "verbose": False,
         }
-        if chat_format in {"mtmd", "gemma4"}:
+        if chat_format in {"mtmd", "qwen3.5", "smolvlm", "gemma4"}:
             kwargs["use_gpu"] = use_gpu
         return handler_class(**kwargs)
     except Exception as exc:
