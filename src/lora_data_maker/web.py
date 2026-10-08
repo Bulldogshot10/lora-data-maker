@@ -1109,7 +1109,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
     if(el)el.disabled=busy;
   });
   const vlmOnly=$("caption_backend").value==="vlm";
