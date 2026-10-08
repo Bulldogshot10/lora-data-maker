@@ -17,12 +17,9 @@ deduplicate
 quality filter
   ↓
 process / crop / resize
-  ├──→ tag → tag filtering → structured metadata
+  ├──→ tag → tag filtering → deterministic caption → trigger → .txt
   │
-  └──→ caption backend → cleanup ───────────────┐
-       (deterministic or local VLM)              │
-                                                 ↓
-                         VLM text + cleaned tags → trigger → .txt
+  └──→ local VLM → structured fields → exact CLIP budget → trigger → .txt
   ↓
 export
   ↓
@@ -100,9 +97,7 @@ Tagger output is treated as visual metadata. General tags, character tags, confi
 
 ## Caption boundary
 
-Caption generation consumes records after tag cleaning. The tagger and VLM captioner both read the same processed image independently; tagger output is never passed into the VLM prompt.
-
-With `caption.backend = "deterministic"`, the final caption is built from normalized, deduplicated tags. With `caption.backend = "vlm"`, the local llama-cpp-python runtime generates a strict four-field response from the processed image: pose, clothing, expression, and background with lighting. The parser strips field labels, validates the response shape and five-word-per-field limit, then merges the four phrases with cleaned tagger tags. The resolved trigger is injected exactly once, and the combined caption is truncated under the shared `caption.max_tokens` budget (1–77, default 77). A budget that cannot fit the resolved trigger is rejected. VLM inference or formatting failures fall back to the deterministic tag caption for that image.
+Caption generation consumes records after tag cleaning. With `caption.backend = "deterministic"`, the final caption is built from normalized, deduplicated tags. With `caption.backend = "vlm"`, the local llama-cpp-python runtime reads only the processed image and generates a strict four-field response: pose, clothing, expression, and background with lighting. WD14 and JoyTag are completely bypassed in VLM mode. The parser strips field labels and validates the response shape and five-word-per-field limit. The resolved trigger is placed first, followed by the four ordered fields. The final caption is packed with the exact `openai/clip-vit-large-patch14` CLIPTokenizer, including BOS/EOS, under the shared `caption.max_tokens` budget (1–77, default 77). A budget that cannot fit the resolved trigger is rejected. VLM inference or formatting failures mark the image failed instead of falling back to deterministic tags.
 
 Captions are written as UTF-8 `.txt` files under `work/captions/`, one file per image record. The resolved trigger is derived from `subject` when `caption.trigger_from_subject = true`; otherwise the manifest trigger is used. Trigger injection is idempotent. Caption backend/model/fallback metadata is retained in the manifest for audit and resume.
 
@@ -146,7 +141,6 @@ The following are out of scope for v1:
 
 - PyTorch
 - Diffusers
-- Transformers
 - PEFT
 - Accelerate
 - Gradio UI
@@ -170,6 +164,7 @@ The following are out of scope for v1:
 - gallery-dl for optional external download backends
 - pytest for development
 - llama-cpp-python for optional local VLM captioning
+- Transformers for the exact Hugging Face CLIPTokenizer used by VLM caption budgeting
 
 Optional features must never make the basic CLI import fail. The `tagger` and `quality` extras provide NumPy and ONNX Runtime without adding them to the core dependency set.
 
