@@ -1113,10 +1113,11 @@ function updateBusyUI(){
     if(el)el.disabled=busy;
   });
   const vlmOnly=$("caption_backend").value==="vlm";
+  const taggerOff=$("preset").value==="off";
   ["tag","clean-tags"].forEach(stage=>{
     document.querySelectorAll('[data-run-stage="'+stage+'"]').forEach(button=>{
-      button.disabled=busy||vlmOnly;
-      button.title=vlmOnly?"not used with VLM captions":"";
+      button.disabled=busy||vlmOnly||taggerOff;
+      button.title=vlmOnly?"not used with VLM captions":taggerOff?"tagger disabled":"";
     });
   });
 }
@@ -1131,6 +1132,8 @@ function applySettings(s,force=false){
   $("caption_chat_format").value=s.caption.chat_format||"mtmd";
   $("caption_model_path").value=s.caption.model_path||"";
   $("caption_mmproj_path").value=s.caption.mmproj_path||"";
+  $("caption_model_status").textContent=s.caption.model_path?"configured: "+s.caption.model_path:"no model uploaded";
+  $("caption_mmproj_status").textContent=s.caption.mmproj_path?"configured: "+s.caption.mmproj_path:"no mmproj uploaded";
   $("caption_max_tokens").value=s.caption.max_tokens;
   $("caption_tokens_value").textContent=s.caption.max_tokens;
   $("mode").value=s.processing.mode;
