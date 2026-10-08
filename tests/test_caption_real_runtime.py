@@ -1,3 +1,7 @@
+import pytest
+
+pytestmark = pytest.mark.real_caption_runtime
+
 from lora_data_maker.clip_tokenizer import (
     CLIP_CONTEXT_LENGTH,
     CLIP_TOKENIZER_ID,
