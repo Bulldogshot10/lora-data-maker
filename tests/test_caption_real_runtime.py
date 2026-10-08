@@ -59,6 +59,7 @@ def test_real_llama_cpp_multimodal_handlers():
         "mtmd": "MTMDChatHandler",
         "qwen2.5-vl": "Qwen25VLChatHandler",
         "gemma4": "Gemma4ChatHandler",
+        "qwen3.5": "MTMDChatHandler",
     }
 
     for chat_format, class_name in handlers.items():
