@@ -406,6 +406,48 @@ def reset_vlm_captions_for_deterministic(
     return reset
 
 
+def clean_api_vlm_caption(text: str) -> str:
+    """Normalize a plain API-generated caption without enforcing local field syntax."""
+    value = str(text).replace("\r\n", "\n").replace("\r", "\n").strip()
+    value = re.sub(r"<think>.*?</think>", "", value, flags=re.IGNORECASE | re.DOTALL)
+    value = re.sub(r"^\s*\x60\x60\x60(?:text|plaintext)?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s*\x60\x60\x60\s*$", "", value)
+    value = re.sub(r"^\s*(?:caption|description|answer)\s*:\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", value)
+    value = value.strip().strip("\x22\x27")
+    value = re.sub(r"\s+", " ", value)
+    return value.strip(" ,;:")
+
+
+def build_api_vlm_caption(
+    raw_caption: str,
+    *,
+    subject: str,
+    trigger: str,
+    config: CaptionConfig,
+) -> str:
+    """Build an API VLM caption from one plain model-generated caption."""
+    value = clean_api_vlm_caption(raw_caption)
+    if not value:
+        raise VlmCaptionerError("API VLM returned an empty caption")
+
+    resolved_trigger = resolve_trigger(
+        subject=subject,
+        trigger=trigger,
+        trigger_from_subject=config.trigger_from_subject,
+    )
+    if resolved_trigger:
+        pattern = re.compile(
+            rf"(?<![A-Za-z0-9_]){re.escape(resolved_trigger)}(?![A-Za-z0-9_])",
+            re.IGNORECASE,
+        )
+        value = pattern.sub("", value)
+        value = re.sub(r"\s+", " ", value).strip(" ,;:")
+        return config.separator.join((resolved_trigger, value))
+
+    return value
+
+
 def build_vlm_caption(
     raw_caption: str,
     *,
@@ -648,12 +690,20 @@ def caption_manifest(
                 try:
                     assert runtime is not None
                     raw_caption = runtime.caption(processed_path)
-                    caption = build_vlm_caption(
-                        raw_caption,
-                        subject=manifest.subject,
-                        trigger=manifest.trigger,
-                        config=settings,
-                    )
+                    if settings.vlm.runtime in {"gemini", "openai_compatible"}:
+                        caption = build_api_vlm_caption(
+                            raw_caption,
+                            subject=manifest.subject,
+                            trigger=manifest.trigger,
+                            config=settings,
+                        )
+                    else:
+                        caption = build_vlm_caption(
+                            raw_caption,
+                            subject=manifest.subject,
+                            trigger=manifest.trigger,
+                            config=settings,
+                        )
                     if not caption:
                         raise VlmCaptionerError(
                             f"VLM returned an empty caption for {image.path}"
