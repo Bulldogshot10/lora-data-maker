@@ -6,7 +6,7 @@ Termux-first toolkit for building clean, train-ready image datasets for LoRA tra
 
 The project handles dataset preparation only:
 
-scrape → validate → deduplicate → quality filter → crop/resize → tag → filter tags → inject subject/trigger → write captions → export/pack.
+scrape → validate → deduplicate → quality filter → crop/resize → tag + VLM caption → filter/clean metadata → write captions → export/pack.
 
 Model training and image generation are outside the scope of this project.
 
@@ -90,6 +90,45 @@ download_timeout = 60
 
 **joytag** downloads the pinned JoyTag `model.onnx` (about 366 MB) plus `top_tags.txt`. JoyTag uses 448×448 input, 5813 labels, and a default threshold of 0.4. The official model is Apache-2.0 licensed and is trained for a mix of illustrated and photographic images.
 
+## Local VLM captions
+
+The caption stage supports an optional local multimodal VLM runtime through `llama-cpp-python`. The existing deterministic tag-based captioner remains the default.
+
+The runtime is local and in-process. The model and multimodal projector are loaded once for a caption job, reused for all processed images, and released when the job finishes.
+
+Install the optional dependency:
+
+~~~bash
+python -m pip install ".[caption-vlm]"
+~~~
+
+Configure a local GGUF model and projector:
+
+~~~toml
+[caption]
+backend = "vlm"
+separator = ", "
+subject_position = "first"
+trigger_from_subject = true
+
+[caption.vlm]
+model_path = "/path/to/model.gguf"
+mmproj_path = "/path/to/mmproj.gguf"
+chat_format = "mtmd"
+max_tokens = 128
+temperature = 0.1
+top_p = 0.95
+top_k = 40
+n_ctx = 2048
+n_threads = 4
+n_gpu_layers = 0
+seed = 42
+~~~
+
+Supported chat formats are `mtmd`, `qwen2.5-vl`, and `gemma4`. The VLM receives only the processed image and the configured caption prompt. Cleaned tagger output is kept as structured metadata and is never fed into the VLM.
+
+VLM output is cleaned before the canonical trigger is injected. When one image fails VLM inference, that image falls back to the existing deterministic tag caption and the fallback is recorded in the manifest.
+
 Tagger models are cached under:
 
 ~~~text
@@ -132,6 +171,12 @@ For tagging support:
 
 ~~~bash
 python -m pip install ".[tagger]"
+~~~
+
+For local VLM captioning:
+
+~~~bash
+python -m pip install ".[caption-vlm]"
 ~~~
 
 For face cropping on regular Linux/Python environments:
@@ -191,12 +236,10 @@ validate
 clean
   ↓
 process
-  ↓
-tag
-  ↓
-clean-tags
-  ↓
-caption
+  ├────────────→ tag → clean-tags ───→ structured tags / manifest
+  │
+  └────────────→ caption backend ────→ caption cleanup → trigger → .txt
+                                      (deterministic or local VLM)
   ↓
 export
   ↓
