@@ -89,7 +89,10 @@ label{display:block;color:var(--muted);font-size:11px;margin:0 0 6px 2px}
 .project-info{min-width:0}
 .project-name{font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .project-meta{font-size:10px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.project-item button{min-height:34px;padding:0 10px;flex:0 0 auto}
+.project-item-actions{display:flex;gap:6px;align-items:center;flex:0 0 auto}
+.project-item button{min-height:34px;padding:0 10px}
+.project-item button.delete{color:var(--bad);background:transparent;border-color:#4a2930}
+.project-item button.delete:hover{background:rgba(255,124,135,.08);border-color:#71404a}
 .project-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
 .project-toolbar input{flex:1}
 .empty-projects{padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:13px}
@@ -376,13 +379,19 @@ function renderProjects(projects){
   }
   $("project_explorer").innerHTML=items.map(p=>{
     const encoded=encodeURIComponent(p.name);
-    const action=p.active
+    const open=p.active
       ? '<button class="secondary" disabled>open</button>'
       : '<button class="secondary" data-project="'+encoded+'">open</button>';
-    return '<div class="project-item'+(p.active?' active':'')+'"><div class="project-info"><div class="project-name">'+esc(p.name)+(p.active?' · active':'')+'</div><div class="project-meta">'+esc(p.subject)+' · '+esc(p.image_count)+' images · '+esc(p.path)+'</div></div>'+action+'</div>';
+    const remove=p.active
+      ? '<button class="delete" disabled>delete</button>'
+      : '<button class="delete" data-delete-project="'+encoded+'">delete</button>';
+    return '<div class="project-item'+(p.active?' active':'')+'"><div class="project-info"><div class="project-name">'+esc(p.name)+(p.active?' · active':'')+'</div><div class="project-meta">'+esc(p.subject)+' · '+esc(p.image_count)+' images · '+esc(p.path)+'</div></div><div class="project-item-actions">'+open+remove+'</div></div>';
   }).join("");
   $("project_explorer").querySelectorAll("[data-project]").forEach(button=>{
     button.addEventListener("click",()=>selectProject(decodeURIComponent(button.dataset.project)));
+  });
+  $("project_explorer").querySelectorAll("[data-delete-project]").forEach(button=>{
+    button.addEventListener("click",()=>deleteProject(decodeURIComponent(button.dataset.deleteProject)));
   });
 }
 async function refreshProjects(){
@@ -402,6 +411,14 @@ async function selectProject(name){
     renderProgress({},"idle");
     setStatus("opened "+name,"ok");
     await refresh();
+  }catch(e){setStatus(e.message,"bad")}
+}
+async function deleteProject(name){
+  if(!confirm("delete dataset \""+name+"\" and all of its files?\\n\\nthis cannot be undone.")) return;
+  try{
+    await api("/api/projects/"+encodeURIComponent(name),{method:"DELETE"});
+    setStatus("deleted "+name,"ok");
+    await refreshProjects();
   }catch(e){setStatus(e.message,"bad")}
 }
 function renderStats(counts){
@@ -568,6 +585,17 @@ class JobStore:
         threading.Thread(target=self._worker, args=(job_id, fn), daemon=True).start()
         return job_id
 
+    def has_running_project(self, project_root: Path) -> bool:
+        target = project_root.expanduser().resolve()
+        with self.lock:
+            for job in self.jobs.values():
+                if job["status"] != "running":
+                    continue
+                value = job.get("_project_root")
+                if value and Path(value).expanduser().resolve() == target:
+                    return True
+        return False
+
     def update_progress(self, job_id: str, current: int, total: int, label: str) -> None:
         current = max(0, int(current))
         total = max(0, int(total))
@@ -728,6 +756,27 @@ def create_app(root: Path | str = ".") -> FastAPI:
     @app.get("/api/projects")
     def projects():
         return {"workspace": workspace_root.as_posix(), "projects": list_projects()}
+
+    @app.delete("/api/projects/{name}")
+    def delete_project(name: str):
+        project_name = safe_component(name.strip())
+        if not project_name or project_name != name:
+            raise HTTPException(400, "invalid project name")
+        target = (workspace_root / project_name).resolve()
+        if target.parent != workspace_root or not target.is_dir():
+            raise HTTPException(404, "dataset project not found")
+        if not (target / "config.toml").is_file() or not (target / "manifest.json").is_file():
+            raise HTTPException(404, "dataset project not found")
+        if target == active_root():
+            raise HTTPException(409, "open another dataset before deleting the active project")
+        if jobs.has_running_project(target):
+            raise HTTPException(409, "dataset has a running job; wait for it to finish before deleting")
+        try:
+            import shutil
+            shutil.rmtree(target)
+        except OSError as exc:
+            raise HTTPException(500, f"could not delete dataset: {exc}") from exc
+        return {"ok": True, "name": project_name}
 
     @app.post("/api/projects/select")
     def select_project(payload: dict[str, Any]):
