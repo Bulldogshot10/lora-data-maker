@@ -24,6 +24,7 @@ lora-data-maker-web = "lora_data_maker.web:serve"
 tagger = [
   "numpy>=1.26,<3",
   "onnxruntime>=1.17,<2",
+  "opencv-python-headless>=4.8,<5",
 ]
 quality = [
   "numpy>=1.26,<3",
