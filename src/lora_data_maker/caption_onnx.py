@@ -97,6 +97,8 @@ class SmolVlmOnnxCaptioner:
             ) from exc
 
         self.root = root
+        self._prompt = config.prompt
+        self._max_new_tokens = config.max_tokens
         self._decoder_inputs = _session_inputs(self._decoder)
         self._decoder_outputs = _session_outputs(self._decoder)
         self._embed_input_name = self._embed.get_inputs()[0].name
@@ -282,93 +284,4 @@ class SmolVlmOnnxCaptioner:
                 f"could not open image {path}: {exc}"
             ) from exc
 
-        # Kept separate from VlmConfig.prompt so the ONNX runtime always uses
-        # the same strict caption contract as the existing VLM pipeline.
-        self._prompt = getattr(
-            self,
-            "_prompt",
-            "describe this photo for a stable diffusion character lora training caption. "
-            "use exactly these 4 fields, one per line. "
-            "use short phrases only, with a maximum of 5 words per field. "
-            "pose: include body pose plus one camera view term when visible. "
-            "clothing: "
-            "expression: "
-            "background: include lighting. "
-            "do not mention hair color, eye color, face, age, or gender. "
-            "no extra text. be factual, concise, and specific. "
-            "prioritize concrete visual details over generic descriptions. "
-            "do not guess hidden or ambiguous details. "
-            "do not mention image quality, the image itself, ai, or this task.",
-        )
-
-        inputs = self._processor_prompt(image)
-        input_ids = inputs.get("input_ids")
-        attention_mask = inputs.get("attention_mask")
-        if input_ids is None or attention_mask is None:
-            raise VlmCaptionerError(
-                "SmolVLM2 processor returned no input_ids/attention_mask"
-            )
-
-        image_features = self._run_vision(inputs)
-        token_embeddings = self._embed_tokens(input_ids)
-        merged_embeddings = self._merge_image_features(
-            input_ids,
-            token_embeddings,
-            image_features,
-        )
-
-        batch_size = input_ids.shape[0]
-        attention = attention_mask.astype(np.int64, copy=False)
-        position_ids = attention.cumsum(axis=-1) - 1
-        position_ids = np.where(attention == 0, 1, position_ids).astype(
-            np.int64, copy=False
-        )
-        past = self._empty_past(batch_size)
-        generated: list[int] = []
-
-        for step in range(self._max_new_tokens):
-            decoder_inputs: dict[str, np.ndarray] = {
-                "attention_mask": attention,
-                "position_ids": (
-                    position_ids if step == 0 else position_ids[:, -1:]
-                ),
-                "inputs_embeds": (
-                    merged_embeddings if step == 0 else
-                    self._embed_tokens(np.asarray([[generated[-1]]], dtype=np.int64))
-                ),
-            }
-            decoder_inputs.update(past)
-            feed = {
-                name: decoder_inputs[name]
-                for name in self._decoder_inputs
-                if name in decoder_inputs
-            }
-            outputs = self._decoder.run(self._decoder_outputs, feed)
-            logits = np.asarray(outputs[0])
-            next_id = int(np.argmax(logits[:, -1, :], axis=-1)[0])
-            if next_id == self._eos_token_id:
-                break
-            generated.append(next_id)
-            past = self._next_past(outputs)
-            attention = np.ones(
-                (batch_size, merged_embeddings.shape[1] + len(generated)),
-                dtype=np.int64,
-            )
-            position_ids = np.asarray(
-                [[merged_embeddings.shape[1] + len(generated) - 1]],
-                dtype=np.int64,
-            )
-
-        result = self._decode_tokens(generated)
-        if not result:
-            raise VlmCaptionerError(
-                f"SmolVLM2 ONNX returned an empty caption for {path.name}; "
-                f"generated_tokens={len(generated)}; eos_token_id={self._eos_token_id}"
-            )
-        return result
-
-    def close(self) -> None:
-        self._vision = None
-        self._embed = None
-        self._decoder = None
-        self._processor = None
+        self._prompt = self.config_prompt
