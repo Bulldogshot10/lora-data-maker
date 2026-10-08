@@ -90,29 +90,24 @@ download_timeout = 60
 
 **joytag** downloads the pinned JoyTag `model.onnx` (about 366 MB) plus `top_tags.txt`. JoyTag uses 448×448 input, 5813 labels, and a default threshold of 0.4. The official model is Apache-2.0 licensed and is trained for a mix of illustrated and photographic images.
 
-## Local VLM captions
+## VLM captions
 
-The caption stage supports an optional local multimodal VLM runtime through `llama-cpp-python`. The existing deterministic tag-based captioner remains the default.
+The caption stage supports local `llama-cpp-python` plus API runtimes for Google Gemini and OpenAI-compatible multimodal endpoints. The existing deterministic tag-based captioner remains the default.
 
-The runtime is local and in-process. The model and multimodal projector are loaded once for a caption job, reused for all processed images, and released when the job finishes.
-
-Install the optional dependency:
+For local GGUF captioning:
 
 ~~~bash
 python -m pip install ".[caption-vlm]"
 ~~~
 
-Configure a local GGUF model and projector:
+Configure a local runtime with:
 
 ~~~toml
 [caption]
 backend = "vlm"
-separator = ", "
-subject_position = "first"
-trigger_from_subject = true
-max_tokens = 77
 
 [caption.vlm]
+runtime = "llama_cpp"
 model_path = "/path/to/model.gguf"
 mmproj_path = "/path/to/mmproj.gguf"
 chat_format = "mtmd"
@@ -126,9 +121,46 @@ n_gpu_layers = 0
 seed = 42
 ~~~
 
-Supported chat formats are `mtmd`, `qwen3.5`, `qwen2.5-vl`, and `gemma4`. The VLM receives only the processed image and the configured caption prompt. The prompt requests exactly four short fields: pose, clothing, expression, and background with lighting. Hair color, eye color, face, age, and gender are excluded from the VLM output. Tagger output is not read or merged by the VLM caption backend.
+For Google Gemini, set the API key in the shell and choose the Gemini runtime:
 
-The four VLM fields are parsed and their labels are removed. VLM mode does not use WD14 or JoyTag at all. The final caption is ordered as trigger → pose → clothing → expression → background. VLM mode does not use a CLIP tokenizer or the deterministic caption.max_tokens budget. Each field is capped at five words by the strict parser. When one image fails VLM inference or returns malformed fields, that image is marked failed and can be retried. There is no deterministic tag fallback in VLM mode.
+~~~bash
+export GEMINI_API_KEY="..."
+~~~
+
+~~~toml
+[caption.vlm]
+runtime = "gemini"
+api_key_env = "GEMINI_API_KEY"
+api_model = "gemini-2.5-flash-lite"
+api_base_url = "https://generativelanguage.googleapis.com/v1beta"
+max_tokens = 64
+temperature = 0.1
+top_p = 0.95
+~~~
+
+For any OpenAI-compatible vision endpoint:
+
+~~~bash
+export OPENAI_API_KEY="..."
+~~~
+
+~~~toml
+[caption.vlm]
+runtime = "openai_compatible"
+api_key_env = "OPENAI_API_KEY"
+api_model = "your-vision-model"
+api_base_url = "https://api.openai.com/v1"
+max_tokens = 64
+temperature = 0.1
+top_p = 0.95
+~~~
+
+API keys are read from environment variables and are never written into the project config. Gemini uses the REST `generateContent` endpoint with inline image bytes; OpenAI-compatible mode uses `/chat/completions` with an image data URI.
+
+Every VLM runtime receives the same fixed caption constraint. The model must return exactly four fields in order: `pose`, `clothing`, `expression`, and `background`. Each field is limited to five words. Pose includes one camera-view term when visible, background includes lighting, and hair color, eye color, face, age, and gender are excluded. The parser rejects malformed output.
+
+After parsing, the code always injects the resolved dataset trigger as the first caption token and removes duplicate trigger mentions from the four generated fields. The final order is trigger → pose → clothing → expression → background. WD14/JoyTag tags are not merged into VLM prose and `caption.max_tokens` does not limit VLM output. API or formatting failures mark that image failed instead of falling back to deterministic tags.
+
 
 Tagger models are cached under:
 
