@@ -464,6 +464,12 @@ def command_clean(args: argparse.Namespace) -> int:
         raise LoraDataMakerError(
             "config field quality.person_check must be a boolean"
         )
+    if "text_check" in quality_config and not isinstance(
+        quality_config["text_check"], bool
+    ):
+        raise LoraDataMakerError(
+            "config field quality.text_check must be a boolean"
+        )
     for key in ("exact", "perceptual"):
         if key in dedup_config and not isinstance(dedup_config[key], bool):
             raise LoraDataMakerError(
