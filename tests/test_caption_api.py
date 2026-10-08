@@ -72,7 +72,7 @@ def test_gemini_caption_uses_fixed_prompt_and_inline_image(monkeypatch, tmp_path
     finally:
         runtime.close()
 
-    assert raw.startswith("pose: standing")
+    assert raw.startswith("standing straight-on")
     url, kwargs = FakeSession.payloads[-1]
     assert url == "https://example.test/v1beta/models/gemini-test:generateContent"
     assert kwargs["headers"]["x-goog-api-key"] == "secret"
@@ -118,7 +118,7 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
     finally:
         runtime.close()
 
-    assert raw.startswith("pose: sitting")
+    assert raw.startswith("sitting straight-on")
     url, kwargs = FakeSession.payloads[-1]
     assert url == "https://example.test/v1/chat/completions"
     assert kwargs["headers"]["Authorization"] == "Bearer secret"
@@ -132,7 +132,7 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
     assert "top_p" not in payload
 
 
-def test_api_vlm_caption_injects_trigger_and_keeps_constraints(monkeypatch, tmp_path):
+def test_api_vlm_caption_injects_trigger_without_structured_field_parsing(monkeypatch, tmp_path):
     monkeypatch.setattr(requests, "Session", FakeSession)
     FakeSession.payloads.clear()
     FakeSession.responses[:] = [
@@ -204,4 +204,4 @@ def test_api_vlm_caption_injects_trigger_and_keeps_constraints(monkeypatch, tmp_
     assert summary.captioned == 1
     record = next(iter(manifest.images.values()))
     caption = (root / record.caption_path).read_text(encoding="utf-8")
-    assert caption == "julia, standing straight-on, white spandex top, neutral, indoor soft lighting\n"
+    assert caption == "julia, standing straight-on, wearing a white spandex top, neutral expression, indoors with soft lighting\n"
