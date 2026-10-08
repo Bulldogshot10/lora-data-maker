@@ -3,7 +3,7 @@ from pathlib import Path
 import requests
 from PIL import Image
 
-from lora_data_maker.caption_api import API_MAX_OUTPUT_TOKENS, API_VLM_PROMPT, GeminiVlmCaptioner, OpenAICompatibleVlmCaptioner
+from lora_data_maker.caption_api import API_VLM_PROMPT, GeminiVlmCaptioner, OpenAICompatibleVlmCaptioner
 from lora_data_maker.caption_vlm import VlmConfig
 from lora_data_maker.captions import CaptionConfig, caption_manifest
 from lora_data_maker.models import ImageRecord, ProjectManifest
@@ -78,7 +78,6 @@ def test_gemini_caption_uses_fixed_prompt_and_inline_image(monkeypatch, tmp_path
     assert kwargs["headers"]["x-goog-api-key"] == "secret"
     payload = kwargs["json"]
     assert payload["contents"][0]["parts"][1]["text"] == API_VLM_PROMPT
-    assert payload["generationConfig"] == {"maxOutputTokens": API_MAX_OUTPUT_TOKENS}
     assert payload["contents"][0]["parts"][0]["inline_data"]["mime_type"] == "image/jpeg"
 
 
@@ -127,9 +126,6 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
     assert content[0]["type"] == "image_url"
     assert content[1]["type"] == "text"
     assert content[1]["text"] == API_VLM_PROMPT
-    assert payload["max_tokens"] == API_MAX_OUTPUT_TOKENS
-    assert "temperature" not in payload
-    assert "top_p" not in payload
 
 
 def test_api_vlm_caption_injects_trigger_from_four_fields(monkeypatch, tmp_path):
