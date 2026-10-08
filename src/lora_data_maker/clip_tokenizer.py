@@ -72,10 +72,16 @@ def load_clip_tokenizer() -> Any:
         getattr(tokenizer, "model_max_length", CLIP_CONTEXT_LENGTH)
     )
     if model_max_length != CLIP_CONTEXT_LENGTH:
-        raise ClipTokenizerError(
-            f"{CLIP_TOKENIZER_ID} reported an unexpected context length "
-            f"{model_max_length}; expected {CLIP_CONTEXT_LENGTH}"
-        )
+        # Transformers may use a huge sentinel when the tokenizer config
+        # does not expose a usable limit. The SD1.x CLIP model itself is
+        # fixed at 77 text positions, so normalize that sentinel locally.
+        if model_max_length >= 1_000_000:
+            tokenizer.model_max_length = CLIP_CONTEXT_LENGTH
+        else:
+            raise ClipTokenizerError(
+                f"{CLIP_TOKENIZER_ID} reported an unexpected context length "
+                f"{model_max_length}; expected {CLIP_CONTEXT_LENGTH}"
+            )
 
     return tokenizer
 
