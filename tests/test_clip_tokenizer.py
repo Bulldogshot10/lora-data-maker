@@ -118,3 +118,31 @@ def test_load_clip_tokenizer_offline_fails_cleanly_when_cache_is_missing(
             clip_tokenizer.load_clip_tokenizer()
     finally:
         clip_tokenizer.load_clip_tokenizer.cache_clear()
+
+
+def test_load_clip_tokenizer_normalizes_huge_length_sentinel(monkeypatch):
+    import sys
+    import types
+
+    class FakeCLIPTokenizer:
+        @classmethod
+        def from_pretrained(cls, source, **kwargs):
+            tokenizer = FakeRealTokenizer()
+            tokenizer.model_max_length = 10**30
+            return tokenizer
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(CLIPTokenizer=FakeCLIPTokenizer),
+    )
+
+    from lora_data_maker import clip_tokenizer
+
+    clip_tokenizer.load_clip_tokenizer.cache_clear()
+    try:
+        tokenizer = clip_tokenizer.load_clip_tokenizer()
+    finally:
+        clip_tokenizer.load_clip_tokenizer.cache_clear()
+
+    assert tokenizer.model_max_length == clip_tokenizer.CLIP_CONTEXT_LENGTH
