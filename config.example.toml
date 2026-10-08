@@ -82,14 +82,14 @@ runtime = "llama_cpp"
 model_path = ""
 mmproj_path = ""
 chat_format = "mtmd"
-# llama_cpp: model_path is a GGUF and mmproj_path is required.
-# gemini: set api_key_env; api_model defaults to gemini-3.5-flash-lite; api_base_url is optional.
-# openai_compatible: set api_key_env, api_model; api_base_url is optional.
+# local llama.cpp: model_path + mmproj_path + local runtime settings apply.
+# API runtimes: api_key_env, api_model, api_base_url, and api_timeout apply.
+# API runtimes ignore the local generation settings below.
 api_key_env = ""
 api_model = ""
 api_base_url = ""
 api_timeout = 120.0
-# supported local chat formats: mtmd, qwen2.5-vl, gemma4, qwen3.5, smolvlm
+# local-only generation/runtime settings
 max_tokens = 64
 temperature = 0.1
 top_p = 0.95
