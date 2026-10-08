@@ -350,6 +350,17 @@ def test_webui_state_handles_missing_api_key_for_api_runtime(tmp_path: Path, mon
     state = client.get("/api/state")
     assert state.status_code == 200
     assert state.json()["caption"]["api_key_set"] is False
+    assert state.json()["caption"]["api_keys_set"] == {
+        "gemini": False,
+        "openai_compatible": False,
+    }
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    refreshed = client.get("/api/state").json()
+    assert refreshed["caption"]["api_keys_set"] == {
+        "gemini": True,
+        "openai_compatible": False,
+    }
 
 
 def test_webui_vlm_file_uploads_store_relative_paths(tmp_path: Path) -> None:
@@ -561,6 +572,12 @@ def test_webui_preserves_saved_api_model_when_provider_omits_it(tmp_path: Path) 
     html = TestClient(create_app(make_project(tmp_path))).get("/").text
     assert 'option.textContent=selected+" (saved, not currently listed by API)"' in html
     assert 'if(selected)select.value=selected;' in html
+
+
+def test_webui_skips_api_model_lookup_when_key_is_missing(tmp_path: Path) -> None:
+    html = TestClient(create_app(make_project(tmp_path))).get("/").text
+    assert "if(!appState.apiKeysSet[runtime]){" in html
+    assert 'enter your API key and click Set.' in html
 
 
 def test_webui_javascript_syntax_when_node_is_available(tmp_path: Path) -> None:
