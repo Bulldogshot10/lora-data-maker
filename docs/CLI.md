@@ -124,7 +124,7 @@ Write caption files from cleaned image records.
 lora-data-maker caption [--path PATH]
 ~~~
 
-The default caption.backend = "deterministic" builds captions from cleaned tags. With caption.backend = "vlm", the stage sends each processed image to the local llama-cpp-python VLM runtime, cleans the returned text, injects the canonical trigger, and writes the result under work/captions/.
+The default caption.backend = "deterministic" builds captions from cleaned tags. With caption.backend = "vlm", the stage sends each processed image to the local llama-cpp-python VLM runtime, cleans the returned text, merges it with the cleaned tagger tags into one final caption, injects the canonical trigger, enforces caption.max_tokens (1–77), and writes the result under work/captions/.
 VLM inference errors are isolated per image and fall back to the deterministic tag caption.
 
 ## build
