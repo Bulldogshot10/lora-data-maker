@@ -963,17 +963,17 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
         </div>
         <div class="form-grid three" style="margin-top:12px">
           <div class="field">
-            <label for="caption_api_key_env">API key env</label>
-            <input id="caption_api_key_env" autocomplete="off" placeholder="GEMINI_API_KEY">
-            <div class="field-note" id="caption_api_key_status">API secret is read from this environment variable and is never saved.</div>
+            <label for="caption_api_key">API key</label>
+            <div style="display:flex;gap:8px"><input id="caption_api_key" type="password" autocomplete="off" placeholder="paste API key"><button type="button" class="action-secondary" id="caption_api_key_set">set</button><button type="button" class="action-secondary" id="caption_api_key_clear">clear</button></div>
+            <div class="field-note" id="caption_api_key_status">key is stored only in the WebUI server process environment.</div>
           </div>
           <div class="field">
             <label for="caption_api_model">API model</label>
-            <input id="caption_api_model" autocomplete="off" placeholder="gemini-2.5-flash-lite">
+            <select id="caption_api_model"><option value="">select model…</option></select>
           </div>
           <div class="field">
-            <label for="caption_api_base_url">API base URL</label>
-            <input id="caption_api_base_url" autocomplete="off" placeholder="https://generativelanguage.googleapis.com/v1beta">
+            <label for="caption_api_base_url">API base URL · OpenAI-compatible only</label>
+            <input id="caption_api_base_url" autocomplete="off" placeholder="https://api.openai.com/v1">
           </div>
         </div>
         <div class="field-note" style="margin-top:9px">VLM uses the fixed caption constraint: exactly pose → clothing → expression → background, max 5 words per field; pose includes a camera view when visible; background includes lighting; hair color, eye color, face, age, and gender are excluded. final caption always starts with the resolved trigger.</div>
@@ -1134,7 +1134,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key_env,#caption_api_model,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
     if(el)el.disabled=busy;
   });
   const vlmOnly=$("caption_backend").value==="vlm";
@@ -1158,7 +1158,9 @@ function syncCaptionRuntimeUI(){
   $("caption_model_path").disabled=!local;
   $("caption_model_upload").disabled=!local;
   $("caption_model_file").disabled=!local;
-  $("caption_api_key_env").disabled=!api;
+  $("caption_api_key").disabled=!api;
+  $("caption_api_key_set").disabled=!api;
+  $("caption_api_key_clear").disabled=!api;
   $("caption_api_model").disabled=!api;
   $("caption_api_base_url").disabled=!api;
   if(local){
@@ -1170,25 +1172,60 @@ function syncCaptionRuntimeUI(){
     $("caption_mmproj_status").textContent=$("caption_mmproj_path").value
       ?"configured: "+$("caption_mmproj_path").value
       :"no mmproj uploaded";
+    $("caption_api_key_status").textContent="local llama.cpp runtime selected";
   }else if(gemini){
-    if(!$("caption_api_key_env").value.trim())$("caption_api_key_env").value="GEMINI_API_KEY";
-    if(!$("caption_api_model").value.trim())$("caption_api_model").value="gemini-2.5-flash-lite";
-    if(!$("caption_api_base_url").value.trim())$("caption_api_base_url").value="https://generativelanguage.googleapis.com/v1beta";
-    $("caption_api_key_env").placeholder="GEMINI_API_KEY";
-    $("caption_api_model").placeholder="gemini-2.5-flash-lite";
+    $("caption_api_key").placeholder="paste Gemini API key";
+    $("caption_api_base_url").value="https://generativelanguage.googleapis.com/v1beta";
+    $("caption_api_base_url").disabled=true;
     $("caption_api_base_url").placeholder="https://generativelanguage.googleapis.com/v1beta";
     $("caption_model_status").textContent="unused by Gemini API";
     $("caption_mmproj_status").textContent="unused by Gemini API";
-    $("caption_api_key_status").textContent="read from the environment; secret is never saved";
+    if($("caption_api_key_status").textContent!=="API key not set")$("caption_api_key_status").textContent="Gemini key goes into GEMINI_API_KEY in the WebUI server process";
   }else{
-    if(!$("caption_api_key_env").value.trim())$("caption_api_key_env").value="OPENAI_API_KEY";
+    $("caption_api_key").placeholder="paste OpenAI-compatible API key";
     if(!$("caption_api_base_url").value.trim())$("caption_api_base_url").value="https://api.openai.com/v1";
-    $("caption_api_key_env").placeholder="OPENAI_API_KEY";
-    $("caption_api_model").placeholder="vision-capable model name";
-    $("caption_api_base_url").placeholder="https://api.openai.com/v1";
     $("caption_model_status").textContent="unused by OpenAI-compatible API";
     $("caption_mmproj_status").textContent="unused by OpenAI-compatible API";
-    $("caption_api_key_status").textContent="read from the environment; secret is never saved";
+    if($("caption_api_key_status").textContent!=="API key not set")$("caption_api_key_status").textContent="key goes into OPENAI_API_KEY in the WebUI server process";
+  }
+}
+async function loadVlmModels(){
+  const runtime=$("caption_runtime").value;
+  if(runtime!=="gemini"&&runtime!=="openai_compatible")return;
+  const select=$("caption_api_model");
+  const selected=select.dataset.selectedModel||select.value||"";
+  select.disabled=true;
+  select.innerHTML='<option value="">loading models…</option>';
+  try{
+    const base=runtime==="openai_compatible"?$("caption_api_base_url").value.trim():"";
+    const qs=new URLSearchParams({runtime:runtime});
+    if(base)qs.set("base_url",base);
+    const d=await api("/api/vlm/models?"+qs.toString());
+    const models=Array.isArray(d.models)?d.models:[];
+    select.innerHTML="";
+    if(!models.length){
+      select.innerHTML='<option value="">no models available</option>';
+    }else{
+      for(const model of models){
+        const option=document.createElement("option");
+        option.value=String(model.id||model.name||"");
+        option.textContent=String(model.label||model.id||model.name||"");
+        select.appendChild(option);
+      }
+      if(selected&&models.some(m=>String(m.id||m.name||"")===selected)){
+        select.value=selected;
+      }
+    }
+    select.dataset.selectedModel=select.value;
+    $("caption_api_key_status").textContent=d.key_set
+      ? "API key loaded in the WebUI server environment"
+      : "API key not set";
+  }catch(e){
+    select.innerHTML='<option value="">could not load models</option>';
+    $("caption_api_key_status").textContent=e.message;
+  }finally{
+    syncCaptionRuntimeUI();
+    select.disabled=false;
   }
 }
 function applySettings(s,force=false){
@@ -1203,7 +1240,7 @@ function applySettings(s,force=false){
   $("caption_chat_format").value=s.caption.chat_format||"mtmd";
   $("caption_model_path").value=s.caption.model_path||"";
   $("caption_mmproj_path").value=s.caption.mmproj_path||"";
-  $("caption_api_key_env").value=s.caption.api_key_env||"";
+  $("caption_api_model").dataset.selectedModel=s.caption.api_model||"";
   $("caption_api_model").value=s.caption.api_model||"";
   $("caption_api_base_url").value=s.caption.api_base_url||"";
   $("caption_model_status").textContent=s.caption.model_path
@@ -1233,6 +1270,7 @@ function applySettings(s,force=false){
   $("text_min_area_ratio").value=s.quality.text_min_area_ratio;
   appState.settingsDirty=false;
   updateDirtyUI();
+  loadVlmModels();
 }
 function renderStats(counts){
   const keys=["discovered","validated","processed","tagged","captioned","exported"];
@@ -1437,7 +1475,6 @@ async function saveSettings(){
         caption_chat_format:$("caption_chat_format").value,
         caption_model_path:$("caption_model_path").value.trim(),
         caption_mmproj_path:$("caption_mmproj_path").value.trim(),
-        caption_api_key_env:$("caption_api_key_env").value.trim(),
         caption_api_model:$("caption_api_model").value.trim(),
         caption_api_base_url:$("caption_api_base_url").value.trim(),
         caption_max_tokens:captionMaxTokens,
@@ -1752,7 +1789,11 @@ document.querySelectorAll("[data-run-stage]").forEach(button=>{
 $("choose-images").addEventListener("click",()=>$("files").click());
 $("caption_model_upload").addEventListener("click",()=>$("caption_model_file").click());
 $("caption_mmproj_upload").addEventListener("click",()=>$("caption_mmproj_file").click());
-$("caption_runtime").addEventListener("change",syncCaptionRuntimeUI);
+$("caption_runtime").addEventListener("change",()=>{syncCaptionRuntimeUI();loadVlmModels();markDirty();});
+$("caption_api_model").addEventListener("change",()=>{ $("caption_api_model").dataset.selectedModel=$("caption_api_model").value; markDirty(); });
+$("caption_api_base_url").addEventListener("change",()=>{markDirty();if($("caption_runtime").value==="openai_compatible")loadVlmModels();});
+$("caption_api_key_set").addEventListener("click",setVlmApiKey);
+$("caption_api_key_clear").addEventListener("click",clearVlmApiKey);
 $("caption_model_file").addEventListener("change",()=>uploadVlmFile("model","caption_model_file","caption_model_path","caption_model_status"));
 $("caption_mmproj_file").addEventListener("change",()=>uploadVlmFile("mmproj","caption_mmproj_file","caption_mmproj_path","caption_mmproj_status"));
 $("upload-button").addEventListener("click",upload);
@@ -1761,7 +1802,7 @@ $("quality").addEventListener("input",()=>{$("qv").textContent=$("quality").valu
 $("caption_max_tokens").addEventListener("input",()=>{$("caption_tokens_value").textContent=$("caption_max_tokens").value});
 [
   "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count",
-  "mode","width","height","quality","caption_backend","caption_runtime","caption_chat_format","caption_model_path","caption_mmproj_path","caption_api_key_env","caption_api_model","caption_api_base_url","caption_max_tokens","face_crop","face_padding","person_check",
+  "mode","width","height","quality","caption_backend","caption_runtime","caption_chat_format","caption_model_path","caption_mmproj_path","caption_api_model","caption_api_base_url","caption_max_tokens","face_crop","face_padding","person_check",
   "max_persons","person_threshold","min_subject_area","min_subject_visibility",
   "text_check","text_confidence","text_min_area_ratio"
 ].forEach(id=>{
