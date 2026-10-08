@@ -87,7 +87,7 @@ chat_format = "mtmd"
 # or set model_path to a Hugging Face repo ID or local SmolVLM2 model directory.
 # mmproj_path is unused.
 # supported chat formats for llama_cpp: mtmd, qwen2.5-vl, gemma4, qwen3.5, smolvlm
-max_tokens = 128
+max_tokens = 64
 temperature = 0.1
 top_p = 0.95
 top_k = 40
