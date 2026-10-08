@@ -165,7 +165,7 @@ def test_build_vlm_caption_removes_repeated_trigger_mentions():
         trigger="ignored",
         tags=["julia", "portrait"],
         config=config,
-    ) == "julia, a portrait of with visible in the frame., portrait"
+    ) == "julia, a portrait of with visible in the frame, portrait"
 
 
 def test_caption_config_rejects_vlm_without_paths():
