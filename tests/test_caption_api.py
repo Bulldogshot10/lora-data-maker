@@ -132,6 +132,95 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
     assert content[1]["text"] == API_VLM_PROMPT
 
 
+def test_gemini_caption_normalizes_models_prefix(monkeypatch, tmp_path):
+    monkeypatch.setattr(requests, "Session", FakeSession)
+    FakeSession.payloads.clear()
+    FakeSession.responses[:] = [
+        FakeResponse(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": (
+                                        "pose: standing\nclothing: white top\nexpression: neutral\nbackground: indoors"
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        )
+    ]
+    monkeypatch.setenv("TEST_GEMINI_KEY", "secret")
+
+    image = tmp_path / "image.jpg"
+    Image.new("RGB", (16, 16), "white").save(image)
+
+    runtime = GeminiVlmCaptioner(
+        VlmConfig(
+            runtime="gemini",
+            api_key_env="TEST_GEMINI_KEY",
+            api_model="models/gemini-test",
+            api_base_url="https://example.test/v1beta",
+        )
+    )
+    try:
+        runtime.caption(image)
+    finally:
+        runtime.close()
+
+    url, _ = FakeSession.payloads[-1]
+    assert url == "https://example.test/v1beta/models/gemini-test:generateContent"
+
+
+def test_api_post_retries_transient_http_status(monkeypatch, tmp_path):
+    monkeypatch.setattr(requests, "Session", FakeSession)
+    monkeypatch.setattr("lora_data_maker.caption_api.time.sleep", lambda _: None)
+    FakeSession.payloads.clear()
+    FakeSession.responses[:] = [
+        FakeResponse({"error": {"message": "rate limited"}}, status_code=429, ok=False),
+        FakeResponse(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": (
+                                        "pose: standing\nclothing: white top\nexpression: neutral\nbackground: indoors"
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        )
+    ]
+    monkeypatch.setenv("TEST_GEMINI_KEY", "secret")
+
+    image = tmp_path / "image.jpg"
+    Image.new("RGB", (16, 16), "white").save(image)
+
+    runtime = GeminiVlmCaptioner(
+        VlmConfig(
+            runtime="gemini",
+            api_key_env="TEST_GEMINI_KEY",
+            api_model="gemini-test",
+            api_base_url="https://example.test/v1beta",
+        )
+    )
+    try:
+        assert runtime.caption(image).startswith("pose: standing")
+    finally:
+        runtime.close()
+
+    assert len(FakeSession.payloads) == 2
+
+
 def test_api_vlm_caption_injects_trigger_from_four_fields(monkeypatch, tmp_path):
     monkeypatch.setattr(requests, "Session", FakeSession)
     FakeSession.payloads.clear()
