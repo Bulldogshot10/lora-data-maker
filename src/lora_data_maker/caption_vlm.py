@@ -146,7 +146,7 @@ def _load_chat_handler(
         }
         if chat_format in {"mtmd", "gemma4"}:
             kwargs["use_gpu"] = use_gpu
-        return handler
+        return handler_class(**kwargs)
     except Exception as exc:
         raise VlmCaptionerError(
             f"could not initialize {chat_format} multimodal projector: {exc}"
