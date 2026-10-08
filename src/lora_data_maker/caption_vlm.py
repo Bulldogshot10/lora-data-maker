@@ -92,11 +92,6 @@ class VlmConfig:
             raise ValueError("caption.vlm.n_threads must be greater than zero")
         if self.api_timeout <= 0.0:
             raise ValueError("caption.vlm.api_timeout must be greater than zero")
-        if self.runtime in {"gemini", "openai_compatible"}:
-            if not self.api_key_env.strip():
-                raise ValueError("caption.vlm.api_key_env must not be empty for API runtimes")
-            if not self.api_model.strip():
-                raise ValueError("caption.vlm.api_model must not be empty for API runtimes")
 
 
 def _data_uri(path: Path) -> str:
