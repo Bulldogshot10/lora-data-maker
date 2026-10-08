@@ -30,323 +30,1002 @@ HTML = r"""
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#090b10">
 <title>LoRA Data Maker</title>
 <style>
 :root{
   color-scheme:dark;
-  --bg:#0b0c0f;
-  --panel:#121419;
-  --panel-2:#171920;
-  --line:#292d36;
-  --text:#f4f5f7;
-  --muted:#8f96a3;
-  --accent:#9b87ff;
-  --accent-2:#b4a6ff;
-  --ok:#71d7a2;
-  --bad:#ff7c87;
-  --radius:18px;
+  --bg:#090b10;
+  --bg-2:#0d1016;
+  --panel:#11151d;
+  --panel-2:#161b24;
+  --panel-3:#0d1118;
+  --line:#242b36;
+  --line-strong:#313a48;
+  --text:#f4f6fa;
+  --muted:#929baa;
+  --muted-2:#687180;
+  --accent:#a795ff;
+  --accent-2:#c1b7ff;
+  --accent-soft:rgba(167,149,255,.13);
+  --ok:#75d8a4;
+  --ok-soft:rgba(117,216,164,.1);
+  --bad:#ff7d89;
+  --bad-soft:rgba(255,125,137,.1);
+  --warn:#f0c76e;
+  --radius:16px;
+  --shadow:0 18px 55px rgba(0,0,0,.24);
 }
 *{box-sizing:border-box}
-html{background:var(--bg)}
+html{min-width:320px;background:var(--bg);scroll-behavior:smooth}
 body{
   margin:0;
-  background:
-    radial-gradient(900px 420px at 50% -180px,rgba(155,135,255,.12),transparent 70%),
-    var(--bg);
+  min-height:100vh;
   color:var(--text);
-  font:14px/1.45 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  background:
+    radial-gradient(900px 430px at 78% -180px,rgba(167,149,255,.12),transparent 72%),
+    radial-gradient(700px 360px at -20% 80%,rgba(88,120,255,.08),transparent 70%),
+    var(--bg);
+  font:14px/1.5 ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
 }
 button,input,select{font:inherit}
 button{cursor:pointer}
-.shell{max-width:1120px;margin:0 auto;padding:24px 16px 48px}
-.header{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
-.brand{display:flex;align-items:center;gap:12px}
-.logo{
-  width:34px;height:34px;border-radius:10px;
-  display:grid;place-items:center;
-  background:linear-gradient(145deg,#b9adff,#7f69ef);
-  color:#0a0a0d;font-weight:900;
-  box-shadow:0 8px 28px rgba(155,135,255,.18);
+button:disabled{cursor:not-allowed;opacity:.45}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:2px;
 }
-.title{font-size:17px;font-weight:760;letter-spacing:-.02em}
-.subtitle{font-size:12px;color:var(--muted)}
-.header-actions{display:flex;gap:8px}
+button,input,select{border-radius:11px}
+.app{
+  width:min(1480px,100%);
+  margin:0 auto;
+  min-height:100vh;
+  display:grid;
+  grid-template-columns:282px minmax(0,1fr);
+}
+.sidebar{
+  position:sticky;
+  top:0;
+  align-self:start;
+  height:100vh;
+  padding:20px 16px;
+  border-right:1px solid var(--line);
+  background:rgba(12,15,21,.92);
+  display:flex;
+  flex-direction:column;
+  gap:16px;
+  overflow:hidden;
+}
+.brand{display:flex;align-items:center;gap:11px;padding:2px 4px}
+.brand-mark{
+  width:36px;height:36px;border-radius:11px;
+  display:grid;place-items:center;
+  font-size:13px;font-weight:900;
+  color:#0b0b10;
+  background:linear-gradient(145deg,#c7beff,#7d6bf0);
+  box-shadow:0 10px 28px rgba(167,149,255,.18);
+}
+.brand-name{font-size:14px;font-weight:820;letter-spacing:-.02em}
+.brand-sub{font-size:10px;color:var(--muted);margin-top:1px}
+.nav{display:grid;gap:5px}
+.nav button{
+  width:100%;min-height:40px;padding:0 11px;
+  display:flex;align-items:center;gap:10px;
+  color:var(--muted);
+  background:transparent;
+  border:1px solid transparent;
+  font-weight:700;
+  text-align:left;
+}
+.nav button:hover{color:var(--text);background:#11161e;border-color:var(--line)}
+.nav button.active{color:var(--text);background:var(--accent-soft);border-color:#40385b}
+.nav .nav-key{
+  width:23px;height:23px;display:grid;place-items:center;
+  border-radius:7px;background:#151a22;border:1px solid var(--line);
+  font-size:10px;font-weight:800;color:var(--muted-2);
+}
+.nav button.active .nav-key{color:var(--text);border-color:#554b79;background:rgba(167,149,255,.1)}
+.side-section{min-height:0;display:flex;flex-direction:column;gap:9px}
+.side-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.side-title{
+  color:var(--muted-2);font-size:10px;font-weight:820;
+  text-transform:uppercase;letter-spacing:.11em;
+}
+.icon-button{
+  width:34px;height:34px;min-height:34px;padding:0;
+  display:grid;place-items:center;
+  color:var(--muted);
+  background:#10151c;border:1px solid var(--line);
+  font-weight:850;
+}
+.icon-button:hover{color:var(--text);border-color:var(--line-strong);background:#161b24}
+.search{
+  width:100%;height:36px;
+  padding:0 10px;
+  color:var(--text);
+  background:#0e131a;
+  border:1px solid var(--line);
+}
+.project-explorer{
+  min-height:72px;
+  max-height:360px;
+  overflow:auto;
+  display:grid;
+  align-content:start;
+  gap:6px;
+  padding-right:2px;
+}
+.project-item{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  gap:8px;
+  padding:9px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:#0d1117;
+}
+.project-item.active{border-color:#514671;background:rgba(167,149,255,.08)}
+.project-info{min-width:0}
+.project-name{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:12px;font-weight:780;
+}
+.project-name-row{display:flex;align-items:center;gap:6px;min-width:0}
+.badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-height:19px;padding:0 6px;
+  border-radius:999px;
+  font-size:9px;font-weight:820;
+  white-space:nowrap;
+  border:1px solid var(--line);
+}
+.badge.active{color:var(--accent-2);background:var(--accent-soft);border-color:#4f466a}
+.badge.busy{color:var(--warn);background:rgba(240,199,110,.08);border-color:#564a2c}
+.project-meta{
+  margin-top:3px;
+  color:var(--muted-2);
+  font-size:10px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.project-actions{display:flex;align-items:center;gap:5px}
+.project-actions button{
+  min-height:31px;height:31px;padding:0 8px;
+  font-size:10px;font-weight:760;
+}
+.project-actions .open{
+  color:var(--text);
+  background:#11161e;border:1px solid var(--line);
+}
+.project-actions .open:hover{border-color:var(--line-strong);background:#171c25}
+.project-actions .delete{
+  color:var(--bad);
+  background:transparent;
+  border:1px solid #4d2c33;
+}
+.project-actions .delete:hover{background:var(--bad-soft);border-color:#70414a}
+.workspace{
+  margin-top:auto;
+  padding-top:13px;
+  border-top:1px solid var(--line);
+  color:var(--muted-2);
+  font-size:9px;
+  line-height:1.55;
+  overflow-wrap:anywhere;
+}
+.side-new{
+  width:100%;
+  min-height:38px;
+  color:#0b0b10;
+  background:var(--accent);
+  border:1px solid var(--accent);
+  font-weight:820;
+}
+.side-new:hover{background:var(--accent-2)}
+.main{min-width:0;padding:0 0 48px}
+.topbar{
+  position:sticky;top:0;z-index:10;
+  min-height:70px;
+  padding:14px 28px;
+  display:flex;align-items:center;justify-content:space-between;gap:16px;
+  border-bottom:1px solid rgba(36,43,54,.88);
+  background:rgba(9,11,16,.84);
+  backdrop-filter:blur(14px);
+}
+.topbar-copy{min-width:0}
+.eyebrow{
+  color:var(--muted-2);font-size:9px;font-weight:850;
+  text-transform:uppercase;letter-spacing:.12em;
+}
+.topbar-project{
+  margin-top:2px;
+  font-size:15px;font-weight:820;letter-spacing:-.02em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.topbar-actions{display:flex;align-items:center;gap:8px;flex:0 0 auto}
+.dirty{
+  display:none;align-items:center;gap:6px;
+  color:var(--warn);font-size:10px;font-weight:740;
+  white-space:nowrap;
+}
+.dirty.show{display:flex}
+.dirty-dot{width:6px;height:6px;border-radius:50%;background:var(--warn)}
+.action-secondary,.action-primary{
+  min-height:38px;padding:0 12px;
+  font-weight:790;border:1px solid var(--line);
+}
+.action-secondary{color:var(--text);background:#10151c}
+.action-secondary:hover{background:#171c25;border-color:var(--line-strong)}
+.action-primary{color:#0b0b10;background:var(--accent);border-color:var(--accent)}
+.action-primary:hover{background:var(--accent-2)}
+.view{
+  display:none;
+  width:min(1180px,100%);
+  margin:0 auto;
+  padding:28px;
+}
+.view.active{display:block}
+.hero{
+  padding:28px;
+  border:1px solid #2f3540;
+  border-radius:22px;
+  background:
+    linear-gradient(140deg,rgba(167,149,255,.13),rgba(167,149,255,.035) 54%,rgba(10,13,18,.3)),
+    var(--panel);
+  box-shadow:var(--shadow);
+}
+.hero-grid{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:24px;align-items:end}
+.hero-label{
+  display:inline-flex;align-items:center;gap:7px;
+  color:var(--accent-2);font-size:10px;font-weight:830;
+  text-transform:uppercase;letter-spacing:.12em;
+}
+.hero-label::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--accent);box-shadow:0 0 0 4px rgba(167,149,255,.08)}
+.hero h1{
+  margin:9px 0 7px;
+  font-size:clamp(28px,4.5vw,44px);
+  line-height:1.03;
+  letter-spacing:-.045em;
+}
+.hero p{margin:0;color:var(--muted);max-width:700px}
+.hero-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.big-action{
+  min-height:46px;padding:0 16px;
+  border-radius:12px;
+  color:#0a0a0f;background:var(--accent);border:1px solid var(--accent);
+  font-weight:840;
+}
+.big-action:hover{background:var(--accent-2)}
+.layout{display:grid;gap:14px;margin-top:14px}
+.layout.two{grid-template-columns:minmax(0,1.35fr) minmax(300px,.8fr)}
 .card{
-  background:rgba(18,20,25,.92);
+  min-width:0;
   border:1px solid var(--line);
   border-radius:var(--radius);
-  padding:16px;
-  margin-bottom:12px;
-  backdrop-filter:blur(12px);
+  background:rgba(17,21,29,.92);
 }
-.card-title{font-size:13px;font-weight:700;margin-bottom:12px}
-.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
-label{display:block;color:var(--muted);font-size:11px;margin:0 0 6px 2px}
-.project-explorer{max-height:300px;overflow:auto;display:grid;gap:7px}
-.project-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 11px;background:#0d0f13;border:1px solid var(--line);border-radius:12px}
-.project-item.active{border-color:#5b4f85;background:rgba(155,135,255,.08)}
-.project-info{min-width:0}
-.project-name{font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.project-meta{font-size:10px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.project-item-actions{display:flex;gap:6px;align-items:center;flex:0 0 auto}
-.project-item button{min-height:34px;padding:0 10px}
-.project-item button.delete{color:var(--bad);background:transparent;border-color:#4a2930}
-.project-item button.delete:hover{background:rgba(255,124,135,.08);border-color:#71404a}
-.project-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
-.project-toolbar input{flex:1}
-.empty-projects{padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:13px}
-input,select{
-  width:100%;height:40px;padding:0 11px;
-  color:var(--text);background:#0d0f13;border:1px solid var(--line);border-radius:11px;
-  outline:none;
-}
-input:focus,select:focus{border-color:#6255a5;box-shadow:0 0 0 3px rgba(155,135,255,.08)}
-.row{display:flex;align-items:center;gap:10px}
-.check{
-  display:flex;align-items:center;gap:8px;
-  height:40px;padding:0 10px;
-  color:var(--text);background:#0d0f13;border:1px solid var(--line);border-radius:11px;
-}
-.check input{width:auto;height:auto;accent-color:var(--accent)}
-button{
-  min-height:40px;padding:0 13px;border-radius:11px;
-  color:#0b0b0e;background:var(--accent);border:1px solid var(--accent);
-  font-weight:720;
-}
-button:hover{background:var(--accent-2)}
-button.secondary{color:var(--text);background:#101217;border-color:var(--line)}
-button.secondary:hover{border-color:#444a56;background:#151820}
-button:disabled{opacity:.42;cursor:not-allowed}
-.save{margin-top:12px}
-.range{display:grid;grid-template-columns:1fr auto;gap:10px;align-items:center}
-.range input{padding:0}
-.range-value{min-width:40px;text-align:right;font-variant-numeric:tabular-nums;color:var(--muted)}
-.drop{
-  border:1px dashed #3c424e;border-radius:14px;padding:22px;
-  text-align:center;background:#0d0f13;transition:.15s;
-}
-.drop.drag{border-color:var(--accent);background:rgba(155,135,255,.07)}
-.drop strong{display:block;font-size:14px;margin-bottom:4px}
-.drop p{margin:0 0 13px;color:var(--muted);font-size:12px}
-#files{display:none}
-.inline-actions{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
-.stats{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+.card-pad{padding:16px}
+.card-title-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.card-title{font-size:12px;font-weight:820}
+.card-kicker{color:var(--muted-2);font-size:10px}
+.stats{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:8px}
 .stat{
-  background:#0d0f13;border:1px solid var(--line);border-radius:12px;padding:10px;
+  min-width:0;
+  padding:13px 12px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:var(--panel-3);
 }
-.stat b{display:block;font-size:18px;line-height:1.1;font-variant-numeric:tabular-nums}
-.stat span{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
-.status{
-  display:flex;align-items:flex-start;gap:9px;margin-top:12px;
-  color:var(--muted);min-height:20px;
+.stat-value{font-size:21px;font-weight:820;line-height:1.08;font-variant-numeric:tabular-nums}
+.stat-label{
+  margin-top:5px;color:var(--muted-2);
+  font-size:9px;font-weight:760;text-transform:uppercase;letter-spacing:.08em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
-.progress-panel{margin-top:12px}
-.progress-head{display:flex;justify-content:space-between;gap:12px;font-size:11px;color:var(--muted);margin-bottom:7px}
-.progress-value{font-variant-numeric:tabular-nums}
-.progress-track{height:8px;overflow:hidden;border-radius:999px;background:#0a0b0e;border:1px solid var(--line)}
-.progress-fill{height:100%;width:0;border-radius:999px;background:var(--accent);transition:width .2s ease}
+.status-row{display:flex;align-items:center;gap:9px;margin-top:14px}
+.status-dot{width:8px;height:8px;border-radius:50%;background:#5e6672;flex:0 0 auto}
+.status-dot.running{background:var(--accent);box-shadow:0 0 0 5px rgba(167,149,255,.08),0 0 12px rgba(167,149,255,.6)}
+.status-dot.ok{background:var(--ok);box-shadow:0 0 0 5px rgba(117,216,164,.07)}
+.status-dot.bad{background:var(--bad);box-shadow:0 0 0 5px rgba(255,125,137,.07)}
+.status-text{min-width:0;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.job{
+  min-height:136px;
+  padding:16px;
+  border:1px solid var(--line);
+  border-radius:14px;
+  background:#0e131a;
+}
+.job-empty{display:grid;place-items:center;min-height:104px;color:var(--muted-2);text-align:center;font-size:11px}
+.job-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.job-title{font-size:12px;font-weight:820}
+.job-sub{margin-top:3px;color:var(--muted-2);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.job-project{font-size:9px;color:var(--muted-2);text-align:right;white-space:nowrap}
+.job-progress{margin-top:15px}
+.progress-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:7px;color:var(--muted);font-size:10px}
+.progress-value{font-variant-numeric:tabular-nums;font-weight:780}
+.progress-track{height:8px;overflow:hidden;border-radius:999px;background:#090c11;border:1px solid var(--line)}
+.progress-fill{height:100%;width:0;border-radius:999px;background:var(--accent);transition:width .22s ease}
 .progress-fill.done{background:var(--ok)}
 .progress-fill.bad{background:var(--bad)}
-.progress-fill.indeterminate{width:35%;animation:progress-indeterminate 1.15s ease-in-out infinite}
-@keyframes progress-indeterminate{
-  0%{transform:translateX(-120%)}
-  50%{transform:translateX(150%)}
-  100%{transform:translateX(300%)}
+.progress-fill.indeterminate{width:34%;animation:indeterminate 1.2s ease-in-out infinite}
+@keyframes indeterminate{
+  0%{transform:translateX(-140%)}
+  50%{transform:translateX(170%)}
+  100%{transform:translateX(340%)}
 }
-.dot{width:8px;height:8px;border-radius:999px;background:#666;margin-top:5px;flex:0 0 auto}
-.dot.running{background:var(--accent);box-shadow:0 0 12px rgba(155,135,255,.7)}
-.dot.ok{background:var(--ok)}
-.dot.bad{background:var(--bad)}
-.pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.job-footer{display:flex;justify-content:flex-end;margin-top:11px}
+.job-footer a{
+  color:var(--text);text-decoration:none;
+  min-height:32px;display:inline-flex;align-items:center;padding:0 9px;
+  border-radius:9px;background:#151a22;border:1px solid var(--line);
+  font-size:10px;font-weight:760;
+}
+.pipeline{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
 .step{
-  min-height:74px;padding:11px;
-  text-align:left;color:var(--text);
-  background:#0d0f13;border-color:var(--line);
+  min-height:112px;
+  padding:13px;
+  display:flex;flex-direction:column;align-items:flex-start;justify-content:flex-start;
+  text-align:left;
+  color:var(--text);
+  background:#0d1219;
+  border:1px solid var(--line);
+  border-radius:13px;
 }
-.step .n{font-size:10px;color:var(--muted);margin-bottom:4px}
-.step .name{font-size:12px;font-weight:700}
-.step .hint{display:block;font-size:10px;color:var(--muted);margin-top:2px}
-.step.primary{grid-column:span 2;background:linear-gradient(145deg,rgba(155,135,255,.18),rgba(155,135,255,.07));border-color:#4f456e}
-.step.clean{grid-column:span 2}
+.step:hover{border-color:#394251;background:#121721}
+.step.primary{grid-column:span 2;background:linear-gradient(150deg,rgba(167,149,255,.16),rgba(167,149,255,.05));border-color:#4f4669}
+.step-number{
+  color:var(--muted-2);font-size:9px;font-weight:800;
+  text-transform:uppercase;letter-spacing:.1em;
+}
+.step-name{margin-top:7px;font-size:12px;font-weight:820}
+.step-hint{margin-top:4px;color:var(--muted-2);font-size:10px;line-height:1.4}
+.section-head{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}
+.section-head h2{margin:0;font-size:19px;letter-spacing:-.025em}
+.section-head p{margin:5px 0 0;color:var(--muted);font-size:11px}
+.form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
+.form-grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}
+.field label{
+  display:block;margin:0 0 6px 2px;
+  color:var(--muted);font-size:10px;font-weight:760;
+}
+input,select{
+  width:100%;height:40px;
+  padding:0 11px;
+  color:var(--text);
+  background:#0d1218;
+  border:1px solid var(--line);
+}
+input:focus,select:focus{border-color:#5b507d;box-shadow:0 0 0 3px rgba(167,149,255,.07)}
+.check{
+  min-height:40px;padding:0 10px;
+  display:flex;align-items:center;gap:8px;
+  color:var(--text);
+  background:#0d1218;
+  border:1px solid var(--line);
+}
+.check input{width:auto;height:auto;accent-color:var(--accent)}
+.range{display:grid;grid-template-columns:minmax(0,1fr) 38px;align-items:center;gap:10px}
+.range-value{text-align:right;color:var(--muted);font-size:11px;font-variant-numeric:tabular-nums}
+.field-note{margin:6px 2px 0;color:var(--muted-2);font-size:9px;line-height:1.4}
+.save-bar{
+  position:sticky;bottom:12px;z-index:8;
+  display:flex;align-items:center;justify-content:flex-end;gap:9px;
+  margin-top:14px;padding:10px 12px;
+  border:1px solid #303745;
+  border-radius:13px;
+  background:rgba(13,17,24,.93);
+  backdrop-filter:blur(12px);
+}
+.save-bar .save-note{margin-right:auto;color:var(--muted-2);font-size:10px}
+.collect-grid{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(300px,.8fr);gap:14px}
+.drop{
+  min-height:220px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:24px;
+  text-align:center;
+  border:1px dashed #3d4653;
+  border-radius:15px;
+  background:#0d1218;
+  transition:.16s ease;
+}
+.drop.drag{border-color:var(--accent);background:rgba(167,149,255,.08)}
+.drop-icon{
+  width:48px;height:48px;border-radius:14px;
+  display:grid;place-items:center;
+  background:#151a22;border:1px solid var(--line);
+  color:var(--accent-2);font-weight:900;font-size:18px;
+}
+.drop strong{margin-top:12px;font-size:14px}
+.drop p{margin:5px 0 14px;color:var(--muted);font-size:11px}
+.drop-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+#files{display:none}
+.selection{margin-top:10px;color:var(--muted-2);font-size:10px}
+.gallery{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(138px,1fr));
+  gap:8px;
+}
+.tile{min-width:0;cursor:zoom-in}
+.tile img{
+  display:block;width:100%;aspect-ratio:1;object-fit:cover;
+  border-radius:11px;border:1px solid var(--line);
+  background:#080b10;
+  transition:transform .16s ease,border-color .16s ease;
+}
+.tile:hover img{transform:translateY(-1px);border-color:#3e4654}
+.tile-meta{padding:6px 2px 0}
+.tile-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px}
+.tile-status{margin-top:1px;color:var(--muted-2);font-size:8px;text-transform:uppercase;letter-spacing:.05em}
+.empty{
+  padding:26px;text-align:center;color:var(--muted-2);
+  border:1px dashed var(--line);border-radius:13px;font-size:11px;
+}
+.details{
+  margin-top:14px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:#0f141b;
+  overflow:hidden;
+}
+.details summary{
+  list-style:none;
+  cursor:pointer;
+  padding:12px 13px;
+  font-size:11px;font-weight:780;
+}
+.details summary::-webkit-details-marker{display:none}
+.details summary::after{content:"+";float:right;color:var(--muted-2)}
+.details[open] summary::after{content:"−"}
+.details-body{padding:0 13px 13px}
 .output{
+  margin-top:14px;
+  padding:13px;
   display:flex;align-items:center;justify-content:space-between;gap:12px;
-  padding:12px;background:#0d0f13;border:1px solid var(--line);border-radius:13px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:#0e131a;
 }
-.output-name{font-weight:700}
-.output-meta{font-size:11px;color:var(--muted)}
-a.download{
+.output-name{font-size:12px;font-weight:780}
+.output-meta{margin-top:3px;color:var(--muted-2);font-size:10px}
+.output a{
+  min-height:37px;padding:0 11px;
   display:inline-flex;align-items:center;justify-content:center;
-  min-height:38px;padding:0 12px;border-radius:10px;
-  color:#0b0b0e;background:var(--ok);font-weight:760;text-decoration:none;
+  border-radius:10px;
+  text-decoration:none;
+  color:#0b0b10;background:var(--ok);font-size:10px;font-weight:820;
 }
-.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:7px}
-.tile{min-width:0}
-.tile img{display:block;width:100%;aspect-ratio:1;object-fit:cover;border-radius:11px;background:#08090c;border:1px solid var(--line)}
-.tile .meta{padding:5px 2px 0}
-.tile .path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px}
-.tile .tag{font-size:9px;color:var(--muted)}
-.empty{padding:22px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:13px}
-.note{color:var(--muted);font-size:11px;margin:10px 2px 0}
-.danger{color:var(--bad)}
-@media(max-width:820px){.stats{grid-template-columns:repeat(3,1fr)}.pipeline{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:600px){
-  .shell{padding:16px 12px 34px}
-  .header{align-items:flex-start}
-  .grid-2,.grid-3{grid-template-columns:1fr}
-  .stats{grid-template-columns:repeat(2,1fr)}
-  .pipeline{grid-template-columns:1fr 1fr}
-  .step.primary,.step.clean{grid-column:span 2}
+.toast-wrap{
+  position:fixed;right:18px;bottom:18px;z-index:100;
+  width:min(380px,calc(100vw - 36px));
+  display:grid;gap:8px;
+  pointer-events:none;
+}
+.toast{
+  pointer-events:auto;
+  padding:11px 12px;
+  border:1px solid var(--line-strong);
+  border-radius:12px;
+  background:#121720;
+  box-shadow:var(--shadow);
+  font-size:11px;
+  animation:toast-in .18s ease-out;
+}
+.toast.ok{border-color:#345847}
+.toast.bad{border-color:#5b3037}
+@keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+dialog{
+  max-width:min(520px,calc(100vw - 28px));
+  width:calc(100% - 28px);
+  padding:0;
+  border:1px solid var(--line-strong);
+  border-radius:17px;
+  color:var(--text);
+  background:#121720;
+  box-shadow:0 28px 100px rgba(0,0,0,.48);
+}
+dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
+.modal{overflow:hidden}
+.modal-head{padding:17px 18px;border-bottom:1px solid var(--line)}
+.modal-title{font-size:14px;font-weight:820}
+.modal-body{padding:17px 18px}
+.modal-body p{margin:0;color:var(--muted);font-size:11px;line-height:1.55}
+.modal-actions{
+  display:flex;justify-content:flex-end;gap:8px;
+  padding:12px 18px;border-top:1px solid var(--line);
+}
+.modal-actions .danger{
+  color:#fff;background:#7c313b;border-color:#8e3b46;
+}
+.modal-actions .danger:hover{background:#94404b}
+.preview{
+  width:min(900px,calc(100vw - 26px));
+  max-width:900px;
+}
+.preview-body{padding:12px;background:#080b10}
+.preview-body img{
+  display:block;width:100%;max-height:76vh;object-fit:contain;
+  border-radius:10px;background:#05070a;
+}
+.preview-meta{padding:13px 15px}
+.preview-name{font-size:11px;font-weight:760;overflow-wrap:anywhere}
+.preview-status{margin-top:3px;color:var(--muted-2);font-size:9px}
+.helper{
+  display:inline-flex;align-items:center;gap:7px;
+  padding:7px 9px;border-radius:9px;
+  color:var(--muted);background:#0e131a;border:1px solid var(--line);
+  font-size:9px;
+}
+.helper b{color:var(--text)}
+@media(max-width:1120px){
+  .app{grid-template-columns:240px minmax(0,1fr)}
+  .view{padding:22px}
+  .topbar{padding:13px 22px}
+  .collect-grid,.layout.two{grid-template-columns:1fr}
+}
+@media(max-width:900px){
+  .app{display:block}
+  .sidebar{
+    position:relative;
+    height:auto;
+    padding:12px;
+    border-right:0;
+    border-bottom:1px solid var(--line);
+    overflow:visible;
+  }
+  .brand{padding:0 2px}
+  .nav{display:flex;overflow:auto;gap:5px}
+  .nav button{width:auto;min-width:max-content}
+  .nav .nav-key{display:none}
+  .side-section{display:block}
+  .side-head{margin-bottom:8px}
+  .project-explorer{max-height:175px;grid-template-columns:repeat(2,minmax(0,1fr))}
+  .workspace{display:none}
+  .side-new{margin-top:8px}
+  .main{padding-bottom:34px}
+  .stats{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .pipeline{grid-template-columns:repeat(2,minmax(0,1fr))}
+}
+@media(max-width:620px){
+  .topbar{padding:11px 13px}
+  .topbar-actions .new-top{display:none}
+  .view{padding:14px}
+  .hero{padding:19px;border-radius:17px}
+  .hero-grid{grid-template-columns:1fr;gap:17px}
+  .hero-actions{justify-content:flex-start}
+  .big-action{width:100%}
+  .form-grid,.form-grid.three{grid-template-columns:1fr}
+  .stats{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .pipeline{grid-template-columns:1fr}
+  .step.primary{grid-column:span 1}
+  .project-explorer{grid-template-columns:1fr}
   .output{align-items:flex-start;flex-direction:column}
-  .header-actions button{padding:0 10px}
+  .output a{width:100%}
+  .save-bar{bottom:8px}
+  .save-bar .save-note{display:none}
+  .gallery{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .section-head{display:block}
+  .section-head .helper{margin-top:9px}
+}
+@media(prefers-reduced-motion:reduce){
+  html{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
 </style>
 </head>
 <body>
-<div class="shell">
-  <header class="header">
+<div class="app">
+  <aside class="sidebar" aria-label="workspace navigation">
     <div class="brand">
-      <div class="logo">L</div>
+      <div class="brand-mark" aria-hidden="true">L</div>
       <div>
-        <div class="title">LoRA Data Maker</div>
-        <div class="subtitle">local dataset pipeline · localhost</div>
+        <div class="brand-name">LoRA Data Maker</div>
+        <div class="brand-sub">local dataset workspace</div>
       </div>
     </div>
-    <div class="header-actions">
-      <button class="secondary" onclick="newProject()">new dataset</button>
-    </div>
-  </header>
 
-  <section class="card">
-    <div class="card-title">dataset explorer</div>
-    <div class="project-toolbar">
-      <input id="project_filter" placeholder="filter datasets...">
-      <button class="secondary" onclick="refreshProjects()">refresh</button>
-    </div>
-    <div class="project-explorer" id="project_explorer"></div>
-    <div class="note" id="project_workspace"></div>
-  </section>
+    <nav class="nav" aria-label="primary">
+      <button type="button" data-view="overview"><span class="nav-key">01</span><span>overview</span></button>
+      <button type="button" data-view="collect"><span class="nav-key">02</span><span>collect</span></button>
+      <button type="button" data-view="prepare"><span class="nav-key">03</span><span>prepare</span></button>
+      <button type="button" data-view="settings"><span class="nav-key">04</span><span>settings</span></button>
+    </nav>
 
-  <section class="card">
-    <div class="card-title">project</div>
-    <div class="grid-2">
-      <div><label>name</label><input id="name"></div>
-      <div><label>subject</label><input id="subject"></div>
-      <div><label>trigger</label><input id="trigger"></div>
-      <div><label>tagger</label><select id="preset"><option value="sweetspot">wd14 · sweetspot</option><option value="potato">wd14 · potato</option><option value="joytag">joytag</option></select></div>
-    </div>
-    <div class="grid-2" style="margin-top:12px">
-      <div>
-        <label>resize</label>
-        <select id="mode"><option value="cover">cover</option><option value="fit">fit</option><option value="stretch">stretch</option></select>
+    <section class="side-section">
+      <div class="side-head">
+        <div class="side-title">datasets</div>
+        <button type="button" class="icon-button" id="refresh-projects" aria-label="refresh datasets" title="refresh datasets">↻</button>
       </div>
-      <div class="row">
-        <div style="flex:1"><label>width</label><input id="width" type="number" min="1"></div>
-        <div style="flex:1"><label>height</label><input id="height" type="number" min="1"></div>
+      <input id="project_filter" class="search" autocomplete="off" placeholder="search datasets..." aria-label="search datasets">
+      <div class="project-explorer" id="project_explorer" aria-live="polite"></div>
+      <button type="button" class="side-new" id="new-dataset">+ new dataset</button>
+    </section>
+
+    <div class="workspace" id="project_workspace"></div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-copy">
+        <div class="eyebrow">active dataset</div>
+        <div class="topbar-project" id="topbar-project">loading...</div>
       </div>
-    </div>
-    <div class="grid-3" style="margin-top:12px">
-      <div><label>jpeg quality</label><div class="range"><input id="quality" type="range" min="60" max="100"><span class="range-value" id="qv"></span></div></div>
-      <div><label>face crop</label><label class="check"><input id="face_crop" type="checkbox"> enable</label></div>
-      <div><label>face padding</label><input id="face_padding" type="number" min="0.1" step="0.05"></div>
-    </div>
-    <div class="grid-3" style="margin-top:12px">
-      <div><label>person quality gate</label><label class="check"><input id="person_check" type="checkbox"> enable</label></div>
-      <div><label>max people</label><input id="max_persons" type="number" min="1" step="1"></div>
-      <div><label>person confidence</label><input id="person_threshold" type="number" min="0.01" max="1" step="0.01"></div>
-    </div>
-    <div class="grid-2" style="margin-top:12px">
-      <div><label>min subject area</label><input id="min_subject_area" type="number" min="0" max="1" step="0.01"></div>
-      <div><label>min subject visibility</label><input id="min_subject_visibility" type="number" min="0" max="1" step="0.01"></div>
-    </div>
-    <div class="row save"><button onclick="saveSettings()">save settings</button><span class="note">settings are written back to config.toml</span></div>
-  </section>
-
-
-  <section class="card">
-    <div class="card-title">scraper</div>
-    <div class="grid-2">
-      <div>
-        <label>backend</label>
-        <select id="scraper_backend">
-          <option value="duckduckgo">duckduckgo</option>
-          <option value="google">google</option>
-          <option value="chromium">chromium</option>
-          <option value="playwright-bing">playwright · bing</option>
-          <option value="playwright-google">playwright · google</option>
-          <option value="direct">direct URLs</option>
-        </select>
+      <div class="topbar-actions">
+        <div class="dirty" id="dirty-badge" aria-live="polite"><span class="dirty-dot"></span><span>unsaved changes</span></div>
+        <button type="button" class="action-secondary new-top" id="save-top" data-save>save</button>
+        <button type="button" class="action-primary" id="new-top">new dataset</button>
       </div>
-      <div>
-        <label>count</label>
-        <input id="scrape_count" type="number" min="1" step="1">
+    </header>
+
+    <section class="view active" data-view-panel="overview">
+      <div class="hero">
+        <div class="hero-grid">
+          <div>
+            <div class="hero-label">dataset workspace</div>
+            <h1 id="hero-name">loading...</h1>
+            <p id="hero-description">load the active dataset to get started.</p>
+          </div>
+          <div class="hero-actions">
+            <button type="button" class="big-action" data-run-stage="prepare">prepare dataset</button>
+          </div>
+        </div>
       </div>
-      <div style="grid-column:span 2">
-        <label>query</label>
-        <input id="scrape_query" placeholder="julia russian woman portrait">
+
+      <div class="layout">
+        <section class="card card-pad">
+          <div class="card-title-row">
+            <div class="card-title">dataset status</div>
+            <div class="card-kicker" id="status-context">ready</div>
+          </div>
+          <div class="stats" id="stats" style="margin-top:12px"></div>
+          <div class="status-row">
+            <span class="status-dot" id="dot"></span>
+            <span class="status-text" id="status" aria-live="polite">ready</span>
+          </div>
+        </section>
+
+        <section class="card card-pad">
+          <div class="card-title-row">
+            <div class="card-title">active job</div>
+            <div class="card-kicker" id="job-state">idle</div>
+          </div>
+          <div class="job" style="margin-top:11px">
+            <div class="job-empty" id="job-empty">nothing is running right now.</div>
+            <div id="job-content" hidden>
+              <div class="job-head">
+                <div>
+                  <div class="job-title" id="job-title"></div>
+                  <div class="job-sub" id="job-sub"></div>
+                </div>
+                <div class="job-project" id="job-project"></div>
+              </div>
+              <div class="job-progress">
+                <div class="progress-head">
+                  <span id="progress-label">working...</span>
+                  <span class="progress-value" id="progress-value">0%</span>
+                </div>
+                <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="progress-track">
+                  <div class="progress-fill" id="progress-fill"></div>
+                </div>
+              </div>
+              <div class="job-footer" id="job-footer"></div>
+            </div>
+          </div>
+        </section>
       </div>
-    </div>
-    <div class="row save">
-      <button onclick="run('scrape')">scrape images</button>
-      <span class="note">downloads land in <code>raw/</code> and get added to the manifest.</span>
-    </div>
-  </section>
 
-  <section class="card">
-    <div class="card-title">input</div>
-    <div class="drop" id="drop">
-      <input id="files" type="file" accept="image/*" multiple>
-      <strong>drop images here</strong>
-      <p>or pick files from your gallery / file manager</p>
-      <div class="inline-actions">
-        <button class="secondary" onclick="document.getElementById('files').click()">choose images</button>
-        <button onclick="upload()">upload selected</button>
+      <section class="card card-pad" style="margin-top:14px">
+        <div class="section-head">
+          <div>
+            <h2>recent images</h2>
+            <p>preview the current dataset without leaving the workspace.</p>
+          </div>
+          <span class="helper" id="gallery-count">0 images</span>
+        </div>
+        <div class="gallery" id="gallery"></div>
+      </section>
+    </section>
+
+    <section class="view" data-view-panel="collect">
+      <div class="section-head">
+        <div>
+          <h2>collect images</h2>
+          <p>scrape from a source or upload images directly into <b>raw/</b>.</p>
+        </div>
+        <span class="helper">active: <b id="collect-project">loading...</b></span>
       </div>
-    </div>
-  </section>
 
-  <section class="card">
-    <div class="card-title">dataset status</div>
-    <div class="stats" id="stats"></div>
-    <div class="status"><span class="dot" id="dot"></span><span id="status">ready</span></div>
-    <div class="progress-panel">
-      <div class="progress-head"><span id="progress-label">idle</span><span class="progress-value" id="progress-value">0%</span></div>
-      <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-    </div>
-  </section>
+      <div class="collect-grid">
+        <section class="card card-pad">
+          <div class="card-title-row">
+            <div class="card-title">scraper</div>
+            <div class="card-kicker">downloads → manifest</div>
+          </div>
+          <div class="form-grid" style="margin-top:13px">
+            <div class="field">
+              <label for="scraper_backend">backend</label>
+              <select id="scraper_backend">
+                <option value="duckduckgo">duckduckgo</option>
+                <option value="google">google</option>
+                <option value="chromium">chromium</option>
+                <option value="playwright-bing">playwright · bing</option>
+                <option value="playwright-google">playwright · google</option>
+                <option value="direct">direct URLs</option>
+              </select>
+            </div>
+            <div class="field">
+              <label for="scrape_count">count</label>
+              <input id="scrape_count" type="number" min="1" step="1" inputmode="numeric">
+            </div>
+            <div class="field" style="grid-column:1/-1">
+              <label for="scrape_query">query</label>
+              <input id="scrape_query" autocomplete="off" placeholder="julia russian woman portrait">
+              <div class="field-note">direct URLs uses the query field as the input source expected by the configured scraper.</div>
+            </div>
+          </div>
+          <div class="save-bar">
+            <span class="save-note">save scraper settings before starting a run.</span>
+            <button type="button" class="action-secondary" data-save>save</button>
+            <button type="button" class="action-primary" data-run-stage="scrape">scrape images</button>
+          </div>
+        </section>
 
-  <section class="card">
-    <div class="card-title">pipeline</div>
-    <div class="pipeline">
-      <button class="step primary" onclick="run('prepare')"><div class="n">ALL</div><div class="name">prepare dataset</div><span class="hint">validate → process → tag → clean → caption → export → ZIP</span></button>
-      <button class="step" onclick="run('validate')"><div class="n">01</div><div class="name">validate</div><span class="hint">scan raw images</span></button>
-      <button class="step" onclick="run('process')"><div class="n">02</div><div class="name">stage / resize</div><span class="hint">make training images</span></button>
-      <button class="step" onclick="run('tag')"><div class="n">03</div><div class="name">tag</div><span class="hint">automatic image tags</span></button>
-      <button class="step" onclick="run('clean-tags')"><div class="n">04</div><div class="name">clean tags</div><span class="hint">apply tag rules</span></button>
-      <button class="step" onclick="run('caption')"><div class="n">05</div><div class="name">caption</div><span class="hint">write .txt captions</span></button>
-      <button class="step" onclick="run('export')"><div class="n">06</div><div class="name">export</div><span class="hint">Kohya-ready folder</span></button>
-      <button class="step" onclick="run('pack')"><div class="n">07</div><div class="name">make ZIP</div><span class="hint">final archive</span></button>
-      <button class="step clean" onclick="run('clean')"><div class="n">OPTIONAL</div><div class="name">image clean / dedup</div><span class="hint">manual quality + duplicate pass</span></button>
-    </div>
-    <div id="download" style="margin-top:12px"></div>
-  </section>
+        <section class="card card-pad">
+          <div class="card-title-row">
+            <div class="card-title">upload</div>
+            <div class="card-kicker">local files → raw/</div>
+          </div>
+          <div class="drop" id="drop" style="margin-top:13px">
+            <input id="files" type="file" accept="image/*" multiple>
+            <div class="drop-icon" aria-hidden="true">↑</div>
+            <strong>drop images here</strong>
+            <p>or choose files from your gallery / file manager</p>
+            <div class="drop-actions">
+              <button type="button" class="action-secondary" id="choose-images">choose images</button>
+              <button type="button" class="action-primary" id="upload-button">upload selected</button>
+            </div>
+            <div class="selection" id="file-summary">no files selected</div>
+          </div>
+        </section>
+      </div>
+    </section>
 
-  <section class="card">
-    <div class="card-title">gallery</div>
-    <div class="gallery" id="gallery"></div>
-  </section>
+    <section class="view" data-view-panel="prepare">
+      <div class="section-head">
+        <div>
+          <h2>prepare dataset</h2>
+          <p>run the full pipeline or execute one stage at a time when you need control.</p>
+        </div>
+        <span class="helper">one job at a time · project-bound execution</span>
+      </div>
+
+      <section class="card card-pad">
+        <div class="pipeline">
+          <button type="button" class="step primary" data-run-stage="prepare">
+            <span class="step-number">all stages</span>
+            <span class="step-name">prepare dataset</span>
+            <span class="step-hint">validate → process → tag → clean tags → caption → export → ZIP</span>
+          </button>
+          <button type="button" class="step" data-run-stage="validate">
+            <span class="step-number">01 · input</span><span class="step-name">validate</span><span class="step-hint">scan and validate raw images</span>
+          </button>
+          <button type="button" class="step" data-run-stage="process">
+            <span class="step-number">02 · image</span><span class="step-name">stage / resize</span><span class="step-hint">make training-ready images</span>
+          </button>
+          <button type="button" class="step" data-run-stage="tag">
+            <span class="step-number">03 · metadata</span><span class="step-name">tag</span><span class="step-hint">generate automatic tags</span>
+          </button>
+          <button type="button" class="step" data-run-stage="clean-tags">
+            <span class="step-number">04 · metadata</span><span class="step-name">clean tags</span><span class="step-hint">apply tag removal rules</span>
+          </button>
+          <button type="button" class="step" data-run-stage="caption">
+            <span class="step-number">05 · metadata</span><span class="step-name">caption</span><span class="step-hint">write .txt captions</span>
+          </button>
+          <button type="button" class="step" data-run-stage="export">
+            <span class="step-number">06 · output</span><span class="step-name">export</span><span class="step-hint">create Kohya-ready folder</span>
+          </button>
+          <button type="button" class="step" data-run-stage="pack">
+            <span class="step-number">07 · output</span><span class="step-name">make ZIP</span><span class="step-hint">build final archive</span>
+          </button>
+          <button type="button" class="step" data-run-stage="clean">
+            <span class="step-number">optional</span><span class="step-name">image clean / dedup</span><span class="step-hint">quality gate and duplicate pass</span>
+          </button>
+        </div>
+      </section>
+
+      <section class="card card-pad" style="margin-top:14px">
+        <div class="card-title-row">
+          <div class="card-title">how the pipeline flows</div>
+          <div class="card-kicker">safe to rerun stages</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:11px">
+          <span class="helper"><b>raw/</b> source images</span>
+          <span class="helper"><b>work/</b> processed images + captions</span>
+          <span class="helper"><b>output/</b> export + ZIP</span>
+          <span class="helper"><b>manifest.json</b> source of truth</span>
+        </div>
+      </section>
+    </section>
+
+    <section class="view" data-view-panel="settings">
+      <div class="section-head">
+        <div>
+          <h2>dataset settings</h2>
+          <p>changes are kept local to the active dataset and written back to <b>config.toml</b>.</p>
+        </div>
+        <span class="helper">changes are saved explicitly</span>
+      </div>
+
+      <section class="card card-pad">
+        <div class="card-title">project identity</div>
+        <div class="form-grid three" style="margin-top:13px">
+          <div class="field"><label for="name">name</label><input id="name" autocomplete="off"></div>
+          <div class="field"><label for="subject">subject</label><input id="subject" autocomplete="off"></div>
+          <div class="field"><label for="trigger">trigger</label><input id="trigger" autocomplete="off"></div>
+        </div>
+      </section>
+
+      <section class="card card-pad" style="margin-top:14px">
+        <div class="card-title">tagger</div>
+        <div class="form-grid" style="margin-top:13px">
+          <div class="field">
+            <label for="preset">preset</label>
+            <select id="preset">
+              <option value="sweetspot">wd14 · sweetspot</option>
+              <option value="potato">wd14 · potato</option>
+              <option value="joytag">joytag</option>
+            </select>
+          </div>
+        </div>
+      </section>
+
+      <section class="card card-pad" style="margin-top:14px">
+        <div class="card-title">processing</div>
+        <div class="form-grid three" style="margin-top:13px">
+          <div class="field">
+            <label for="mode">resize</label>
+            <select id="mode">
+              <option value="cover">cover</option>
+              <option value="fit">fit</option>
+              <option value="stretch">stretch</option>
+            </select>
+          </div>
+          <div class="field"><label for="width">width</label><input id="width" type="number" min="1" inputmode="numeric"></div>
+          <div class="field"><label for="height">height</label><input id="height" type="number" min="1" inputmode="numeric"></div>
+        </div>
+        <div class="form-grid three" style="margin-top:12px">
+          <div class="field">
+            <label for="quality">jpeg quality</label>
+            <div class="range"><input id="quality" type="range" min="60" max="100"><span class="range-value" id="qv"></span></div>
+          </div>
+          <div class="field">
+            <label>face crop</label>
+            <label class="check"><input id="face_crop" type="checkbox"> enable</label>
+          </div>
+          <div class="field"><label for="face_padding">face padding</label><input id="face_padding" type="number" min="0.1" step="0.05"></div>
+        </div>
+      </section>
+
+      <details class="details">
+        <summary>quality gate & detection</summary>
+        <div class="details-body">
+          <div class="form-grid three" style="margin-top:13px">
+            <div class="field">
+              <label>person quality gate</label>
+              <label class="check"><input id="person_check" type="checkbox"> enable</label>
+              <div class="field-note">keep disabled unless you explicitly want person-count filtering.</div>
+            </div>
+            <div class="field"><label for="max_persons">max people</label><input id="max_persons" type="number" min="1" step="1"></div>
+            <div class="field"><label for="person_threshold">person confidence</label><input id="person_threshold" type="number" min="0.01" max="1" step="0.01"></div>
+          </div>
+          <div class="form-grid" style="margin-top:12px">
+            <div class="field"><label for="min_subject_area">min subject area</label><input id="min_subject_area" type="number" min="0" max="1" step="0.01"></div>
+            <div class="field"><label for="min_subject_visibility">min subject visibility</label><input id="min_subject_visibility" type="number" min="0" max="1" step="0.01"></div>
+          </div>
+        </div>
+      </details>
+
+      <div class="save-bar">
+        <span class="save-note">saving resets the unsaved-changes marker.</span>
+        <button type="button" class="action-secondary" data-save>save settings</button>
+      </div>
+    </section>
+  </main>
 </div>
+
+<div class="toast-wrap" id="toast-wrap" aria-live="polite" aria-atomic="true"></div>
+
+<dialog id="new-modal" class="modal">
+  <div class="modal-head"><div class="modal-title">create a new dataset</div></div>
+  <form id="new-form" method="dialog">
+    <div class="modal-body">
+      <div class="form-grid">
+        <div class="field" style="grid-column:1/-1"><label for="new-name">folder name</label><input id="new-name" autocomplete="off" required></div>
+        <div class="field"><label for="new-subject">subject</label><input id="new-subject" autocomplete="off" required></div>
+        <div class="field"><label for="new-trigger">trigger</label><input id="new-trigger" autocomplete="off" required></div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button type="button" class="action-secondary" id="new-cancel">cancel</button>
+      <button type="submit" class="action-primary" id="new-submit">create dataset</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="confirm-modal" class="modal">
+  <div class="modal-head"><div class="modal-title" id="confirm-title">confirm action</div></div>
+  <div class="modal-body"><p id="confirm-body"></p></div>
+  <div class="modal-actions">
+    <button type="button" class="action-secondary" id="confirm-cancel">cancel</button>
+    <button type="button" class="action-primary" id="confirm-accept">confirm</button>
+  </div>
+</dialog>
+
+<dialog id="preview-modal" class="preview">
+  <div class="modal-head"><div class="modal-title">image preview</div></div>
+  <div class="preview-body"><img id="preview-image" alt=""></div>
+  <div class="preview-meta">
+    <div class="preview-name" id="preview-name"></div>
+    <div class="preview-status" id="preview-status"></div>
+  </div>
+</dialog>
 
 <script>
 const $=id=>document.getElementById(id);
 const esc=s=>String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#039;"}[c]));
+const appState={
+  settingsDirty:false,
+  activeProjectPath:"",
+  currentJob:null,
+  jobId:localStorage.getItem("ldm.jobId")||"",
+  pollTimer:null,
+  confirmResolve:null,
+  toastSeq:0
+};
+
 async function api(url,opt={}){
-  const r=await fetch(url,opt);
-  const d=await r.json().catch(()=>({detail:r.statusText}));
-  if(!r.ok)throw Error(d.detail||"request failed");
-  return d;
+  let response;
+  try{response=await fetch(url,opt)}
+  catch(e){throw Error("cannot reach the local server")}
+  let data={};
+  try{data=await response.json()}catch(e){data={detail:response.statusText||"request failed"}}
+  if(!response.ok)throw Error(data.detail||"request failed");
+  return data;
 }
-function applySettings(s){
+
+function setStatus(message,kind=""){
+  $("status").textContent=message;
+  $("dot").className="status-dot "+kind;
+}
+function toast(message,kind=""){
+  const el=document.createElement("div");
+  el.className="toast "+kind;
+  el.textContent=message;
+  $("toast-wrap").appendChild(el);
+  const id=++appState.toastSeq;
+  setTimeout(()=>{
+    if(el.isConnected)el.remove();
+  },3400);
+  return id;
+}
+function isBusyOnActiveProject(){
+  const job=appState.currentJob;
+  return !!job && job.status==="running" && !!job.project_path && !!appState.activeProjectPath && job.project_path===appState.activeProjectPath;
+}
+function updateDirtyUI(){
+  $("dirty-badge").classList.toggle("show",appState.settingsDirty);
+  document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=!appState.settingsDirty});
+}
+function updateBusyUI(){
+  const busy=isBusyOnActiveProject();
+  document.querySelectorAll("[data-run-stage]").forEach(button=>{button.disabled=busy});
+  $("upload-button").disabled=busy;
+  document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
+  document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility").forEach(el=>{
+    if(el)el.disabled=busy;
+  });
+}
+function applySettings(s,force=false){
+  if(appState.settingsDirty&&!force)return;
   $("name").value=s.project.name;
   $("subject").value=s.project.subject;
   $("trigger").value=s.project.trigger;
@@ -366,108 +1045,159 @@ function applySettings(s){
   $("person_threshold").value=s.quality.person_threshold;
   $("min_subject_area").value=s.quality.min_subject_area;
   $("min_subject_visibility").value=s.quality.min_subject_visibility;
+  appState.settingsDirty=false;
+  updateDirtyUI();
+}
+function renderStats(counts){
+  const keys=["discovered","validated","processed","tagged","captioned","exported"];
+  const labels={"discovered":"discovered","validated":"validated","processed":"processed","tagged":"tagged","captioned":"captioned","exported":"exported"};
+  $("stats").innerHTML=keys.map(k=>'<div class="stat"><div class="stat-value">'+esc(counts[k]??0)+'</div><div class="stat-label">'+esc(labels[k])+'</div></div>').join("");
 }
 function renderProjects(projects){
   const filter=$("project_filter").value.trim().toLowerCase();
   const items=(projects||[]).filter(p=>{
     const hay=(String(p.name||"")+" "+String(p.subject||"")+" "+String(p.path||"")).toLowerCase();
-    return !filter || hay.includes(filter);
+    return !filter||hay.includes(filter);
   });
   if(!items.length){
-    $("project_explorer").innerHTML='<div class="empty-projects">no dataset projects found.</div>';
+    $("project_explorer").innerHTML='<div class="empty">no dataset projects found.</div>';
     return;
   }
   $("project_explorer").innerHTML=items.map(p=>{
-    const encoded=encodeURIComponent(p.name);
+    const busy=appState.currentJob&&appState.currentJob.status==="running"&&appState.currentJob.project_path===p.path;
     const open=p.active
-      ? '<button class="secondary" disabled>open</button>'
-      : '<button class="secondary" data-project="'+encoded+'">open</button>';
-    const remove=p.active
-      ? '<button class="delete" disabled>delete</button>'
-      : '<button class="delete" data-delete-project="'+encoded+'">delete</button>';
-    return '<div class="project-item'+(p.active?' active':'')+'"><div class="project-info"><div class="project-name">'+esc(p.name)+(p.active?' · active':'')+'</div><div class="project-meta">'+esc(p.subject)+' · '+esc(p.image_count)+' images · '+esc(p.path)+'</div></div><div class="project-item-actions">'+open+remove+'</div></div>';
+      ? '<button type="button" class="open" disabled>open</button>'
+      : '<button type="button" class="open" data-project-open="'+esc(p.name)+'">open</button>';
+    const remove=p.active||busy
+      ? '<button type="button" class="delete" disabled title="'+esc(p.active?"open another dataset first":"a job is running for this dataset")+'">'+(busy&&!p.active?"busy":"delete")+'</button>'
+      : '<button type="button" class="delete" data-project-delete="'+esc(p.name)+'">delete</button>';
+    const badges=(p.active?'<span class="badge active">active</span>':'')+(busy?'<span class="badge busy">busy</span>':'');
+    return '<div class="project-item'+(p.active?' active':'')+'"><div class="project-info"><div class="project-name-row"><div class="project-name">'+esc(p.name)+'</div>'+badges+'</div><div class="project-meta">'+esc(p.subject)+' · '+esc(p.image_count)+' images</div></div><div class="project-actions">'+open+remove+'</div></div>';
   }).join("");
-  $("project_explorer").querySelectorAll("[data-project]").forEach(button=>{
-    button.addEventListener("click",()=>selectProject(decodeURIComponent(button.dataset.project)));
-  });
-  $("project_explorer").querySelectorAll("[data-delete-project]").forEach(button=>{
-    button.addEventListener("click",()=>deleteProject(decodeURIComponent(button.dataset.deleteProject)));
-  });
+}
+function renderDownload(name,url){
+  $("job-footer").innerHTML=url
+    ? '<a href="'+esc(url)+'">download ZIP</a>'
+    : "";
+  if(name){
+    $("job-footer").dataset.archive=name;
+  }else{
+    delete $("job-footer").dataset.archive;
+  }
+}
+function renderJob(job){
+  appState.currentJob=job||null;
+  if(!job||job.status==="missing"){
+    appState.currentJob=null;
+    $("job-empty").hidden=false;
+    $("job-content").hidden=true;
+    $("job-state").textContent="idle";
+    renderDownload("");
+    updateBusyUI();
+    return;
+  }
+  $("job-empty").hidden=true;
+  $("job-content").hidden=false;
+  $("job-state").textContent=job.status==="running"?"running":job.status==="done"?"complete":"failed";
+  $("job-title").textContent=job.message||job.status;
+  $("job-sub").textContent=job.progress&&job.progress.label?job.progress.label:"";
+  $("job-project").textContent=job.project_path||"";
+  const p=job.progress||{};
+  const current=Math.max(0,Number(p.current||0));
+  const total=Math.max(0,Number(p.total||0));
+  const percent=total>0?Math.max(0,Math.min(100,Number(p.percent??(current/total*100)))):0;
+  $("progress-label").textContent=p.label||job.message||job.status;
+  $("progress-value").textContent=total>0?Math.round(percent)+"%":job.status==="running"?"…":"";
+  $("progress-track").setAttribute("aria-valuenow",String(Math.round(percent)));
+  const fill=$("progress-fill");
+  fill.className="progress-fill";
+  if(job.status==="done")fill.classList.add("done");
+  if(job.status==="failed")fill.classList.add("bad");
+  if(job.status==="running"&&total<=0)fill.classList.add("indeterminate");
+  fill.style.width=total>0?percent+"%":job.status==="running"?"34%":"0%";
+  renderDownload(job.download?"archive": "",job.download||"");
+  updateBusyUI();
+}
+function renderGallery(images){
+  const all=images||[];
+  const visible=all.slice(-120);
+  $("gallery-count").textContent=all.length+" images"+(all.length>120?" · showing latest 120":"");
+  if(!visible.length){
+    $("gallery").innerHTML='<div class="empty">no images yet. collect or upload some raw images first.</div>';
+    return;
+  }
+  $("gallery").innerHTML=visible.map(x=>{
+    const src="/media/"+encodeURIComponent(x.path);
+    return '<div class="tile" data-preview-path="'+esc(src)+'" data-preview-name="'+esc(x.path)+'" data-preview-status="'+esc(x.status)+'"><img loading="lazy" src="'+esc(src)+'" alt="'+esc(x.path)+'"><div class="tile-meta"><div class="tile-path" title="'+esc(x.path)+'">'+esc(x.path)+'</div><div class="tile-status">'+esc(x.status)+'</div></div></div>';
+  }).join("");
+}
+function updateProjectHeader(s){
+  const project=s.project||{};
+  $("topbar-project").textContent=project.name||"dataset";
+  $("hero-name").textContent=project.name||"dataset";
+  $("hero-description").textContent=(project.subject||"")+" · trigger: "+(project.trigger||"");
+  $("collect-project").textContent=project.name||"dataset";
+}
+function setView(view,push=true){
+  const allowed=new Set(["overview","collect","prepare","settings"]);
+  if(!allowed.has(view))view="overview";
+  document.querySelectorAll("[data-view]").forEach(button=>button.classList.toggle("active",button.dataset.view===view));
+  document.querySelectorAll("[data-view-panel]").forEach(panel=>panel.classList.toggle("active",panel.dataset.viewPanel===view));
+  if(push){
+    history.replaceState(null,"","#"+view);
+  }
+  window.scrollTo({top:0,behavior:"smooth"});
 }
 async function refreshProjects(){
   try{
     const d=await api("/api/projects");
     renderProjects(d.projects);
     $("project_workspace").textContent=d.workspace+" · "+d.projects.length+" dataset projects";
-  }catch(e){setStatus(e.message,"bad")}
-}
-async function selectProject(name){
-  try{
-    await api("/api/projects/select",{
-      method:"POST",
-      headers:{"content-type":"application/json"},
-      body:JSON.stringify({name})
-    });
-    renderProgress({},"idle");
-    setStatus("opened "+name,"ok");
-    await refresh();
-  }catch(e){setStatus(e.message,"bad")}
-}
-async function deleteProject(name){
-  if(!confirm("delete dataset \""+name+"\" and all of its files?\\n\\nthis cannot be undone.")) return;
-  try{
-    await api("/api/projects/"+encodeURIComponent(name),{method:"DELETE"});
-    setStatus("deleted "+name,"ok");
-    await refreshProjects();
-  }catch(e){setStatus(e.message,"bad")}
-}
-function renderStats(counts){
-  const keys=["discovered","validated","processed","tagged","captioned","exported"];
-  $("stats").innerHTML=keys.map(k=>'<div class="stat"><b>'+esc(counts[k]??0)+'</b><span>'+esc(k)+'</span></div>').join("");
-}
-function renderProgress(progress,status){
-  const p=progress||{};
-  const current=Number(p.current||0);
-  const total=Number(p.total||0);
-  const percent=total>0 ? Math.max(0,Math.min(100,Number(p.percent ?? (current/total*100)))) : 0;
-  const fill=$("progress-fill");
-  const label=$("progress-label");
-  const value=$("progress-value");
-  label.textContent=p.label||status||"idle";
-  value.textContent=total>0 ? Math.round(percent)+"%" : (status==="running" ? "…" : "");
-  fill.className="progress-fill";
-  if(status==="done") fill.classList.add("done");
-  if(status==="failed") fill.classList.add("bad");
-  if(status==="running" && total<=0) fill.classList.add("indeterminate");
-  fill.style.width=total>0 ? percent+"%" : (status==="running" ? "35%" : "0%");
-}
-function renderGallery(images){
-  if(!images.length){
-    $("gallery").innerHTML='<div class="empty">no images yet. upload some raw images above.</div>';
-    return;
+    return d.projects;
+  }catch(e){
+    toast(e.message,"bad");
+    setStatus(e.message,"bad");
+    return [];
   }
-  $("gallery").innerHTML=images.map(x=>{
-    const src="/media/"+encodeURIComponent(x.path);
-    return '<div class="tile"><img loading="lazy" src="'+src+'" alt="'+esc(x.path)+'"><div class="meta"><div class="path" title="'+esc(x.path)+'">'+esc(x.path)+'</div><div class="tag">'+esc(x.status)+'</div></div></div>';
-  }).join("");
 }
-function renderDownload(name){
-  $("download").innerHTML=name
-    ? '<div class="output"><div><div class="output-name">'+esc(name)+'</div><div class="output-meta">final dataset archive</div></div><a class="download" href="/api/download">download ZIP</a></div>'
-    : "";
-}
-async function refresh(){
+async function refresh(forceSettings=false){
   try{
     const s=await api("/api/state");
-    applySettings(s);
+    updateProjectHeader(s);
     renderStats(s.counts);
     renderGallery(s.images);
-    renderDownload(s.archive);
     renderProjects(s.projects);
     $("project_workspace").textContent=s.workspace+" · "+s.project_count+" dataset projects";
-  }catch(e){setStatus(e.message,"bad")}
+    appState.activeProjectPath=((s.projects||[]).find(p=>p.active)||{}).path||"";
+    if(forceSettings||!appState.settingsDirty)applySettings(s,true);
+    $("status-context").textContent=s.project_count+" dataset"+(s.project_count===1?"":"s")+" in workspace";
+    updateBusyUI();
+    return s;
+  }catch(e){
+    setStatus(e.message,"bad");
+    toast(e.message,"bad");
+    return null;
+  }
 }
 async function saveSettings(){
+  if(isBusyOnActiveProject()){
+    toast("this dataset is busy. wait for the current job to finish.","bad");
+    return false;
+  }
+  const width=Number($("width").value);
+  const height=Number($("height").value);
+  const quality=Number($("quality").value);
+  const facePadding=Number($("face_padding").value);
+  const maxPersons=Number($("max_persons").value);
+  const personThreshold=Number($("person_threshold").value);
+  const minArea=Number($("min_subject_area").value);
+  const minVisibility=Number($("min_subject_visibility").value);
+  const scrapeCount=Number($("scrape_count").value);
+  if(!Number.isFinite(width)||!Number.isFinite(height)||!Number.isFinite(quality)||!Number.isFinite(facePadding)||!Number.isFinite(maxPersons)||!Number.isFinite(personThreshold)||!Number.isFinite(minArea)||!Number.isFinite(minVisibility)||!Number.isFinite(scrapeCount)){
+    toast("please fill every numeric setting with a valid value.","bad");
+    return false;
+  }
+  document.querySelectorAll("[data-save]").forEach(button=>button.disabled=true);
   try{
     await api("/api/settings",{
       method:"POST",
@@ -479,88 +1209,314 @@ async function saveSettings(){
         preset:$("preset").value,
         scraper_backend:$("scraper_backend").value,
         scrape_query:$("scrape_query").value.trim(),
-        scrape_count:+$("scrape_count").value,
+        scrape_count:scrapeCount,
         mode:$("mode").value,
-        width:+$("width").value,
-        height:+$("height").value,
-        quality:+$("quality").value,
+        width:width,
+        height:height,
+        quality:quality,
         face_crop:$("face_crop").checked,
-        face_padding:+$("face_padding").value,
+        face_padding:facePadding,
         person_check:$("person_check").checked,
-        max_persons:+$("max_persons").value,
-        person_threshold:+$("person_threshold").value,
-        min_subject_area:+$("min_subject_area").value,
-        min_subject_visibility:+$("min_subject_visibility").value
+        max_persons:maxPersons,
+        person_threshold:personThreshold,
+        min_subject_area:minArea,
+        min_subject_visibility:minVisibility
       })
     });
+    appState.settingsDirty=false;
+    updateDirtyUI();
+    await refresh(true);
     setStatus("settings saved","ok");
-    refresh();
+    toast("settings saved","ok");
     return true;
-  }catch(e){setStatus(e.message,"bad");return false}
+  }catch(e){
+    updateDirtyUI();
+    setStatus(e.message,"bad");
+    toast(e.message,"bad");
+    return false;
+  }
 }
-async function upload(){
-  const fs=$("files").files;
-  if(!fs.length)return setStatus("select images first","bad");
-  const f=new FormData();
-  for(const x of fs)f.append("files",x);
-  try{
-    setStatus("uploading "+fs.length+" images...","running");
-    const d=await api("/api/upload",{method:"POST",body:f});
-    setStatus("uploaded "+d.uploaded+", skipped "+d.skipped,"ok");
-    $("files").value="";
-    refresh();
-  }catch(e){setStatus(e.message,"bad")}
-}
-async function run(stage){
-  try{
-    if(!(await saveSettings())) return;
-    const d=await api("/api/run/"+stage,{method:"POST"});
-    setStatus(d.message,"running");
-    renderProgress(d.progress,"running");
-    poll(d.job_id);
-  }catch(e){setStatus(e.message,"bad")}
+function schedulePoll(id){
+  if(appState.pollTimer)clearTimeout(appState.pollTimer);
+  appState.pollTimer=setTimeout(()=>poll(id),850);
 }
 async function poll(id){
+  if(appState.jobId!==id)return;
   try{
-    const d=await api("/api/jobs/"+id);
-    const cls=d.status==="failed"?"bad":d.status==="done"?"ok":"running";
-    setStatus(d.message||d.status,cls);
-    renderProgress(d.progress,d.status);
-    if(d.status==="running"){setTimeout(()=>poll(id),900)}
-    else{refresh()}
-  }catch(e){setStatus(e.message,"bad")}
+    const d=await api("/api/jobs/"+encodeURIComponent(id));
+    renderJob(d);
+    const kind=d.status==="failed"?"bad":d.status==="done"?"ok":"running";
+    setStatus(d.message||d.status,kind);
+    if(d.status==="running"){
+      schedulePoll(id);
+    }else{
+      localStorage.removeItem("ldm.jobId");
+      appState.jobId="";
+      await refresh();
+      if(d.status==="done")toast("job complete","ok");
+      if(d.status==="failed")toast(d.message||"job failed","bad");
+    }
+  }catch(e){
+    setStatus(e.message,"bad");
+    schedulePoll(id);
+  }
 }
-function setStatus(t,c=""){
-  $("status").textContent=t;
-  $("dot").className="dot "+c;
+async function ensureSaved(){
+  if(!appState.settingsDirty)return true;
+  return saveSettings();
 }
-async function newProject(){
-  const name=prompt("new dataset folder name");
-  if(!name)return;
-  const subject=prompt("subject",name)||name;
-  const trigger=prompt("trigger",subject)||subject;
+async function runStage(stage){
+  if(isBusyOnActiveProject()){
+    toast("this dataset is already running a job.","bad");
+    return;
+  }
+  if(!(await ensureSaved()))return;
+  try{
+    const d=await api("/api/run/"+encodeURIComponent(stage),{method:"POST"});
+    appState.jobId=d.job_id;
+    localStorage.setItem("ldm.jobId",d.job_id);
+    renderJob({status:"running",message:d.message,progress:d.progress||{current:0,total:0,label:d.message},project_path:appState.activeProjectPath});
+    setStatus(d.message,"running");
+    toast(stage==="prepare"?"dataset preparation started":stage+" started","running");
+    poll(d.job_id);
+  }catch(e){
+    setStatus(e.message,"bad");
+    toast(e.message,"bad");
+    await refresh();
+  }
+}
+function markDirty(){
+  if(isBusyOnActiveProject())return;
+  appState.settingsDirty=true;
+  updateDirtyUI();
+}
+async function selectProject(name){
+  if(appState.settingsDirty){
+    const discard=await confirmAction(
+      "discard unsaved changes?",
+      "switching datasets will discard the changes currently typed in the settings form.",
+      "discard & open",
+      true
+    );
+    if(!discard)return;
+    appState.settingsDirty=false;
+    updateDirtyUI();
+  }
+  try{
+    await api("/api/projects/select",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({name:name})
+    });
+    await refresh(true);
+    setStatus("opened "+name,"ok");
+    toast("opened "+name,"ok");
+    setView("overview");
+  }catch(e){
+    setStatus(e.message,"bad");
+    toast(e.message,"bad");
+  }
+}
+async function deleteProject(name){
+  const accepted=await confirmAction(
+    "delete this dataset?",
+    "this permanently removes \""+name+"\" and every file inside it. this cannot be undone.",
+    "delete dataset",
+    true
+  );
+  if(!accepted)return;
+  try{
+    await api("/api/projects/"+encodeURIComponent(name),{method:"DELETE"});
+    toast("deleted "+name,"ok");
+    await refreshProjects();
+    setStatus("dataset deleted","ok");
+  }catch(e){
+    toast(e.message,"bad");
+    setStatus(e.message,"bad");
+    await refreshProjects();
+  }
+}
+function openNewDataset(){
+  $("new-form").reset();
+  $("new-name").value="";
+  $("new-subject").value="";
+  $("new-trigger").value="";
+  $("new-modal").showModal();
+  setTimeout(()=>$("new-name").focus(),0);
+}
+async function createNewDataset(event){
+  event.preventDefault();
+  if(appState.settingsDirty){
+    const discard=await confirmAction(
+      "discard unsaved changes?",
+      "creating a new dataset will leave the current unsaved settings behind.",
+      "discard & continue",
+      true
+    );
+    if(!discard)return;
+    appState.settingsDirty=false;
+    updateDirtyUI();
+  }
+  const button=$("new-submit");
+  button.disabled=true;
   try{
     const d=await api("/api/project/new",{
       method:"POST",
       headers:{"content-type":"application/json"},
-      body:JSON.stringify({name,subject,trigger})
+      body:JSON.stringify({
+        name:$("new-name").value.trim(),
+        subject:$("new-subject").value.trim(),
+        trigger:$("new-trigger").value.trim()
+      })
     });
-    setStatus("switched to "+d.name,"ok");
-    await refresh();
-  }catch(e){setStatus(e.message,"bad")}
+    $("new-modal").close();
+    await refresh(true);
+    setView("overview");
+    setStatus("created "+d.name,"ok");
+    toast("created "+d.name,"ok");
+  }catch(e){
+    toast(e.message,"bad");
+    setStatus(e.message,"bad");
+  }finally{
+    button.disabled=false;
+  }
 }
+function confirmAction(title,body,acceptLabel="confirm",danger=false){
+  return new Promise(resolve=>{
+    appState.confirmResolve=resolve;
+    $("confirm-title").textContent=title;
+    $("confirm-body").textContent=body;
+    $("confirm-accept").textContent=acceptLabel;
+    $("confirm-accept").className=danger?"action-primary danger":"action-primary";
+    $("confirm-modal").showModal();
+  });
+}
+function finishConfirm(value){
+  const resolve=appState.confirmResolve;
+  appState.confirmResolve=null;
+  if($("confirm-modal").open)$("confirm-modal").close();
+  if(resolve)resolve(value);
+}
+async function upload(){
+  if(isBusyOnActiveProject()){
+    toast("this dataset is busy. wait for the current job to finish.","bad");
+    return;
+  }
+  const files=$("files").files;
+  if(!files.length){
+    toast("choose some images first.","bad");
+    setStatus("select images first","bad");
+    return;
+  }
+  const form=new FormData();
+  for(const file of files)form.append("files",file);
+  try{
+    setStatus("uploading "+files.length+" images...","running");
+    const d=await api("/api/upload",{method:"POST",body:form});
+    $("files").value="";
+    $("file-summary").textContent="no files selected";
+    await refresh();
+    setStatus("uploaded "+d.uploaded+", skipped "+d.skipped,"ok");
+    toast("uploaded "+d.uploaded+" images","ok");
+  }catch(e){
+    setStatus(e.message,"bad");
+    toast(e.message,"bad");
+  }
+}
+function updateFileSummary(){
+  const n=$("files").files.length;
+  $("file-summary").textContent=n?n+" file"+(n===1?"":"s")+" selected":"no files selected";
+}
+function openPreview(tile){
+  const path=tile.dataset.previewPath;
+  $("preview-image").src=path;
+  $("preview-image").alt=tile.dataset.previewName||"";
+  $("preview-name").textContent=tile.dataset.previewName||"";
+  $("preview-status").textContent=tile.dataset.previewStatus||"";
+  $("preview-modal").showModal();
+}
+document.querySelectorAll("[data-view]").forEach(button=>{
+  button.addEventListener("click",()=>setView(button.dataset.view));
+});
+window.addEventListener("hashchange",()=>setView(location.hash.slice(1)||"overview",false));
+$("project_explorer").addEventListener("click",event=>{
+  const open=event.target.closest("[data-project-open]");
+  const remove=event.target.closest("[data-project-delete]");
+  if(open)selectProject(open.dataset.projectOpen);
+  if(remove)deleteProject(remove.dataset.projectDelete);
+});
+$("project_filter").addEventListener("input",()=>{
+  api("/api/projects").then(d=>renderProjects(d.projects)).catch(e=>setStatus(e.message,"bad"));
+});
+$("refresh-projects").addEventListener("click",refreshProjects);
+$("new-dataset").addEventListener("click",openNewDataset);
+$("new-top").addEventListener("click",openNewDataset);
+$("save-top").addEventListener("click",saveSettings);
+document.querySelectorAll("[data-save]").forEach(button=>button.addEventListener("click",saveSettings));
+document.querySelectorAll("[data-run-stage]").forEach(button=>{
+  button.addEventListener("click",()=>runStage(button.dataset.runStage));
+});
+$("choose-images").addEventListener("click",()=>$("files").click());
+$("upload-button").addEventListener("click",upload);
+$("files").addEventListener("change",updateFileSummary);
+$("quality").addEventListener("input",()=>{$("qv").textContent=$("quality").value});
+[
+  "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count",
+  "mode","width","height","quality","face_crop","face_padding","person_check",
+  "max_persons","person_threshold","min_subject_area","min_subject_visibility"
+].forEach(id=>{
+  $(id).addEventListener("input",markDirty);
+  $(id).addEventListener("change",markDirty);
+});
+$("gallery").addEventListener("click",event=>{
+  const tile=event.target.closest("[data-preview-path]");
+  if(tile)openPreview(tile);
+});
 const drop=$("drop");
-["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("drag")}));
-["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("drag")}));
-drop.addEventListener("drop",e=>{$("files").files=e.dataTransfer.files});
-$("quality").oninput=()=>{$("qv").textContent=$("quality").value};
-$("project_filter").oninput=()=>refreshProjects();
-refresh();
+["dragenter","dragover"].forEach(type=>drop.addEventListener(type,event=>{
+  event.preventDefault();
+  if(!isBusyOnActiveProject())drop.classList.add("drag");
+}));
+["dragleave","drop"].forEach(type=>drop.addEventListener(type,event=>{
+  event.preventDefault();
+  drop.classList.remove("drag");
+}));
+drop.addEventListener("drop",event=>{
+  if(isBusyOnActiveProject())return;
+  const files=event.dataTransfer&&event.dataTransfer.files;
+  if(files&&files.length){
+    const transfer=new DataTransfer();
+    for(const file of files)transfer.items.add(file);
+    $("files").files=transfer.files;
+    updateFileSummary();
+  }
+});
+$("new-form").addEventListener("submit",createNewDataset);
+$("new-cancel").addEventListener("click",()=>$("new-modal").close());
+$("confirm-cancel").addEventListener("click",()=>finishConfirm(false));
+$("confirm-accept").addEventListener("click",()=>finishConfirm(true));
+$("confirm-modal").addEventListener("cancel",event=>{event.preventDefault();finishConfirm(false)});
+$("new-modal").addEventListener("cancel",()=>{$("new-form").reset()});
+$("preview-modal").addEventListener("click",event=>{
+  if(event.target===$("preview-modal"))$("preview-modal").close();
+});
+document.addEventListener("keydown",event=>{
+  if(event.key==="Escape"&&$("confirm-modal").open)finishConfirm(false);
+});
+const initialView=location.hash.slice(1)||"overview";
+setView(initialView,false);
+updateDirtyUI();
+refresh().then(()=>{
+  if(appState.jobId){
+    poll(appState.jobId);
+  }else{
+    renderJob(null);
+  }
+});
 </script>
 </body>
 </html>
 """
-
 class JobStore:
     def __init__(self) -> None:
         self.lock = threading.Lock()
@@ -728,8 +1684,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
         cfg = load_config(current_root / "config.toml")
         processing = cfg.get("processing", {})
         tagger = cfg.get("tagger", {})
+        project_list = list_projects()
         return {
-            "project": {"name": p.manifest.project_name, "subject": p.manifest.subject, "trigger": p.manifest.trigger},
+            "project": {"name": p.manifest.project_name, "subject": p.manifest.subject, "trigger": p.manifest.trigger, "path": current_root.as_posix()},
             "processing": {"mode": str(processing.get("resize_mode", "cover")), "width": int(processing.get("target_width", 512)), "height": int(processing.get("target_height", 512)), "quality": int(processing.get("jpeg_quality", 95)), "face_crop": bool(processing.get("face_crop", False)), "face_padding": float(processing.get("face_padding", 1.75))},
             "tagger": {"backend": str(tagger.get("backend", "wd14")), "preset": str(tagger.get("preset", "sweetspot"))},
             "scraper": {
@@ -747,8 +1704,8 @@ def create_app(root: Path | str = ".") -> FastAPI:
             },
             "counts": p.counts(),
             "workspace": workspace_root.as_posix(),
-            "project_count": len(list_projects()),
-            "projects": list_projects(),
+            "project_count": len(project_list),
+            "projects": project_list,
             "images": [{"id": x.image_id, "path": x.processed_path or x.path, "status": x.status} for x in sorted(p.manifest.images.values(), key=lambda x: x.path) if x.status != "rejected"],
             "archive": Path(str(p.manifest.source.get("last_pack_archive", ""))).name if p.manifest.source.get("last_pack_archive") else None,
         }
@@ -767,15 +1724,16 @@ def create_app(root: Path | str = ".") -> FastAPI:
             raise HTTPException(404, "dataset project not found")
         if not (target / "config.toml").is_file() or not (target / "manifest.json").is_file():
             raise HTTPException(404, "dataset project not found")
-        if target == active_root():
-            raise HTTPException(409, "open another dataset before deleting the active project")
-        if jobs.has_running_project(target):
-            raise HTTPException(409, "dataset has a running job; wait for it to finish before deleting")
-        try:
-            import shutil
-            shutil.rmtree(target)
-        except OSError as exc:
-            raise HTTPException(500, f"could not delete dataset: {exc}") from exc
+        with project_root_lock:
+            if target == project_root:
+                raise HTTPException(409, "open another dataset before deleting the active project")
+            if jobs.has_running_project(target):
+                raise HTTPException(409, "dataset has a running job; wait for it to finish before deleting")
+            try:
+                import shutil
+                shutil.rmtree(target)
+            except OSError as exc:
+                raise HTTPException(500, f"could not delete dataset: {exc}") from exc
         return {"ok": True, "name": project_name}
 
     @app.post("/api/projects/select")
@@ -804,6 +1762,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
         current_scraper = current_config.get("scraper", {})
         if not isinstance(current_scraper, dict):
             current_scraper = {}
+        current_quality = current_config.get("quality", {})
+        if not isinstance(current_quality, dict):
+            current_quality = {}
         scraper_backend = str(
             payload.get("scraper_backend", current_scraper.get("backend", "duckduckgo"))
         ).lower()
@@ -820,7 +1781,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
         width, height, quality = int(payload.get("width", 512)), int(payload.get("height", 512)), int(payload.get("quality", 95))
         face_crop = bool(payload.get("face_crop", False))
         face_padding = float(payload.get("face_padding", 1.75))
-        person_check = bool(payload.get("person_check", True))
+        person_check = bool(payload.get("person_check", current_quality.get("person_check", False)))
         max_persons = int(payload.get("max_persons", 1))
         person_threshold = float(payload.get("person_threshold", 0.35))
         min_subject_area = float(payload.get("min_subject_area", 0.12))
