@@ -84,7 +84,7 @@ mmproj_path = ""
 chat_format = "mtmd"
 # local llama.cpp: model_path + mmproj_path + local runtime settings apply.
 # API runtimes: api_key_env, api_model, api_base_url, and api_timeout apply.
-# API runtimes ignore the local generation settings below.
+# API requests use the built-in four-field caption prompt and do not use local generation settings.
 api_key_env = ""
 api_model = ""
 api_base_url = ""
