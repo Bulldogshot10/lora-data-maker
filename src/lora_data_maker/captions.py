@@ -285,6 +285,44 @@ def parse_vlm_caption(raw_caption: str) -> str:
     return ", ".join(parse_vlm_fields(raw_caption))
 
 
+def reset_vlm_captions_for_deterministic(
+    manifest: "ProjectManifest",
+    *,
+    root: Path | str,
+) -> int:
+    """Requeue VLM captions before entering the deterministic tag pipeline."""
+    root_path = Path(root).expanduser().resolve()
+    reset = 0
+
+    for image in manifest.images.values():
+        if image.status != "captioned":
+            continue
+        if str(image.metadata.get("caption_backend", "")).strip().lower() != "vlm":
+            continue
+
+        if image.caption_path:
+            stale_caption = (root_path / image.caption_path).resolve()
+            try:
+                stale_caption.relative_to(root_path)
+            except ValueError:
+                stale_caption = None
+            if stale_caption is not None and stale_caption.is_file():
+                try:
+                    stale_caption.unlink()
+                except OSError:
+                    pass
+
+        image.caption_path = None
+        image.metadata["caption_stage"] = "invalidated_backend_switch"
+        image.metadata["caption_previous_backend"] = "vlm"
+        image.set_status("processed")
+        reset += 1
+
+    if reset:
+        manifest.touch()
+    return reset
+
+
 def build_vlm_caption(
     raw_caption: str,
     *,
@@ -432,8 +470,11 @@ def caption_manifest(
     caption_root = Path(output_dir).expanduser().resolve()
     settings = config or CaptionConfig()
 
+    if settings.backend == "deterministic":
+        reset_vlm_captions_for_deterministic(manifest, root=root_path)
+
     eligible_statuses = (
-        {"processed", "captioned"}
+        {"processed", "tagged", "captioned"}
         if settings.backend == "vlm"
         else {"tagged", "captioned"}
     )
