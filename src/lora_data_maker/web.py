@@ -929,6 +929,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
             <label for="caption_chat_format">VLM chat format</label>
             <select id="caption_chat_format">
               <option value="mtmd">mtmd</option>
+              <option value="qwen3.5">qwen3.5 · native mtmd</option>
               <option value="qwen2.5-vl">qwen2.5-vl</option>
               <option value="gemma4">gemma4</option>
             </select>
