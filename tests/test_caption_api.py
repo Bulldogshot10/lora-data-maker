@@ -44,7 +44,7 @@ def test_gemini_caption_uses_fixed_prompt_and_inline_image(monkeypatch, tmp_path
                             "parts": [
                                 {
                                     "text": (
-                                        "pose: standing straight-on\nclothing: white top\nexpression: neutral\nbackground: indoors with soft lighting"
+                                        "pose: standing\nangle camera: straight-on\nclothing: white top\nexpression: neutral\nbackground: indoors with soft lighting"
                                     )
                                 }
                             ]
@@ -95,7 +95,7 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
                     {
                         "message": {
                             "content": (
-                                "pose: sitting straight-on\nclothing: black dress\nexpression: smiling\nbackground: indoors with soft lighting"
+                                "pose: sitting\nangle camera: straight-on\nclothing: black dress\nexpression: smiling\nbackground: indoors with soft lighting"
                             )
                         }
                     }
@@ -233,7 +233,7 @@ def test_api_vlm_caption_injects_trigger_from_four_fields(monkeypatch, tmp_path)
                             "parts": [
                                 {
                                     "text": (
-                                        "pose: standing straight-on\nclothing: white spandex top\nexpression: neutral\nbackground: indoor soft lighting"
+                                        "pose: standing\nangle camera: straight-on\nclothing: white spandex top\nexpression: neutral\nbackground: indoor soft lighting"
                                     )
                                 }
                             ]
