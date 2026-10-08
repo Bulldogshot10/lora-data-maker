@@ -2732,6 +2732,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     root=root_path,
                     output_dir=ps.work / "captions",
                     config=settings,
+                    progress=progress,
                 )
                 p.save()
                 if s.failed:
