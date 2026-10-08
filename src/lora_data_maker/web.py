@@ -1949,7 +1949,8 @@ def create_app(root: Path | str = ".") -> FastAPI:
         caption = cfg.get("caption", {})
         if not isinstance(caption, dict):
             caption = {}
-        return {            "project": {
+        return {
+            "project": {
                 "name": p.manifest.project_name,
                 "subject": p.manifest.subject,
                 "trigger": p.manifest.trigger,
