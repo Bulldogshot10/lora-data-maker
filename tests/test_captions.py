@@ -149,12 +149,12 @@ She is sitting outdoors."""
     assert clean_vlm_caption(raw) == "a woman in a black dress. She is sitting outdoors."
 
 
-def test_default_vlm_prompt_uses_four_structured_fields():
+def test_default_vlm_prompt_uses_five_structured_fields():
     assert DEFAULT_VLM_PROMPT.count("\n") >= 4
-    assert "exactly these 4 fields, one per line" in DEFAULT_VLM_PROMPT
+    assert "exactly these 5 fields, one per line" in DEFAULT_VLM_PROMPT
     assert "maximum of 5 words per field" in DEFAULT_VLM_PROMPT
     assert "camera view term" in DEFAULT_VLM_PROMPT
-    assert "pose: include body pose plus one camera view term when visible" in DEFAULT_VLM_PROMPT
+    assert "pose: describe body pose" in DEFAULT_VLM_PROMPT
     assert "prefer camera terms: straight-on, from above, from below, high-angle shot, low-angle shot, overhead shot." in DEFAULT_VLM_PROMPT
     assert "do not mention hair color, eye color, face, age, or gender" in DEFAULT_VLM_PROMPT
 
@@ -162,11 +162,13 @@ def test_default_vlm_prompt_uses_four_structured_fields():
 def test_parse_vlm_caption_normalizes_four_fields():
     assert parse_vlm_caption(
         "pose: standing with arms raised\n"
+        "angle camera: straight-on\n"
         "clothing: white halter top, black skirt\n"
         "expression: slight smile\n"
         "background: indoors, soft window lighting"
     ) == (
         "standing with arms raised, "
+        "straight-on, "
         "white halter top, black skirt, "
         "slight smile, "
         "indoors, soft window lighting"
@@ -186,61 +188,67 @@ def test_parse_vlm_caption_rejects_unstructured_prose():
 def test_parse_vlm_caption_tolerates_reordered_fields():
     assert parse_vlm_caption(
         "background: indoors, soft lighting\n"
+        "expression: slight smile\n"
+        "angle camera: straight-on\n"
         "clothing: black shirt\n"
-        "pose: standing\n"
-        "expression: slight smile"
-    ) == "standing, black shirt, slight smile, indoors, soft lighting"
+        "pose: standing"
+    ) == "standing, straight-on, black shirt, slight smile, indoors, soft lighting"
 
 
 def test_parse_vlm_caption_ignores_unknown_extra_fields():
     assert parse_vlm_caption(
         "pose: standing\n"
+        "angle camera: straight-on\n"
         "clothing: black shirt\n"
         "expression: slight smile\n"
         "hair: blonde\n"
         "background: indoors"
-    ) == "standing, black shirt, slight smile, indoors"
+    ) == "standing, straight-on, black shirt, slight smile, indoors"
 
 
 def test_parse_vlm_caption_tolerates_markdown_formatting():
     fence = "\x60\x60\x60"
     raw = (
         fence + "text\n"
-        "- pose: standing straight-on\n"
+        "- pose: standing\n"
+        "- angle camera: straight-on\n"
         "- clothing: white top, black skirt, casual jacket\n"
         "- expression: slight smile\n"
         "- background: indoors, soft window lighting\n"
         + fence
     )
     assert parse_vlm_caption(raw) == (
-        "standing straight-on, white top, black skirt, casual jacket, "
+        "standing, straight-on, white top, black skirt, casual jacket, "
         "slight smile, indoors, soft window lighting"
     )
 
 
 def test_parse_vlm_caption_accepts_json_structured_output():
     assert parse_vlm_caption(
-        '{"pose":"standing", "clothing":"white top", '
-        '"expression":"neutral", "background":"indoors, soft lighting"}'
-    ) == "standing, white top, neutral, indoors, soft lighting"
+        '{"pose":"standing", "angle camera":"straight-on", '
+        '"clothing":"white top", "expression":"neutral", '
+        '"background":"indoors, soft lighting"}'
+    ) == "standing, straight-on, white top, neutral, indoors, soft lighting"
 
 
 def test_parse_vlm_caption_accepts_longer_fields_without_failing():
     assert parse_vlm_caption(
-        "pose: standing with both arms raised toward camera\n"
+        "pose: standing with both arms raised\n"
+        "angle camera: low-angle shot\n"
         "clothing: black shirt\n"
         "expression: slight smile\n"
         "background: indoors"
     ) == (
-        "standing with both arms raised toward camera, black shirt, "
+        "standing with both arms raised, low-angle shot, black shirt, "
         "slight smile, indoors"
     )
 
 
-def test_build_api_vlm_caption_injects_trigger_from_four_fields():
+def test_build_api_vlm_caption_injects_trigger_from_five_fields():
     config = CaptionConfig(backend="vlm")
     assert build_api_vlm_caption(
         "pose: standing in place\n"
+        "angle camera: straight-on\n"
         "clothing: white top\n"
         "expression: smiling\n"
         "background: indoors with soft lighting",
@@ -261,6 +269,7 @@ def test_build_vlm_caption_removes_repeated_trigger_mentions():
     )
     assert build_vlm_caption(
         "pose: portrait pose\n"
+        "angle camera: straight-on\n"
         "clothing: black shirt\n"
         "expression: smiling\n"
         "background: indoor room",
