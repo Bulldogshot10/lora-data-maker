@@ -44,9 +44,9 @@ def test_gemini_caption_uses_fixed_prompt_and_inline_image(monkeypatch, tmp_path
                             "parts": [
                                 {
                                     "text": (
-                                        "pose: standing straight-on\\n"
-                                        "clothing: white top\\n"
-                                        "expression: neutral\\n"
+                                        "pose: standing straight-on\n"
+                                        "clothing: white top\n"
+                                        "expression: neutral\n"
                                         "background: indoor soft lighting"
                                     )
                                 }
@@ -95,9 +95,9 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
                     {
                         "message": {
                             "content": (
-                                "pose: sitting straight-on\\n"
-                                "clothing: black dress\\n"
-                                "expression: smiling\\n"
+                                "pose: sitting straight-on\n"
+                                "clothing: black dress\n"
+                                "expression: smiling\n"
                                 "background: indoors soft lighting"
                             )
                         }
@@ -146,9 +146,9 @@ def test_api_vlm_caption_injects_trigger_and_keeps_constraints(monkeypatch, tmp_
                             "parts": [
                                 {
                                     "text": (
-                                        "pose: standing straight-on\\n"
-                                        "clothing: white spandex top\\n"
-                                        "expression: neutral\\n"
+                                        "pose: standing straight-on\n"
+                                        "clothing: white spandex top\n"
+                                        "expression: neutral\n"
                                         "background: indoor soft lighting"
                                     )
                                 }
@@ -209,4 +209,4 @@ def test_api_vlm_caption_injects_trigger_and_keeps_constraints(monkeypatch, tmp_
     assert summary.captioned == 1
     record = next(iter(manifest.images.values()))
     caption = (root / record.caption_path).read_text(encoding="utf-8")
-    assert caption == "julia, standing straight-on, white spandex top, neutral, indoor soft lighting\\n"
+    assert caption == "julia, standing straight-on, white spandex top, neutral, indoor soft lighting\n"
