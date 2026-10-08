@@ -13,6 +13,7 @@ from .dedup import (
 )
 from .quality import evaluate_quality
 from .person import PersonDetector
+from .text import PPOCRTextDetector
 
 
 @dataclass(frozen=True)
@@ -39,6 +40,7 @@ def clean_manifest(
     max_persons: int = 1,
     min_subject_area: float = 0.12,
     min_subject_visibility: float = 0.35,
+    text_detector: PPOCRTextDetector | None = None,
 ) -> CleanSummary:
     if perceptual_distance < 0:
         raise ValueError("perceptual_distance cannot be negative")
@@ -68,6 +70,7 @@ def clean_manifest(
                 max_persons=max_persons,
                 min_subject_area=min_subject_area,
                 min_subject_visibility=min_subject_visibility,
+                text_detector=text_detector,
             )
         except (OSError, UnidentifiedImageError, DecompressionBombError):
             image.set_status(
