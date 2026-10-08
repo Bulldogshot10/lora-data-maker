@@ -6,7 +6,7 @@ Termux-first toolkit for building clean, train-ready image datasets for LoRA tra
 
 The project handles dataset preparation only:
 
-scrape → validate → deduplicate → quality filter → crop/resize → tag + VLM caption → filter/clean metadata → write captions → export/pack.
+scrape → validate → deduplicate → quality filter → crop/resize → deterministic tags OR local VLM captions → write captions → export/pack.
 
 Model training and image generation are outside the scope of this project.
 
@@ -126,9 +126,9 @@ n_gpu_layers = 0
 seed = 42
 ~~~
 
-Supported chat formats are `mtmd`, `qwen2.5-vl`, and `gemma4`. The VLM receives only the processed image and the configured caption prompt. The prompt requests exactly four short fields: pose, clothing, expression, and background with lighting. Hair color, eye color, face, age, and gender are excluded from the VLM output. Cleaned tagger output is kept as structured metadata and is never fed into the VLM.
+Supported chat formats are `mtmd`, `qwen2.5-vl`, and `gemma4`. The VLM receives only the processed image and the configured caption prompt. The prompt requests exactly four short fields: pose, clothing, expression, and background with lighting. Hair color, eye color, face, age, and gender are excluded from the VLM output. Tagger output is not read or merged by the VLM caption backend.
 
-The four VLM fields are parsed, their labels are removed, and the resulting phrases are merged with cleaned tagger tags into one final .txt caption. The canonical trigger is injected exactly once. VLM + tagger + trigger all share one final max_tokens budget of 1–77, default 77, with a budget that cannot preserve the trigger rejected. When one image fails VLM inference or returns malformed fields, that image falls back to the deterministic tag caption and the fallback is recorded in the manifest.
+The four VLM fields are parsed and their labels are removed. VLM mode does not use WD14 or JoyTag at all. The final caption is ordered as trigger → pose → clothing → expression → background, then packed with the exact Hugging Face CLIPTokenizer from openai/clip-vit-large-patch14 under the 1–77 token budget. When one image fails VLM inference or returns malformed fields, that image is marked failed and can be retried. There is no deterministic tag fallback in VLM mode.
 
 Tagger models are cached under:
 
