@@ -41,6 +41,7 @@ class VlmCaptionerError(LoraDataMakerError):
 class VlmConfig:
     model_path: str = ""
     mmproj_path: str = ""
+    runtime: str = "llama_cpp"
     chat_format: str = "mtmd"
     prompt: str = DEFAULT_VLM_PROMPT
     max_tokens: int = 128
@@ -53,6 +54,10 @@ class VlmConfig:
     seed: int = 42
 
     def __post_init__(self) -> None:
+        if self.runtime not in {"llama_cpp", "onnx"}:
+            raise ValueError(
+                "caption.vlm.runtime must be one of 'llama_cpp' or 'onnx'"
+            )
         if self.chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5", "smolvlm"}:
             raise ValueError(
                 "caption.vlm.chat_format must be one of "
@@ -61,10 +66,11 @@ class VlmConfig:
 
         has_model = bool(self.model_path.strip())
         has_mmproj = bool(self.mmproj_path.strip())
-        if has_model != has_mmproj:
+        if not has_model:
+            raise ValueError("caption.vlm.model_path must be configured")
+        if self.runtime == "llama_cpp" and not has_mmproj:
             raise ValueError(
-                "caption.vlm.model_path and caption.vlm.mmproj_path "
-                "must be configured together"
+                "caption.vlm.mmproj_path is required for the llama_cpp runtime"
             )
 
         if not self.prompt.strip():
