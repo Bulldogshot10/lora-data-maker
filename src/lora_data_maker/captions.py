@@ -639,7 +639,7 @@ def caption_manifest(
                         progress(
                             index,
                             total_candidates,
-                            f"caption failed {index}/{total_candidates}: {image.path}",
+                            f"caption failed {index}/{total_candidates}: {image.path} ({str(exc)[:240]})",
                         )
                     continue
 
