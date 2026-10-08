@@ -22,6 +22,8 @@ from lora_data_maker.cli import command_caption, command_init
 from lora_data_maker.dataset import DatasetProject
 from lora_data_maker.models import ImageRecord, ProjectManifest
 from lora_data_maker.paths import ProjectPaths
+
+
 def test_resolve_trigger_defaults_to_subject():
     assert resolve_trigger(
         subject="Julia",
@@ -249,7 +251,7 @@ def test_caption_config_from_dict_keeps_deterministic_default():
     assert settings.vlm.model_path == ""
 
 
-def test_caption_manifest_uses_injected_vlm_captioner(tmp_path, monkeypatch):
+def test_caption_manifest_uses_injected_vlm_captioner(tmp_path):
     root = tmp_path / "project"
     manifest = ProjectManifest(
         project_name="julia-set",
@@ -276,6 +278,7 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path, monkeypatch):
                 "expression: slight smile\n"
                 "background: indoors, soft window lighting"
             )
+
         def close(self):
             raise AssertionError("caller must not close injected captioner")
 
@@ -344,7 +347,7 @@ def test_reset_vlm_captions_for_deterministic_requeues_records(tmp_path):
     assert not stale.exists()
 
 
-def test_caption_manifest_fails_without_deterministic_fallback(tmp_path, monkeypatch):
+def test_caption_manifest_fails_without_deterministic_fallback(tmp_path):
     root = tmp_path / "project"
     manifest = ProjectManifest(
         project_name="julia-set",
@@ -365,6 +368,7 @@ def test_caption_manifest_fails_without_deterministic_fallback(tmp_path, monkeyp
     class FailingCaptioner:
         def caption(self, image_path):
             raise VlmCaptionerError("boom")
+
         def close(self):
             pass
 
@@ -395,7 +399,7 @@ def test_caption_manifest_fails_without_deterministic_fallback(tmp_path, monkeyp
     assert not (root / "work" / "captions" / f"{image.image_id}.txt").exists()
 
 
-def test_caption_manifest_clears_stale_vlm_caption_after_failure(tmp_path, monkeypatch):
+def test_caption_manifest_clears_stale_vlm_caption_after_failure(tmp_path):
     root = tmp_path / "project"
     manifest = ProjectManifest(
         project_name="julia-set",
@@ -421,6 +425,7 @@ def test_caption_manifest_clears_stale_vlm_caption_after_failure(tmp_path, monke
     class FailingCaptioner:
         def caption(self, image_path):
             raise VlmCaptionerError("boom")
+
         def close(self):
             pass
 
@@ -444,8 +449,6 @@ def test_caption_manifest_clears_stale_vlm_caption_after_failure(tmp_path, monke
     assert image.status == "processed"
     assert image.caption_path is None
     assert not stale.exists()
-
-
 
 
 def test_truncate_caption_preserves_custom_separator():
@@ -478,8 +481,6 @@ def test_truncate_caption_drops_later_content_when_budget_is_full():
     assert estimate_caption_tokens(caption) <= 12
 
 
-
-
 def test_vlm_caption_ignores_tagger_tags_and_max_token_setting():
     config = CaptionConfig(
         backend="vlm",
@@ -490,12 +491,9 @@ def test_vlm_caption_ignores_tagger_tags_and_max_token_setting():
         ),
     )
     caption = build_vlm_caption(
-        "pose: standing
-"
-        "clothing: black dress
-"
-        "expression: smiling
-"
+        "pose: standing\n"
+        "clothing: black dress\n"
+        "expression: smiling\n"
         "background: indoors soft lighting",
         subject="Julia",
         trigger="ignored",
