@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import mimetypes
+import os
 import re
 import threading
 import uuid
@@ -906,6 +907,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
           <div class="field">
             <label for="preset">preset</label>
             <select id="preset">
+              <option value="off">off · disabled</option>
               <option value="sweetspot">wd14 · sweetspot</option>
               <option value="potato">wd14 · potato</option>
               <option value="joytag">joytag</option>
@@ -942,11 +944,11 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
         <div class="form-grid" style="margin-top:12px">
           <div class="field">
             <label for="caption_model_path">VLM model GGUF</label>
-            <input id="caption_model_path" autocomplete="off" placeholder="/path/to/model.gguf">
+            <div style="display:flex;gap:8px"><input id="caption_model_path" autocomplete="off" placeholder="/path/to/model.gguf"><button type="button" class="action-secondary" id="caption_model_upload">upload</button></div><input id="caption_model_file" type="file" accept=".gguf" hidden><div class="field-note" id="caption_model_status">no model uploaded</div>
           </div>
           <div class="field">
             <label for="caption_mmproj_path">VLM mmproj GGUF</label>
-            <input id="caption_mmproj_path" autocomplete="off" placeholder="/path/to/mmproj.gguf">
+            <div style="display:flex;gap:8px"><input id="caption_mmproj_path" autocomplete="off" placeholder="/path/to/mmproj.gguf"><button type="button" class="action-secondary" id="caption_mmproj_upload">upload</button></div><input id="caption_mmproj_file" type="file" accept=".gguf" hidden><div class="field-note" id="caption_mmproj_status">no mmproj uploaded</div>
           </div>
         </div>
         <div class="field-note" style="margin-top:9px">VLM mode skips WD14/JoyTag completely. captions are trigger → pose → clothing → expression → background, packed with the exact openai/clip-vit-large-patch14 tokenizer under the 1–77 token budget.</div>
