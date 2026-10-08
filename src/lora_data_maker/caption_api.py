@@ -155,6 +155,21 @@ class GeminiVlmCaptioner(_ApiVlmCaptioner):
         path = Path(image_path).expanduser().resolve()
         mime_type, encoded = _image_payload(path)
 
+        generation_config = {
+            "temperature": self.config.temperature,
+            "topP": self.config.top_p,
+            "topK": self.config.top_k,
+            # Gemini 3 thinking tokens share the maxOutputTokens budget.
+            "maxOutputTokens": max(self.config.max_tokens, 128),
+        }
+        model_lower = self._model.lower()
+        if model_lower.startswith("gemini-2.5"):
+            generation_config["thinkingConfig"] = {"thinkingBudget": 0}
+        elif model_lower.startswith(("gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.1-flash-lite")):
+            generation_config["thinkingConfig"] = {"thinkingLevel": "minimal"}
+        elif model_lower.startswith(("gemini-3.", "gemini-3.5-")):
+            generation_config["thinkingConfig"] = {"thinkingLevel": "low"}
+
         payload = {
             "contents": [
                 {
@@ -170,12 +185,7 @@ class GeminiVlmCaptioner(_ApiVlmCaptioner):
                     ],
                 }
             ],
-            "generationConfig": {
-                "temperature": self.config.temperature,
-                "topP": self.config.top_p,
-                "topK": self.config.top_k,
-                "maxOutputTokens": self.config.max_tokens,
-            },
+            "generationConfig": generation_config,
         }
         url = f"{self._base_url}/models/{self._model}:generateContent"
 
@@ -196,14 +206,23 @@ class GeminiVlmCaptioner(_ApiVlmCaptioner):
                 "Gemini API returned no candidate text"
             ) from exc
 
-        text = "".join(
-            str(part["text"])
-            for part in parts
-            if isinstance(part, dict) and isinstance(part.get("text"), str)
-        ).strip()
+        answer_parts: list[str] = []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            if part.get("thought") is True:
+                continue
+            value = part.get("text")
+            if isinstance(value, str) and value.strip():
+                answer_parts.append(value.strip())
 
+        text = "\n".join(answer_parts).strip()
         if not text:
-            raise VlmCaptionerError("Gemini API returned empty caption text")
+            finish_reason = candidates[0].get("finishReason") if isinstance(candidates[0], dict) else None
+            raise VlmCaptionerError(
+                "Gemini API returned no visible caption text"
+                + (f" (finishReason={finish_reason!r})" if finish_reason else "")
+            )
         return text
 
 
