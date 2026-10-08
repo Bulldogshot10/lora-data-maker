@@ -291,6 +291,11 @@ _VLM_FIELD_RE = re.compile(
     re.IGNORECASE,
 )
 
+_VLM_UNKNOWN_FIELD_LINE_RE = re.compile(
+    r"^\s*[A-Za-z][A-Za-z0-9 _-]{0,30}\s*:\s*.*$"
+)
+
+
 
 def _strip_vlm_wrappers(text: str) -> str:
     """Remove common model wrappers without touching caption content."""
@@ -350,7 +355,12 @@ def parse_vlm_fields(raw_caption: str) -> list[str]:
         end = matches[index + 1].start() if index + 1 < len(matches) else len(value)
         fragment = value[start:end].strip()
         fragment = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", fragment)
-        fragment = fragment.strip(" ,;|")
+        fragment_lines = []
+        for line in fragment.split("\n"):
+            if _VLM_UNKNOWN_FIELD_LINE_RE.match(line.strip()):
+                continue
+            fragment_lines.append(line)
+        fragment = " ".join(fragment_lines).strip(" ,;|")
         phrase = clean_vlm_caption(fragment)
         if phrase:
             by_name[name] = phrase
