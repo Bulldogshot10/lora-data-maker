@@ -10,6 +10,7 @@ from lora_data_maker.captions import (
     caption_config_from_dict,
     caption_manifest,
     clean_vlm_caption,
+    estimate_caption_tokens,
     resolve_trigger,
     write_caption,
 )
@@ -155,8 +156,9 @@ def test_build_vlm_caption_injects_trigger_once():
         "julia, a woman in a black dress, sitting outdoors.",
         subject="Julia",
         trigger="ignored",
+        tags=["julia", "black_dress", "outdoors"],
         config=config,
-    ) == "julia, a woman in a black dress, sitting outdoors."
+    ) == "julia, a woman in a black dress, sitting outdoors., black dress, outdoors"
 
 
 def test_caption_config_rejects_vlm_without_paths():
@@ -281,3 +283,41 @@ def test_caption_manifest_falls_back_to_deterministic_on_vlm_error(tmp_path):
         (root / image.caption_path).read_text(encoding="utf-8")
         == "julia, 1girl, blue eyes\n"
     )
+
+
+def test_caption_token_budget_is_enforced():
+    config = CaptionConfig(max_tokens=12)
+    caption = build_caption(
+        ["julia", "long blonde hair", "blue eyes", "black dress", "portrait"],
+        subject="julia",
+        trigger="julia",
+        config=config,
+    )
+    assert estimate_caption_tokens(caption) <= 12
+
+
+def test_vlm_and_tags_share_one_caption_budget():
+    config = CaptionConfig(
+        backend="vlm",
+        max_tokens=20,
+        vlm=VlmConfig(
+            model_path="model.gguf",
+            mmproj_path="mmproj.gguf",
+        ),
+    )
+    caption = build_vlm_caption(
+        "a woman with long blonde hair and blue eyes, wearing a black dress, indoors.",
+        subject="Julia",
+        trigger="ignored",
+        tags=[
+            "julia",
+            "long_blonde_hair",
+            "blue_eyes",
+            "black_dress",
+            "portrait",
+            "indoors",
+        ],
+        config=config,
+    )
+    assert estimate_caption_tokens(caption) <= 20
+    assert caption.startswith("julia")
