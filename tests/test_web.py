@@ -105,7 +105,7 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert unchanged_after_invalid["project"]["subject"] == "new_person"
     assert unchanged_after_invalid["processing"]["width"] == 768
     assert unchanged_after_invalid["processing"]["height"] == 512
-    assert unchanged_after_invalid["tagger"]["preset"] == "sweetspot"
+    assert unchanged_after_invalid["tagger"]["preset"] == "joytag"
 
     partial_write = client.post(
         "/api/settings",
@@ -135,7 +135,7 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert after_rejected_update["processing"]["quality"] == 92
     assert after_rejected_update["processing"]["face_crop"] is False
     assert after_rejected_update["processing"]["face_padding"] == 1.75
-    assert after_rejected_update["tagger"]["preset"] == "sweetspot"
+    assert after_rejected_update["tagger"]["preset"] == "joytag"
 
     vlm = client.post(
         "/api/settings",
