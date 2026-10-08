@@ -187,12 +187,18 @@ class SmolVlmOnnxCaptioner:
             ) from exc
 
         try:
-            from transformers import AutoProcessor
-            from transformers import SmolVLMProcessor
+            from transformers import AutoTokenizer
+            from transformers.models.idefics3.image_processing_pil_idefics3 import (
+                Idefics3ImageProcessorPil,
+            )
+            from transformers.models.idefics3.processing_idefics3 import (
+                Idefics3Processor,
+            )
         except ImportError as exc:
             raise VlmCaptionerError(
-                "ONNX VLM captions require a Transformers build with SmolVLMProcessor "
-                "and its dependencies; install or upgrade lora-data-maker[caption-onnx]. "
+                "ONNX VLM captions require Transformers Idefics3 processor support "
+                "and its NumPy/PIL image backend; install or upgrade "
+                "lora-data-maker[caption-onnx]. "
                 f"import error: {exc}"
             ) from exc
 
@@ -218,9 +224,28 @@ class SmolVlmOnnxCaptioner:
                 sess_options=options,
                 providers=providers,
             )
-            self._processor = AutoProcessor.from_pretrained(
+
+            tokenizer = AutoTokenizer.from_pretrained(
                 str(root),
                 local_files_only=True,
+                use_fast=True,
+            )
+            image_processor = Idefics3ImageProcessorPil.from_pretrained(
+                str(root),
+                local_files_only=True,
+            )
+            processor_config_path = root / "processor_config.json"
+            processor_config = (
+                json.loads(processor_config_path.read_text(encoding="utf-8"))
+                if processor_config_path.is_file()
+                else {}
+            )
+            image_seq_len = int(processor_config.get("image_seq_len", 64))
+            self._processor = Idefics3Processor(
+                image_processor=image_processor,
+                tokenizer=tokenizer,
+                image_seq_len=image_seq_len,
+                chat_template=getattr(tokenizer, "chat_template", None),
             )
         except Exception as exc:
             raise VlmCaptionerError(
