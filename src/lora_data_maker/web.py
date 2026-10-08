@@ -2305,7 +2305,8 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     bool(os.environ.get(
                         "GEMINI_API_KEY"
                         if str(caption.get("vlm", {}).get("runtime", "")).strip().lower() == "gemini"
-                        else "OPENAI_API_KEY"
+                        else "OPENAI_API_KEY",
+                        "",
                     ).strip())
                     if str(caption.get("vlm", {}).get("runtime", "")).strip().lower()
                     in {"gemini", "openai_compatible"}
