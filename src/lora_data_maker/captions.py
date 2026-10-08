@@ -591,7 +591,10 @@ def caption_manifest(
                         except ValueError:
                             stale_caption = None
                         if stale_caption is not None and stale_caption.is_file():
-                            stale_caption.unlink()
+                            try:
+                                stale_caption.unlink()
+                            except OSError:
+                                pass
                     image.caption_path = None
                     image.set_status("processed")
                     continue
