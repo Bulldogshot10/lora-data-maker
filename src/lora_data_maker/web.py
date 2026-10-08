@@ -614,9 +614,19 @@ def create_app(root: Path | str = ".") -> FastAPI:
         name, subject = str(payload.get("name", "")).strip(), str(payload.get("subject", "")).strip()
         trigger = str(payload.get("trigger", "")).strip() or subject
         mode, preset = str(payload.get("mode", "cover")).lower(), str(payload.get("preset", "sweetspot"))
-        scraper_backend = str(payload.get("scraper_backend", "duckduckgo")).lower()
-        scrape_query = str(payload.get("scrape_query", "")).strip()
-        scrape_count = int(payload.get("scrape_count", 300))
+        current_config = load_config(project_root / "config.toml")
+        current_scraper = current_config.get("scraper", {})
+        if not isinstance(current_scraper, dict):
+            current_scraper = {}
+        scraper_backend = str(
+            payload.get("scraper_backend", current_scraper.get("backend", "duckduckgo"))
+        ).lower()
+        scrape_query = str(
+            payload.get("scrape_query", current_scraper.get("query", subject))
+        ).strip() or subject
+        scrape_count = int(
+            payload.get("scrape_count", current_scraper.get("count", 300))
+        )
         try:
             resolved_preset = resolve_tagger_preset(preset)
         except ValueError as exc:
