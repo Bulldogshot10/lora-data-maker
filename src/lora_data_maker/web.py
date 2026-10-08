@@ -83,6 +83,16 @@ button{cursor:pointer}
 .grid-2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .grid-3{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
 label{display:block;color:var(--muted);font-size:11px;margin:0 0 6px 2px}
+.project-explorer{max-height:300px;overflow:auto;display:grid;gap:7px}
+.project-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 11px;background:#0d0f13;border:1px solid var(--line);border-radius:12px}
+.project-item.active{border-color:#5b4f85;background:rgba(155,135,255,.08)}
+.project-info{min-width:0}
+.project-name{font-weight:700;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-meta{font-size:10px;color:var(--muted);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.project-item button{min-height:34px;padding:0 10px;flex:0 0 auto}
+.project-toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+.project-toolbar input{flex:1}
+.empty-projects{padding:18px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:13px}
 input,select{
   width:100%;height:40px;padding:0 11px;
   color:var(--text);background:#0d0f13;border:1px solid var(--line);border-radius:11px;
@@ -203,6 +213,16 @@ a.download{
       <button class="secondary" onclick="newProject()">new dataset</button>
     </div>
   </header>
+
+  <section class="card">
+    <div class="card-title">dataset explorer</div>
+    <div class="project-toolbar">
+      <input id="project_filter" placeholder="filter datasets...">
+      <button class="secondary" onclick="refreshProjects()">refresh</button>
+    </div>
+    <div class="project-explorer" id="project_explorer"></div>
+    <div class="note" id="project_workspace"></div>
+  </section>
 
   <section class="card">
     <div class="card-title">project</div>
@@ -344,6 +364,43 @@ function applySettings(s){
   $("min_subject_area").value=s.quality.min_subject_area;
   $("min_subject_visibility").value=s.quality.min_subject_visibility;
 }
+function renderProjects(projects){
+  const filter=$("project_filter").value.trim().toLowerCase();
+  const items=(projects||[]).filter(p=>{
+    const hay=(String(p.name||"")+" "+String(p.subject||"")+" "+String(p.path||"")).toLowerCase();
+    return !filter || hay.includes(filter);
+  });
+  if(!items.length){
+    $("project_explorer").innerHTML='<div class="empty-projects">no dataset projects found.</div>';
+    return;
+  }
+  $("project_explorer").innerHTML=items.map(p=>{
+    const encoded=encodeURIComponent(p.name);
+    const action=p.active
+      ? '<button class="secondary" disabled>open</button>'
+      : '<button class="secondary" onclick="selectProject(decodeURIComponent(\\''+encoded+'\\'))">open</button>';
+    return '<div class="project-item'+(p.active?' active':'')+'"><div class="project-info"><div class="project-name">'+esc(p.name)+(p.active?' · active':'')+'</div><div class="project-meta">'+esc(p.subject)+' · '+esc(p.image_count)+' images · '+esc(p.path)+'</div></div>'+action+'</div>';
+  }).join("");
+}
+async function refreshProjects(){
+  try{
+    const d=await api("/api/projects");
+    renderProjects(d.projects);
+    $("project_workspace").textContent=d.workspace+" · "+d.projects.length+" dataset projects";
+  }catch(e){setStatus(e.message,"bad")}
+}
+async function selectProject(name){
+  try{
+    await api("/api/projects/select",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({name})
+    });
+    renderProgress({},"idle");
+    setStatus("opened "+name,"ok");
+    await refresh();
+  }catch(e){setStatus(e.message,"bad")}
+}
 function renderStats(counts){
   const keys=["discovered","validated","processed","tagged","captioned","exported"];
   $("stats").innerHTML=keys.map(k=>'<div class="stat"><b>'+esc(counts[k]??0)+'</b><span>'+esc(k)+'</span></div>').join("");
@@ -386,6 +443,8 @@ async function refresh(){
     renderStats(s.counts);
     renderGallery(s.images);
     renderDownload(s.archive);
+    renderProjects(s.projects);
+    $("project_workspace").textContent=s.workspace+" · "+s.project_count+" dataset projects";
   }catch(e){setStatus(e.message,"bad")}
 }
 async function saveSettings(){
@@ -475,6 +534,7 @@ const drop=$("drop");
 ["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("drag")}));
 drop.addEventListener("drop",e=>{$("files").files=e.dataTransfer.files});
 $("quality").oninput=()=>{$("qv").textContent=$("quality").value};
+$("project_filter").oninput=()=>refreshProjects();
 refresh();
 </script>
 </body>
@@ -486,7 +546,7 @@ class JobStore:
         self.lock = threading.Lock()
         self.jobs: dict[str, dict[str, Any]] = {}
 
-    def start(self, label: str, fn) -> str:
+    def start(self, label: str, fn, *, project_root: Path | None = None) -> str:
         with self.lock:
             if any(job["status"] == "running" for job in self.jobs.values()):
                 raise RuntimeError("another job is already running")
@@ -494,6 +554,7 @@ class JobStore:
             self.jobs[job_id] = {
                 "status": "running",
                 "message": label,
+                "_project_root": project_root.as_posix() if project_root is not None else None,
                 "progress": {
                     "current": 0,
                     "total": 0,
@@ -540,17 +601,65 @@ class JobStore:
 def create_app(root: Path | str = ".") -> FastAPI:
     app = FastAPI(title="LoRA Data Maker WebUI")
     project_root = Path(root).expanduser().resolve()
+    workspace_root = project_root.parent
     jobs = JobStore()
+    project_root_lock = threading.Lock()
 
-    def paths() -> ProjectPaths:
-        config = load_config(project_root / "config.toml")
-        return ProjectPaths.from_root(project_root, config.get("paths", {}))
+    def active_root() -> Path:
+        with project_root_lock:
+            return project_root
 
-    def project() -> DatasetProject:
-        return DatasetProject.open(paths())
+    def paths(root_path: Path | None = None) -> ProjectPaths:
+        selected_root = root_path or active_root()
+        config = load_config(selected_root / "config.toml")
+        return ProjectPaths.from_root(selected_root, config.get("paths", {}))
 
-    def set_config(section: str, values: dict[str, Any]) -> None:
-        config_path = project_root / "config.toml"
+    def project(root_path: Path | None = None) -> DatasetProject:
+        return DatasetProject.open(paths(root_path))
+
+    def list_projects() -> list[dict[str, Any]]:
+        projects: list[dict[str, Any]] = []
+        active = active_root()
+        if not workspace_root.is_dir():
+            return projects
+        for candidate in sorted(
+            (item for item in workspace_root.iterdir() if item.is_dir()),
+            key=lambda item: item.name.casefold(),
+        ):
+            if not (candidate / "config.toml").is_file() or not (candidate / "manifest.json").is_file():
+                continue
+            try:
+                candidate_project = DatasetProject.open(ProjectPaths.from_root(candidate))
+                projects.append(
+                    {
+                        "name": candidate.name,
+                        "subject": candidate_project.manifest.subject,
+                        "trigger": candidate_project.manifest.trigger,
+                        "image_count": len(candidate_project.manifest.images),
+                        "path": candidate.as_posix(),
+                        "active": candidate.resolve() == active.resolve(),
+                    }
+                )
+            except (OSError, ValueError, KeyError, TypeError):
+                continue
+        return projects
+
+    def select_active_root(target: Path) -> None:
+        nonlocal project_root
+        target = target.expanduser().resolve()
+        try:
+            target.relative_to(workspace_root)
+        except ValueError as exc:
+            raise HTTPException(400, "project is outside workspace") from exc
+        if target.parent != workspace_root:
+            raise HTTPException(400, "project must be a direct workspace child")
+        if not (target / "config.toml").is_file() or not (target / "manifest.json").is_file():
+            raise HTTPException(404, "dataset project not found")
+        with project_root_lock:
+            project_root = target
+
+    def set_config(section: str, values: dict[str, Any], root_path: Path | None = None) -> None:
+        config_path = (root_path or active_root()) / "config.toml"
         lines = config_path.read_text(encoding="utf-8").splitlines()
         start = next((i for i, line in enumerate(lines) if line.strip() == "[" + section + "]"), None)
         if start is None:
@@ -583,8 +692,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
 
     @app.get("/api/state")
     def state():
-        p = project()
-        cfg = load_config(project_root / "config.toml")
+        current_root = active_root()
+        p = project(current_root)
+        cfg = load_config(current_root / "config.toml")
         processing = cfg.get("processing", {})
         tagger = cfg.get("tagger", {})
         return {
@@ -609,12 +719,33 @@ def create_app(root: Path | str = ".") -> FastAPI:
             "archive": Path(str(p.manifest.source.get("last_pack_archive", ""))).name if p.manifest.source.get("last_pack_archive") else None,
         }
 
+    @app.get("/api/projects")
+    def projects():
+        return {"workspace": workspace_root.as_posix(), "projects": list_projects()}
+
+    @app.post("/api/projects/select")
+    def select_project(payload: dict[str, Any]):
+        name = safe_component(str(payload.get("name", "")).strip())
+        if not name:
+            raise HTTPException(400, "project name required")
+        target = workspace_root / name
+        select_active_root(target)
+        p = project(target)
+        return {
+            "ok": True,
+            "name": p.manifest.project_name,
+            "subject": p.manifest.subject,
+            "trigger": p.manifest.trigger,
+            "path": target.as_posix(),
+        }
+
     @app.post("/api/settings")
     def settings(payload: dict[str, Any]):
+        current_root = active_root()
         name, subject = str(payload.get("name", "")).strip(), str(payload.get("subject", "")).strip()
         trigger = str(payload.get("trigger", "")).strip() or subject
         mode, preset = str(payload.get("mode", "cover")).lower(), str(payload.get("preset", "sweetspot"))
-        current_config = load_config(project_root / "config.toml")
+        current_config = load_config(current_root / "config.toml")
         current_scraper = current_config.get("scraper", {})
         if not isinstance(current_scraper, dict):
             current_scraper = {}
@@ -656,9 +787,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
             or not 0 <= min_subject_visibility <= 1
         ):
             raise HTTPException(400, "invalid settings")
-        set_config("project", {"name": name, "subject": subject, "trigger": trigger})
-        set_config("processing", {"resize_mode": mode, "target_width": width, "target_height": height, "jpeg_quality": quality, "face_crop": face_crop, "face_padding": face_padding})
-        set_config("tagger", {"backend": "joytag" if resolved_preset.kind == "joytag" else "wd14", "preset": preset})
+        set_config("project", {"name": name, "subject": subject, "trigger": trigger}, current_root)
+        set_config("processing", {"resize_mode": mode, "target_width": width, "target_height": height, "jpeg_quality": quality, "face_crop": face_crop, "face_padding": face_padding}, current_root)
+        set_config("tagger", {"backend": "joytag" if resolved_preset.kind == "joytag" else "wd14", "preset": preset}, current_root)
         set_config(
             "scraper",
             {
@@ -666,6 +797,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 "query": scrape_query,
                 "count": scrape_count,
             },
+            current_root,
         )
         set_config(
             "quality",
@@ -676,15 +808,17 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 "min_subject_area": min_subject_area,
                 "min_subject_visibility": min_subject_visibility,
             },
+            current_root,
         )
-        p = project()
+        p = project(current_root)
         p.manifest.project_name, p.manifest.subject, p.manifest.trigger = name, subject, trigger
         p.save()
         return {"ok": True}
 
     @app.post("/api/upload")
     async def upload(files: Annotated[list[UploadFile], File()]):
-        p, ps = project(), paths()
+        current_root = active_root()
+        p, ps = project(current_root), paths(current_root)
         ps.raw.mkdir(parents=True, exist_ok=True)
         allowed = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
         uploaded = skipped = 0
@@ -703,7 +837,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
             with target.open("wb") as out:
                 while chunk := await file.read(1024 * 1024):
                     out.write(chunk)
-            rel = manifest_path(project_root, target)
+            rel = manifest_path(current_root, target)
             if rel in existing:
                 target.unlink(missing_ok=True); skipped += 1; continue
             register_image(p.manifest, path=rel, status="discovered")
@@ -711,9 +845,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
         p.save()
         return {"uploaded": uploaded, "skipped": skipped}
 
-    def make_job(stage: str):
+    def make_job(stage: str, root_path: Path):
         def run_stage(progress: Callable[[int, int, str], None]) -> str:
-            p, ps, cfg = project(), paths(), load_config(project_root / "config.toml")
+            p, ps, cfg = project(root_path), paths(root_path), load_config(root_path / "config.toml")
             if stage == "scrape":
                 sc = cfg.get("scraper", {})
                 if not isinstance(sc, dict):
@@ -758,7 +892,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
 
                 added_records = 0
                 for result in downloads:
-                    relative_path = manifest_path(project_root, result.path)
+                    relative_path = manifest_path(root_path, result.path)
                     record = find_image_by_source_url(p.manifest, result.url)
                     if record is None:
                         record = register_image(
@@ -809,7 +943,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
 
             if stage == "validate":
                 v = cfg.get("validation", {})
-                reconcile_raw(p.manifest, root=project_root, raw_dir=ps.raw)
+                reconcile_raw(p.manifest, root=root_path, raw_dir=ps.raw)
                 existing = {x.path: x for x in p.manifest.images.values()}
                 from .images import iter_image_files
                 valid = rejected = skipped = 0
@@ -894,19 +1028,19 @@ def create_app(root: Path | str = ".") -> FastAPI:
             if stage == "export":
                 ec = cfg.get("export", {})
                 s = export_manifest(p.manifest, root=project_root, output_dir=ps.output, repeats=int(ec.get("repeats", 1)), folder_name=str(ec.get("folder_name", "") or "") or None)
-                p.manifest.source["last_export_dir"] = manifest_path(project_root, s.output_dir); p.save()
+                p.manifest.source["last_export_dir"] = manifest_path(root_path, s.output_dir); p.save()
                 if s.failed: raise RuntimeError("export failed for " + str(s.failed) + " images")
                 return "exported " + str(s.exported)
             if stage == "pack":
                 last = p.manifest.source.get("last_export_dir")
                 if not isinstance(last, str) or not last: raise RuntimeError("export the dataset first")
                 archive = ps.output / (safe_component(p.manifest.project_name) + ".zip")
-                s = pack_dataset(root=project_root, dataset_dir=project_root / last, archive_path=archive, manifest_path=p.manifest_path)
-                p.manifest.source.update({"last_pack_archive": manifest_path(project_root, archive), "last_pack_sha256": s.sha256}); p.save()
+                s = pack_dataset(root=project_root, dataset_dir=root_path / last, archive_path=archive, manifest_path=p.manifest_path)
+                p.manifest.source.update({"last_pack_archive": manifest_path(root_path, archive), "last_pack_sha256": s.sha256}); p.save()
                 return "ZIP ready: " + archive.name
             if stage == "prepare":
                 for part in ("validate", "process", "tag", "clean-tags", "caption", "export", "pack"):
-                    make_job(part)(progress)
+                    make_job(part, root_path)(progress)
                 return "dataset ready"
             raise RuntimeError("unknown stage: " + stage)
         return run_stage
@@ -915,31 +1049,46 @@ def create_app(root: Path | str = ".") -> FastAPI:
     def run(stage: str):
         allowed = {"scrape", "prepare", "validate", "clean", "process", "tag", "clean-tags", "caption", "export", "pack"}
         if stage not in allowed: raise HTTPException(404, "unknown stage")
-        try: job_id = jobs.start("running " + stage + "...", make_job(stage))
+        current_root = active_root()
+        try: job_id = jobs.start(
+            "running " + stage + "...",
+            make_job(stage, current_root),
+            project_root=current_root,
+        )
         except RuntimeError as exc: raise HTTPException(409, str(exc))
         return {"job_id": job_id, "message": "running " + stage + "..."}
 
     @app.get("/api/jobs/{job_id}")
     def job_status(job_id: str):
         data = jobs.get(job_id)
-        if data.get("status") == "done" and project().manifest.source.get("last_pack_archive"):
-            data["download"] = "/api/download"
+        job_root_value = data.pop("_project_root", None)
+        if job_root_value:
+            data["project_path"] = job_root_value
+        if data.get("status") == "done" and job_root_value:
+            try:
+                job_project = project(Path(job_root_value))
+                if job_project.manifest.source.get("last_pack_archive"):
+                    data["download"] = "/api/download"
+            except (OSError, ValueError, KeyError, TypeError, FileNotFoundError):
+                pass
         return data
 
     @app.get("/api/download")
     def download():
-        rel = project().manifest.source.get("last_pack_archive")
+        current_root = active_root()
+        rel = project(current_root).manifest.source.get("last_pack_archive")
         if not isinstance(rel, str) or not rel: raise HTTPException(404, "no ZIP available")
-        target = (project_root / rel).resolve()
-        try: target.relative_to(project_root)
+        target = (current_root / rel).resolve()
+        try: target.relative_to(current_root)
         except ValueError: raise HTTPException(400, "invalid archive path")
         if not target.is_file(): raise HTTPException(404, "ZIP not found")
         return FileResponse(target, filename=target.name, media_type="application/zip")
 
     @app.get("/media/{relative:path}")
     def media(relative: str):
-        target = (project_root / relative).resolve()
-        try: target.relative_to(project_root)
+        current_root = active_root()
+        target = (current_root / relative).resolve()
+        try: target.relative_to(current_root)
         except ValueError: raise HTTPException(403, "invalid media path")
         if not target.is_file(): raise HTTPException(404, "image not found")
         return FileResponse(target, media_type=mimetypes.guess_type(target.name)[0] or "application/octet-stream")
@@ -951,13 +1100,13 @@ def create_app(root: Path | str = ".") -> FastAPI:
         subject = str(payload.get("subject", "")).strip() or name
         trigger = str(payload.get("trigger", "")).strip() or subject
         if not name: raise HTTPException(400, "project name required")
-        target = project_root.parent / name
+        target = workspace_root / name
         if target.exists(): raise HTTPException(409, "project already exists")
         target.mkdir(parents=True)
         new_paths = ProjectPaths.from_root(target); new_paths.create_directories()
         write_default_config(new_paths.config, name=name, subject=subject, trigger=trigger)
         DatasetProject.create(new_paths)
-        project_root = target.resolve()
+        select_active_root(target)
         return {"ok": True, "path": target.as_posix(), "name": name}
 
     return app
