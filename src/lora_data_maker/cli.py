@@ -776,6 +776,7 @@ def command_caption(args: argparse.Namespace) -> int:
                 else project.manifest.trigger
             ),
             "last_caption_trigger_from_subject": settings.trigger_from_subject,
+            "last_caption_max_tokens": settings.max_tokens,
         }
     )
     project.save()
