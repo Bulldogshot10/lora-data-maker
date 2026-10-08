@@ -180,6 +180,32 @@ def test_parse_vlm_caption_rejects_malformed_output():
         parse_vlm_caption("pose: standing\nclothing: black shirt")
 
 
+def test_parse_vlm_caption_rejects_unstructured_prose():
+    with pytest.raises(VlmCaptionerError, match="exactly four"):
+        parse_vlm_caption("a woman standing in a black dress outdoors")
+
+
+def test_parse_vlm_caption_rejects_wrong_field_order():
+    with pytest.raises(VlmCaptionerError, match="pose, clothing, expression, background"):
+        parse_vlm_caption(
+            "clothing: black shirt\n"
+            "pose: standing\n"
+            "expression: slight smile\n"
+            "background: indoors"
+        )
+
+
+def test_parse_vlm_caption_rejects_unknown_extra_field():
+    with pytest.raises(VlmCaptionerError, match="exactly four"):
+        parse_vlm_caption(
+            "pose: standing\n"
+            "clothing: black shirt\n"
+            "expression: slight smile\n"
+            "background: indoors\n"
+            "hair: blonde"
+        )
+
+
 def test_parse_vlm_caption_rejects_more_than_five_words_per_field():
     with pytest.raises(VlmCaptionerError, match="5-word limit"):
         parse_vlm_caption(
