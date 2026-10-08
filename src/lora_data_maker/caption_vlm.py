@@ -96,6 +96,20 @@ def _data_uri(path: Path) -> str:
     return f"data:{mime_type};base64,{encoded}"
 
 
+class _Qwen35NoThinkingChatHandler:
+    """Force Qwen3.5 into non-thinking mode through MTMD's template kwargs."""
+
+    def __init__(self, handler: Any) -> None:
+        self._handler = handler
+
+    def __call__(self, **kwargs: Any) -> Any:
+        kwargs["enable_thinking"] = False
+        return self._handler(**kwargs)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._handler, name)
+
+
 def _load_chat_handler(
     *,
     chat_format: str,
@@ -142,7 +156,13 @@ def _load_chat_handler(
         }
         if chat_format in {"mtmd", "gemma4"}:
             kwargs["use_gpu"] = use_gpu
-        return handler_class(**kwargs)
+        handler = handler_class(**kwargs)
+        if chat_format == "qwen3.5":
+            # llama-cpp-python 0.3.36 does not expose chat-template kwargs on
+            # Llama.create_chat_completion(), but MTMDChatHandler forwards
+            # arbitrary kwargs to the model's Jinja chat template.
+            return _Qwen35NoThinkingChatHandler(handler)
+        return handler
     except Exception as exc:
         raise VlmCaptionerError(
             f"could not initialize {chat_format} multimodal projector: {exc}"
