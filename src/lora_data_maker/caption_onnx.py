@@ -227,10 +227,7 @@ class SmolVlmOnnxCaptioner:
         self._decoder_inputs = _session_inputs(self._decoder)
         self._decoder_outputs = _session_outputs(self._decoder)
 
-        self._embed_input_name, _ = _pick_output(
-            self._embed,
-            # input name is selected separately below
-        ) if False else (self._embed.get_inputs()[0].name, 0)
+        self._embed_input_name = self._embed.get_inputs()[0].name
         self._embed_output_name, _ = _pick_output(
             self._embed,
             "inputs_embeds",
