@@ -90,7 +90,14 @@ max_tokens = 77
 model_path = ""
 mmproj_path = ""
 chat_format = "mtmd"
-# supported: mtmd, qwen2.5-vl, gemma4, qwen3.5
+# local llama.cpp: set model_path + mmproj_path.
+# API runtimes: set api_key_env, api_model, and optionally api_base_url.
+# api_key_env names an environment variable; the secret itself is never stored here.
+api_key_env = ""
+api_model = ""
+api_base_url = ""
+api_timeout = 120.0
+# supported chat formats: mtmd, qwen2.5-vl, gemma4, qwen3.5, smolvlm
 max_tokens = 64
 temperature = 0.1
 top_p = 0.95
