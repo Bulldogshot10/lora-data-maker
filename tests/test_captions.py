@@ -392,6 +392,31 @@ def test_truncate_caption_drops_later_content_when_budget_is_full():
     assert estimate_caption_tokens(caption) <= 12
 
 
+def test_vlm_truncation_preserves_custom_separator():
+    config = CaptionConfig(
+        backend="vlm",
+        separator="; ",
+        max_tokens=12,
+        vlm=VlmConfig(
+            model_path="model.gguf",
+            mmproj_path="mmproj.gguf",
+        ),
+    )
+    caption = build_vlm_caption(
+        "pose: standing\n"
+        "clothing: black dress\n"
+        "expression: smiling\n"
+        "background: indoors, soft lighting",
+        subject="Julia",
+        trigger="ignored",
+        tags=["portrait", "indoors", "smile"],
+        config=config,
+    )
+    assert caption.startswith("julia; ")
+    assert "; " in caption
+    assert estimate_caption_tokens(caption) <= 12
+
+
 def test_vlm_and_tags_share_one_caption_budget():
     config = CaptionConfig(
         backend="vlm",
