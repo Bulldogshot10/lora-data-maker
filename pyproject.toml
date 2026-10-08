@@ -52,6 +52,7 @@ face = [
 ]
 caption-vlm = [
   "llama-cpp-python>=0.3.36,<0.4",
+  "transformers>=5.19,<6",
 ]
 
 [tool.setuptools.packages.find]
