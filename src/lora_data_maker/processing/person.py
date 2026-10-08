@@ -92,6 +92,7 @@ class YOLOXNanoPersonDetector:
             providers=list(providers),
         )
         self._input_name = self._get_input_name()
+        self._validate_session_contract()
 
     def _resolve_model_path(
         self,
@@ -220,6 +221,29 @@ class YOLOXNanoPersonDetector:
             raise RuntimeError("YOLOX-Nano model has no inputs")
         return str(inputs[0].name)
 
+    def _validate_session_contract(self) -> None:
+        inputs = self._session.get_inputs()
+        outputs = self._session.get_outputs()
+        if not inputs or not outputs:
+            raise RuntimeError(
+                "YOLOX-Nano model must expose input and output tensors"
+            )
+
+        input_shape = list(getattr(inputs[0], "shape", []) or [])
+        if input_shape != [1, 3, self.INPUT_SIZE[1], self.INPUT_SIZE[0]]:
+            raise RuntimeError(
+                "unexpected YOLOX-Nano input shape: "
+                f"{input_shape}; expected "
+                f"[1, 3, {self.INPUT_SIZE[1]}, {self.INPUT_SIZE[0]}]"
+            )
+
+        output_shape = list(getattr(outputs[0], "shape", []) or [])
+        if output_shape != [1, 3549, 85]:
+            raise RuntimeError(
+                "unexpected YOLOX-Nano output shape: "
+                f"{output_shape}; expected [1, 3549, 85]"
+            )
+
     def _preprocess(self, image: Image.Image) -> "np.ndarray":
         np = self._np
         working = np.asarray(image.convert("RGB"), dtype=np.uint8)[..., ::-1]
@@ -227,11 +251,11 @@ class YOLOXNanoPersonDetector:
         target_width, target_height = self.INPUT_SIZE
 
         ratio = min(
-            target_width / max(1, original_width),
             target_height / max(1, original_height),
+            target_width / max(1, original_width),
         )
-        resized_width = max(1, int(round(original_width * ratio)))
-        resized_height = max(1, int(round(original_height * ratio)))
+        resized_width = max(1, int(original_width * ratio))
+        resized_height = max(1, int(original_height * ratio))
 
         resized = Image.fromarray(working).resize(
             (resized_width, resized_height),
@@ -243,15 +267,13 @@ class YOLOXNanoPersonDetector:
             dtype=np.uint8,
         )
         resized_array = np.asarray(resized, dtype=np.uint8)
-        pad_y = (target_height - resized_height) // 2
-        pad_x = (target_width - resized_width) // 2
-        canvas[
-            pad_y : pad_y + resized_height,
-            pad_x : pad_x + resized_width,
-        ] = resized_array
+        canvas[:resized_height, :resized_width] = resized_array
 
-        tensor = canvas.astype(np.float32) / 255.0
-        return tensor.transpose(2, 0, 1)[None, ...]
+        tensor = np.ascontiguousarray(
+            canvas.transpose(2, 0, 1),
+            dtype=np.float32,
+        )
+        return tensor[None, ...]
 
     def _decode_outputs(
         self,
@@ -317,15 +339,14 @@ class YOLOXNanoPersonDetector:
         width, height = image_size
         input_width, input_height = self.INPUT_SIZE
         ratio = min(
-            input_width / max(1, width),
             input_height / max(1, height),
+            input_width / max(1, width),
         )
-        pad_x = (input_width - width * ratio) / 2
-        pad_y = (input_height - height * ratio) / 2
 
+        # YOLOX deployment preprocessing places the resized image at (0, 0).
         boxes = np.empty((count, 5), dtype=np.float32)
-        boxes[:, :2] = (x1y1 - (pad_x, pad_y)) / ratio
-        boxes[:, 2:4] = (x2y2 - (pad_x, pad_y)) / ratio
+        boxes[:, :2] = x1y1 / ratio
+        boxes[:, 2:4] = x2y2 / ratio
         boxes[:, :4] = boxes[:, :4].clip(
             (0, 0, 0, 0),
             (width, height, width, height),

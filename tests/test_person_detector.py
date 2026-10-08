@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pytest
 from PIL import Image
@@ -90,3 +92,50 @@ def test_sha256_helper(tmp_path):
     assert _sha256_file(path) == (
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     )
+
+
+def test_yolox_preprocess_uses_top_left_float32_pixel_contract():
+    detector = YOLOXNanoPersonDetector.__new__(YOLOXNanoPersonDetector)
+    detector._np = np
+    detector.INPUT_SIZE = (416, 416)
+
+    image = Image.new("RGB", (208, 416), (255, 0, 0))
+    tensor = detector._preprocess(image)
+
+    assert tensor.shape == (1, 3, 416, 416)
+    assert tensor.dtype == np.float32
+    assert tensor.flags["C_CONTIGUOUS"]
+    assert tensor[0, 0, 0, 0] == pytest.approx(0.0)
+    assert tensor[0, 1, 0, 0] == pytest.approx(0.0)
+    assert tensor[0, 2, 0, 0] == pytest.approx(255.0)
+    assert tensor[0, :, 0, 208].tolist() == pytest.approx([114.0, 114.0, 114.0])
+
+
+def test_yolox_decode_uses_top_left_padding_geometry():
+    detector = YOLOXNanoPersonDetector.__new__(YOLOXNanoPersonDetector)
+    detector._np = np
+    detector.INPUT_SIZE = (416, 416)
+    detector.PERSON_CLASS_ID = 0
+    detector.confidence_threshold = 0.5
+
+    raw = np.zeros((1, 3549, 85), dtype=np.float32)
+    raw[0, 0, :4] = [10.0, 10.0, 1.0, 1.0]
+    raw[0, 0, 4] = 0.9
+    raw[0, 0, 5] = 0.9
+
+    decoded = detector._decode_outputs(raw, (208, 416))
+
+    assert decoded.shape == (1, 5)
+    assert decoded[0, 0] == pytest.approx(69.12687, abs=1e-3)
+    assert decoded[0, 1] == pytest.approx(69.12687, abs=1e-3)
+
+
+def test_yolox_real_model_smoke():
+    model_path = os.environ.get("LORA_DATA_MAKER_YOLOX_MODEL")
+    if not model_path:
+        pytest.skip("real YOLOX model not provided")
+
+    detector = YOLOXNanoPersonDetector(model_path=model_path)
+    boxes = detector.detect(Image.new("RGB", (416, 416), "black"))
+
+    assert isinstance(boxes, tuple)

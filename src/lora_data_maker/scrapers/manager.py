@@ -1,10 +1,17 @@
 from __future__ import annotations
 
+import threading
 from pathlib import Path
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 
 from .archive import DownloadArchive
-from .base import SCRAPER_BACKENDS, ImageResult, Scraper, ScraperError
+from .base import (
+    SCRAPER_BACKENDS,
+    ImageResult,
+    Scraper,
+    ScraperCancelledError,
+    ScraperError,
+)
 from .chromium import ChromiumImagesScraper
 from .direct import DirectURLScraper
 from .duckduckgo import DuckDuckGoImagesScraper
@@ -87,6 +94,7 @@ class ScraperManager:
         )
         self.archive = DownloadArchive(self.cache_dir / "downloads.txt")
         self.last_search_error: str | None = None
+        self.cancelled = False
 
     def run(
         self,
@@ -94,6 +102,8 @@ class ScraperManager:
         *,
         count: int,
         known_urls: Iterable[str] = (),
+        progress: Callable[[int, int, str], None] | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> tuple[list[DownloadResult], list[tuple[ImageResult, str]]]:
         if count <= 0:
             raise ScraperError("count must be greater than zero")
@@ -102,17 +112,29 @@ class ScraperManager:
         failures: list[tuple[ImageResult, str]] = []
         known_url_set = set(known_urls)
         self.last_search_error = None
+        self.cancelled = False
         next_index = self._next_index()
+
+        if cancel_event is not None and cancel_event.is_set():
+            self.cancelled = True
+            if progress is not None:
+                progress(0, count, f"scrape cancelled: downloaded 0/{count}")
+            return downloads, failures
 
         # Ask the source for more candidates than the target because some
         # candidates can already be archived or fail to download.
         search_limit = max(count, count * 3)
 
+        if progress is not None:
+            progress(0, count, f"searching for up to {search_limit} candidates...")
         print(f"scrape: searching for up to {search_limit} candidates...", flush=True)
 
         try:
             candidates = self.scraper.search(query, limit=search_limit)
             for result in candidates:
+                if cancel_event is not None and cancel_event.is_set():
+                    self.cancelled = True
+                    break
                 if result.image_url in self.archive or result.image_url in known_url_set:
                     continue
 
@@ -122,15 +144,22 @@ class ScraperManager:
                         self.output_dir,
                         index=next_index,
                         archive=self.archive,
+                        cancel_event=cancel_event,
                     )
                     if downloaded is None:
                         continue
                     downloads.append(downloaded)
                     next_index += 1
+                    message = f"downloaded {len(downloads)}/{count}"
+                    if progress is not None:
+                        progress(len(downloads), count, message)
                     print(
-                        f"scrape: downloaded {len(downloads)}/{count}",
+                        f"scrape: {message}",
                         flush=True,
                     )
+                except ScraperCancelledError:
+                    self.cancelled = True
+                    break
                 except ScraperError as exc:
                     failures.append((result, str(exc)))
                     print(
@@ -155,6 +184,19 @@ class ScraperManager:
                     flush=True,
                 )
 
+        if progress is not None:
+            if self.cancelled:
+                progress(
+                    len(downloads),
+                    count,
+                    f"scrape cancelled: downloaded {len(downloads)}/{count}",
+                )
+            elif downloads:
+                progress(
+                    len(downloads),
+                    count,
+                    f"scrape finished: downloaded {len(downloads)}/{count}",
+                )
         return downloads, failures
 
     def _next_index(self) -> int:

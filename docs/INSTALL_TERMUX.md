@@ -106,6 +106,20 @@ Shared storage is available below ~/storage/shared/.
 
 Keeping active projects inside Termux home is usually simpler for repeated processing.
 
+## WebUI dataset explorer
+
+Start the WebUI from any dataset project:
+
+~~~bash
+lora-data-maker web
+~~~
+
+The WebUI treats the active project's parent directory as the dataset workspace. It automatically lists sibling directories that contain both config.toml and manifest.json, so previously created dataset projects can be opened without restarting the server.
+
+The explorer only discovers direct children of that workspace. Switching projects keeps an already-running pipeline job bound to the project where it started.
+
+Deleting a dataset removes its entire project directory. The active project cannot be deleted, so open another dataset first.
+
 ## First project
 
 ~~~bash

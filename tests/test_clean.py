@@ -149,3 +149,71 @@ def test_clean_command_rejects_string_boolean_config(tmp_path):
 
     with pytest.raises(Exception, match="dedup.exact"):
         command_clean(Namespace(path=str(root)))
+
+
+def test_clean_command_keeps_legacy_person_gate_opt_in(tmp_path, monkeypatch):
+    from argparse import Namespace
+    from lora_data_maker.cli import command_clean, command_init
+    from lora_data_maker.paths import ProjectPaths
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="legacy",
+            subject="legacy",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    image = root / "raw" / "001.png"
+    _make_subject_image(image)
+
+    project = __import__("lora_data_maker.dataset", fromlist=["DatasetProject"]).DatasetProject.open(
+        ProjectPaths.from_root(root)
+    )
+    project.manifest.add_image(
+        ImageRecord(path="raw/001.png", status="validated")
+    )
+    project.save()
+
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace("person_check = false\n", "", 1)
+    config_path.write_text(config, encoding="utf-8")
+
+    class UnexpectedDetector:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("legacy config unexpectedly enabled person gate")
+
+    monkeypatch.setattr(
+        "lora_data_maker.cli.YOLOXNanoPersonDetector",
+        UnexpectedDetector,
+    )
+
+    assert command_clean(Namespace(path=str(root))) == 0
+
+
+def test_clean_manifest_rejects_pillow_image_decode_failure(tmp_path, monkeypatch):
+    from lora_data_maker.processing import clean as clean_module
+    from PIL.Image import DecompressionBombError
+
+    manifest = _manifest_for("raw/bad.png")
+
+    def broken_quality(*args, **kwargs):
+        raise DecompressionBombError("image too large")
+
+    monkeypatch.setattr(clean_module, "evaluate_quality", broken_quality)
+
+    summary = clean_module.clean_manifest(
+        manifest,
+        root=tmp_path,
+        exact=False,
+        perceptual=False,
+    )
+
+    record = manifest.images[next(iter(manifest.images))]
+    assert summary.quality_rejected == 1
+    assert record.status == "rejected"
+    assert record.rejection_reason == "quality check could not read image"

@@ -3,9 +3,9 @@ Copyright 2026 lora-data-maker contributors
 
 THIRD-PARTY SOFTWARE AND MODEL NOTICES
 
-This project uses or offers the following third-party components. They are
-not relicensed by this project. Each component remains subject to its own
-license terms.
+This project uses or offers the following third-party components and model
+artifacts. They are not relicensed by this project. Each remains subject to
+its own license terms.
 
 1. Pillow
    Purpose: image loading, validation, orientation handling, resizing,
@@ -19,43 +19,52 @@ license terms.
    Project: https://requests.readthedocs.io/
 
 3. NumPy
-   Purpose: numerical arrays used by the optional WD14 tagger runtime.
-   License: NumPy's applicable BSD, 0BSD, MIT, Zlib, and CC0 components
-   as distributed by NumPy.
+   Purpose: numerical arrays used by optional ONNX-backed tagger and quality
+   runtimes.
+   License: bundled component licenses; see the NumPy distribution.
    Project: https://numpy.org/
 
 4. ONNX Runtime
-   Purpose: inference runtime for the optional WD14 tagger backend.
+   Purpose: inference runtime for optional WD14, JoyTag, and YOLOX quality
+   backends.
    License: MIT
    Project: https://onnxruntime.ai/
 
-5. gallery-dl
-   Purpose: optional external gallery/download tooling exposed by the
-   [gallery] dependency extra. It is not required by the built-in
-   Google or direct URL scraper backends.
-   License: GNU General Public License v2.0
-   Project: https://github.com/mikf/gallery-dl
+5. OpenCV / YuNet
+   Purpose: optional face-crop detector and model runtime.
+   Model artifact license: MIT.
+   Project: https://github.com/opencv/opencv_zoo
 
-6. SmilingWolf/wd-eva02-large-tagger-v3
-   Purpose: default WD14-compatible image tagging model loaded by the
-   optional tagger backend.
+6. SmilingWolf/wd-vit-tagger-v3
+   Purpose: default WD14-compatible image tagging model.
    License: Apache License 2.0
-   Project: https://huggingface.co/SmilingWolf/wd-eva02-large-tagger-v3
-   The model is downloaded at runtime and is not bundled into this
-   source repository.
+   Project: https://huggingface.co/SmilingWolf/wd-vit-tagger-v3
+
+7. Smashinfries/wd-swinv2-tagger-v3-onnx-mobile
+   Purpose: optional mobile WD14-compatible tagging model.
+   License: Apache License 2.0
+   Project: https://huggingface.co/Smashinfries/wd-swinv2-tagger-v3-onnx-mobile
+
+8. fancyfeast/joytag
+   Purpose: optional JoyTag image tagging model.
+   License: Apache License 2.0
+   Project: https://huggingface.co/fancyfeast/joytag
+
+9. hr16/yolox-onnx / YOLOX-Nano
+   Purpose: optional person-quality detector.
+   License: Apache License 2.0
+   Project: https://huggingface.co/hr16/yolox-onnx
 
 TRANSITIVE DEPENDENCIES
 
-Installing these packages may also install additional third-party
-dependencies and platform libraries. This repository does not vendor
-those dependencies. Their respective license and notice files remain
-applicable in the installed environment and should be preserved when
-redistributing those components.
+Installing optional packages may also install additional third-party
+dependencies and platform libraries. Their respective license and notice
+files remain applicable in the installed environment.
 
 CI TOOLING
 
-GitHub Actions used for CI are development infrastructure and are not
-part of the runtime package distributed by this repository.
+GitHub Actions used for CI are development infrastructure and are not part
+of the runtime package distributed by this repository.
 
 NOTICE STATUS
 

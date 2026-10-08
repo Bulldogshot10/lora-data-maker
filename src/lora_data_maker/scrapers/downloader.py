@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import mimetypes
 import os
+import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -12,7 +13,7 @@ import requests
 import urllib3.util.connection as urllib3_connection
 
 from .archive import DownloadArchive
-from .base import ScraperError
+from .base import ScraperCancelledError, ScraperError
 
 
 def _is_termux_environment() -> bool:
@@ -88,7 +89,10 @@ class ImageDownloader:
         *,
         index: int,
         archive: DownloadArchive | None = None,
+        cancel_event: threading.Event | None = None,
     ) -> DownloadResult | None:
+        if cancel_event is not None and cancel_event.is_set():
+            raise ScraperCancelledError("scrape cancelled")
         if archive is not None and url in archive:
             return None
 
@@ -98,6 +102,8 @@ class ImageDownloader:
 
         for attempt in range(self.retries + 1):
             try:
+                if cancel_event is not None and cancel_event.is_set():
+                    raise ScraperCancelledError("scrape cancelled")
                 request_timeout: float | tuple[float, float]
                 if _is_termux_environment():
                     request_timeout = (min(self.timeout, 8.0), self.timeout)
@@ -132,6 +138,8 @@ class ImageDownloader:
                 total = 0
                 with temp_path.open("wb") as handle:
                     for chunk in response.iter_content(chunk_size=1024 * 128):
+                        if cancel_event is not None and cancel_event.is_set():
+                            raise ScraperCancelledError("scrape cancelled")
                         if not chunk:
                             continue
                         handle.write(chunk)
@@ -144,7 +152,10 @@ class ImageDownloader:
                     archive.add(url)
 
                 if self.delay:
-                    time.sleep(self.delay)
+                    if cancel_event is not None:
+                        cancel_event.wait(self.delay)
+                    else:
+                        time.sleep(self.delay)
 
                 return DownloadResult(
                     url=url,
@@ -153,6 +164,17 @@ class ImageDownloader:
                     file_size=total,
                     content_type=content_type,
                 )
+            except ScraperCancelledError:
+                if output_path is not None:
+                    part_path = output_path.with_name(
+                        f".{output_path.name}.part"
+                    )
+                    try:
+                        part_path.unlink(missing_ok=True)
+                        output_path.unlink(missing_ok=True)
+                    except OSError:
+                        pass
+                raise
             except (requests.RequestException, OSError, ScraperError) as exc:
                 last_error = exc
                 if output_path is not None:
@@ -170,7 +192,12 @@ class ImageDownloader:
                     break
                 if isinstance(exc, requests.RequestException) and not _retryable_request_error(exc):
                     break
-                time.sleep(min(max(self.delay, 0.25) * (2**attempt), 30.0))
+                backoff = min(max(self.delay, 0.25) * (2**attempt), 30.0)
+                if cancel_event is not None:
+                    if cancel_event.wait(backoff):
+                        raise ScraperCancelledError("scrape cancelled")
+                else:
+                    time.sleep(backoff)
             finally:
                 if response is not None:
                     response.close()

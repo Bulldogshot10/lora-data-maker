@@ -235,7 +235,7 @@ Example:
 lora-data-maker scrape duckduckgo "julia subject" --count 200
 ~~~
 
-The scraper is add-only and uses the manifest to avoid re-downloading known source URLs.
+The scraper is add-only and uses the manifest to avoid re-downloading known source URLs. A running WebUI scrape can be cancelled, and downloads completed before cancellation are preserved.
 
 ## Dataset layout
 
@@ -299,7 +299,7 @@ From an initialized dataset project:
 
 Then open http://127.0.0.1:8787 in the browser.
 
-The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection, validation, staging, tagging, tag cleaning, caption generation, Kohya export, ZIP packaging, gallery preview, and ZIP download.
+The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection, validation, staging, tagging, tag cleaning, caption generation, Kohya export, ZIP packaging, gallery preview, manual image removal for cherry-picking, scraper cancellation, and ZIP download.
 
 The one-click Prepare Dataset flow runs:
 

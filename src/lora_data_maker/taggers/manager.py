@@ -17,15 +17,25 @@ def build_tagger(
     cache_root: Path | str | None = None,
     preset: str | None = None,
 ) -> Tagger:
-    backend = str(config.get("backend", "wd14")).strip().lower()
-    if backend not in {"wd14", "joytag"}:
+    configured_backend = str(config.get("backend", "wd14")).strip().lower()
+    if configured_backend not in {"wd14", "joytag"}:
         raise TaggerError(
-            f"unsupported tagger backend {backend!r}; expected 'wd14' or 'joytag'"
+            f"unsupported tagger backend {configured_backend!r}; "
+            "expected 'wd14' or 'joytag'"
         )
 
     profile = resolve_tagger_preset(
         preset if preset is not None else config.get("preset")
     )
+
+    # An explicit CLI preset is the user's runtime override. When no
+    # explicit preset is supplied, backend and preset must agree.
+    expected_backend = "joytag" if profile.kind == "joytag" else "wd14"
+    if preset is None and configured_backend != expected_backend:
+        raise TaggerError(
+            f"tagger backend {configured_backend!r} does not match preset "
+            f"{profile.name!r} (expected {expected_backend!r})"
+        )
 
     configured_cache = config.get("cache_dir")
     if configured_cache:

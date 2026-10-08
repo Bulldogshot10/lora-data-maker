@@ -224,7 +224,7 @@ def test_scraper_manager_skips_failed_downloads_and_continues(tmp_path):
     calls = []
 
     class FakeDownloader:
-        def download(self, url, output_dir, *, index, archive):
+        def download(self, url, output_dir, *, index, archive, cancel_event=None):
             calls.append(url)
             if url.endswith("/b.jpg"):
                 raise ScraperError("source refused image")
@@ -278,7 +278,7 @@ def test_scraper_manager_preserves_downloads_when_search_fails(tmp_path):
             raise ScraperError("search source interrupted")
 
     class FakeDownloader:
-        def download(self, url, output_dir, *, index, archive):
+        def download(self, url, output_dir, *, index, archive, cancel_event=None):
             return DownloadResult(
                 url=url,
                 path=Path(output_dir) / f"{index:06d}.jpg",
@@ -1148,3 +1148,30 @@ def test_playwright_scraper_validates_provider():
 
     with pytest.raises(ValueError, match="provider"):
         PlaywrightImagesScraper(provider="duckduckgo")
+
+
+def test_downloader_honors_pre_cancel(tmp_path):
+    import pytest
+
+    from lora_data_maker.scrapers.base import ScraperCancelledError
+    from lora_data_maker.scrapers.downloader import ImageDownloader
+
+    downloader = ImageDownloader(
+        timeout=5,
+        retries=0,
+        delay=0,
+        user_agent="test",
+        session=_FakeSession(),
+    )
+    cancel_event = __import__("threading").Event()
+    cancel_event.set()
+
+    with pytest.raises(ScraperCancelledError, match="cancelled"):
+        downloader.download(
+            "https://cdn.example.com/a.jpg",
+            tmp_path,
+            index=1,
+            cancel_event=cancel_event,
+        )
+
+    assert not (tmp_path / "000001.jpg").exists()

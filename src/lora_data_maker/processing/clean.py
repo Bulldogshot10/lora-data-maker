@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from PIL import UnidentifiedImageError
+from PIL.Image import DecompressionBombError
+
 from .dedup import (
     find_perceptual_duplicates,
     perceptual_hash,
@@ -66,7 +69,7 @@ def clean_manifest(
                 min_subject_area=min_subject_area,
                 min_subject_visibility=min_subject_visibility,
             )
-        except (OSError, ValueError, RuntimeError):
+        except (OSError, UnidentifiedImageError, DecompressionBombError):
             image.set_status(
                 "rejected",
                 reason="quality check could not read image",
