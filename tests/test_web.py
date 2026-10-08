@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 
 from lora_data_maker.config import write_default_config
 from lora_data_maker.dataset import DatasetProject
+from lora_data_maker.models import ImageRecord
 from lora_data_maker.paths import ProjectPaths
 from lora_data_maker.scrapers.downloader import DownloadResult
 from lora_data_maker.web import create_app
@@ -153,6 +154,63 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     joytag_state = client.get("/api/state").json()
     assert joytag_state["tagger"]["backend"] == "joytag"
     assert joytag_state["tagger"]["preset"] == "joytag"
+
+
+def test_webui_backend_switch_invalidates_vlm_captions(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    base = {
+        "name": "test",
+        "subject": "person",
+        "trigger": "person",
+        "preset": "joytag",
+        "mode": "cover",
+        "width": 512,
+        "height": 512,
+        "quality": 95,
+        "face_crop": False,
+        "face_padding": 1.75,
+    }
+
+    vlm = client.post(
+        "/api/settings",
+        json={
+            **base,
+            "caption_backend": "vlm",
+            "caption_chat_format": "mtmd",
+            "caption_model_path": "models/model.gguf",
+            "caption_mmproj_path": "models/mmproj.gguf",
+            "caption_max_tokens": 77,
+        },
+    )
+    assert vlm.status_code == 200
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    image = ImageRecord(
+        path="raw/001.jpg",
+        status="captioned",
+        processed_path="work/processed/001.jpg",
+        caption_path="work/captions/001.txt",
+        metadata={"caption_backend": "vlm", "caption_stage": "captioned"},
+    )
+    project.manifest.add_image(image)
+    stale = root / image.caption_path
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("person, standing, stale\n", encoding="utf-8")
+    project.save()
+
+    deterministic = client.post(
+        "/api/settings",
+        json=base,
+    )
+    assert deterministic.status_code == 200
+
+    refreshed = DatasetProject.open(ProjectPaths.from_root(root))
+    record = refreshed.manifest.get_image(image.image_id)
+    assert record.status == "processed"
+    assert record.caption_path is None
+    assert not stale.exists()
 
 
 def test_webui_tag_stage_is_skipped_in_vlm_mode(tmp_path: Path, monkeypatch) -> None:
