@@ -1171,6 +1171,9 @@ function syncCaptionRuntimeUI(){
       ?"configured: "+$("caption_mmproj_path").value
       :"no mmproj uploaded";
   }else if(gemini){
+    if(!$("caption_api_key_env").value.trim())$("caption_api_key_env").value="GEMINI_API_KEY";
+    if(!$("caption_api_model").value.trim())$("caption_api_model").value="gemini-2.5-flash-lite";
+    if(!$("caption_api_base_url").value.trim())$("caption_api_base_url").value="https://generativelanguage.googleapis.com/v1beta";
     $("caption_api_key_env").placeholder="GEMINI_API_KEY";
     $("caption_api_model").placeholder="gemini-2.5-flash-lite";
     $("caption_api_base_url").placeholder="https://generativelanguage.googleapis.com/v1beta";
@@ -1178,6 +1181,8 @@ function syncCaptionRuntimeUI(){
     $("caption_mmproj_status").textContent="unused by Gemini API";
     $("caption_api_key_status").textContent="read from the environment; secret is never saved";
   }else{
+    if(!$("caption_api_key_env").value.trim())$("caption_api_key_env").value="OPENAI_API_KEY";
+    if(!$("caption_api_base_url").value.trim())$("caption_api_base_url").value="https://api.openai.com/v1";
     $("caption_api_key_env").placeholder="OPENAI_API_KEY";
     $("caption_api_model").placeholder="vision-capable model name";
     $("caption_api_base_url").placeholder="https://api.openai.com/v1";
