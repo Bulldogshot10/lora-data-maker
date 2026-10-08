@@ -110,6 +110,7 @@ backend = "vlm"
 separator = ", "
 subject_position = "first"
 trigger_from_subject = true
+max_tokens = 77
 
 [caption.vlm]
 model_path = "/path/to/model.gguf"
@@ -127,7 +128,7 @@ seed = 42
 
 Supported chat formats are `mtmd`, `qwen2.5-vl`, and `gemma4`. The VLM receives only the processed image and the configured caption prompt. Cleaned tagger output is kept as structured metadata and is never fed into the VLM.
 
-VLM output is cleaned before the canonical trigger is injected. When one image fails VLM inference, that image falls back to the existing deterministic tag caption and the fallback is recorded in the manifest.
+VLM output is cleaned before the canonical trigger is injected. The cleaned VLM description and cleaned tagger tags are then merged into one final .txt caption, sharing the configured max_tokens budget (1–77, default 77). When one image fails VLM inference, that image falls back to the existing deterministic tag caption and the fallback is recorded in the manifest.
 
 Tagger models are cached under:
 
@@ -238,8 +239,11 @@ clean
 process
   ├────────────→ tag → clean-tags ───→ structured tags / manifest
   │
-  └────────────→ caption backend ────→ caption cleanup → trigger → .txt
-                                      (deterministic or local VLM)
+  └────────────→ caption backend ────→ caption cleanup ──┐
+                                      (deterministic or  │
+                                       local VLM)        │
+                                                        ↓
+                              VLM text + tagger tags → trigger → .txt
   ↓
 export
   ↓
