@@ -929,7 +929,8 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
             <label for="caption_runtime">VLM runtime</label>
             <select id="caption_runtime">
               <option value="llama_cpp">llama.cpp · GGUF</option>
-              <option value="onnx">onnxruntime · SmolVLM2</option>
+              <option value="gemini">Google Gemini API</option>
+              <option value="openai_compatible">OpenAI-compatible API</option>
             </select>
           </div>
           <div class="field">
@@ -952,7 +953,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
         </div>
         <div class="form-grid" style="margin-top:12px">
           <div class="field">
-            <label for="caption_model_path">VLM model path</label>
+            <label for="caption_model_path">VLM model path · llama.cpp only</label>
             <div style="display:flex;gap:8px"><input id="caption_model_path" autocomplete="off" placeholder="/path/to/model.gguf"><button type="button" class="action-secondary" id="caption_model_upload">upload</button></div><input id="caption_model_file" type="file" accept=".gguf" hidden><div class="field-note" id="caption_model_status">no model uploaded</div>
           </div>
           <div class="field">
@@ -960,7 +961,22 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
             <div style="display:flex;gap:8px"><input id="caption_mmproj_path" autocomplete="off" placeholder="/path/to/mmproj.gguf"><button type="button" class="action-secondary" id="caption_mmproj_upload">upload</button></div><input id="caption_mmproj_file" type="file" accept=".gguf" hidden><div class="field-note" id="caption_mmproj_status">no mmproj uploaded</div>
           </div>
         </div>
-        <div class="field-note" style="margin-top:9px">VLM mode skips WD14/JoyTag completely. captions are trigger → pose → clothing → expression → background. the max caption tokens setting applies only to deterministic captions.</div>
+        <div class="form-grid three" style="margin-top:12px">
+          <div class="field">
+            <label for="caption_api_key_env">API key env</label>
+            <input id="caption_api_key_env" autocomplete="off" placeholder="GEMINI_API_KEY">
+            <div class="field-note" id="caption_api_key_status">API secret is read from this environment variable and is never saved.</div>
+          </div>
+          <div class="field">
+            <label for="caption_api_model">API model</label>
+            <input id="caption_api_model" autocomplete="off" placeholder="gemini-2.5-flash-lite">
+          </div>
+          <div class="field">
+            <label for="caption_api_base_url">API base URL</label>
+            <input id="caption_api_base_url" autocomplete="off" placeholder="https://generativelanguage.googleapis.com/v1beta">
+          </div>
+        </div>
+        <div class="field-note" style="margin-top:9px">VLM uses the fixed caption constraint: exactly pose → clothing → expression → background, max 5 words per field; pose includes a camera view when visible; background includes lighting; hair color, eye color, face, age, and gender are excluded. final caption always starts with the resolved trigger.</div>
       </section>
 
       <section class="card card-pad" style="margin-top:14px">
@@ -1118,7 +1134,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key_env,#caption_api_model,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
     if(el)el.disabled=busy;
   });
   const vlmOnly=$("caption_backend").value==="vlm";
@@ -1131,26 +1147,43 @@ function updateBusyUI(){
   });
 }
 function syncCaptionRuntimeUI(){
-  const onnx=$("caption_runtime").value==="onnx";
-  $("caption_chat_format").disabled=onnx;
-  $("caption_mmproj_path").disabled=onnx;
-  $("caption_mmproj_upload").disabled=onnx;
-  $("caption_mmproj_file").disabled=onnx;
-  $("caption_model_upload").disabled=onnx;
-  $("caption_model_file").disabled=onnx;
-  if(onnx){
-    $("caption_chat_format").value="smolvlm";
-    $("caption_model_path").placeholder="/path/to/SmolVLM2-500M-Video-Instruct";
-    $("caption_model_status").textContent=$("caption_model_path").value
-      ?"configured: "+$("caption_model_path").value
-      :"default: HuggingFaceTB/SmolVLM2-500M-Video-Instruct (auto-download)";
-    $("caption_mmproj_status").textContent="unused by ONNX runtime";
-  }else{
+  const runtime=$("caption_runtime").value;
+  const local=runtime==="llama_cpp";
+  const gemini=runtime==="gemini";
+  const api=gemini||runtime==="openai_compatible";
+  $("caption_chat_format").disabled=!local;
+  $("caption_mmproj_path").disabled=!local;
+  $("caption_mmproj_upload").disabled=!local;
+  $("caption_mmproj_file").disabled=!local;
+  $("caption_model_path").disabled=!local;
+  $("caption_model_upload").disabled=!local;
+  $("caption_model_file").disabled=!local;
+  $("caption_api_key_env").disabled=!api;
+  $("caption_api_model").disabled=!api;
+  $("caption_api_base_url").disabled=!api;
+  if(local){
     $("caption_model_path").placeholder="/path/to/model.gguf";
     $("caption_mmproj_path").placeholder="/path/to/mmproj.gguf";
+    $("caption_model_status").textContent=$("caption_model_path").value
+      ?"configured: "+$("caption_model_path").value
+      :"no model uploaded";
     $("caption_mmproj_status").textContent=$("caption_mmproj_path").value
       ?"configured: "+$("caption_mmproj_path").value
       :"no mmproj uploaded";
+  }else if(gemini){
+    $("caption_api_key_env").placeholder="GEMINI_API_KEY";
+    $("caption_api_model").placeholder="gemini-2.5-flash-lite";
+    $("caption_api_base_url").placeholder="https://generativelanguage.googleapis.com/v1beta";
+    $("caption_model_status").textContent="unused by Gemini API";
+    $("caption_mmproj_status").textContent="unused by Gemini API";
+    $("caption_api_key_status").textContent="read from the environment; secret is never saved";
+  }else{
+    $("caption_api_key_env").placeholder="OPENAI_API_KEY";
+    $("caption_api_model").placeholder="vision-capable model name";
+    $("caption_api_base_url").placeholder="https://api.openai.com/v1";
+    $("caption_model_status").textContent="unused by OpenAI-compatible API";
+    $("caption_mmproj_status").textContent="unused by OpenAI-compatible API";
+    $("caption_api_key_status").textContent="read from the environment; secret is never saved";
   }
 }
 function applySettings(s,force=false){
@@ -1165,9 +1198,12 @@ function applySettings(s,force=false){
   $("caption_chat_format").value=s.caption.chat_format||"mtmd";
   $("caption_model_path").value=s.caption.model_path||"";
   $("caption_mmproj_path").value=s.caption.mmproj_path||"";
+  $("caption_api_key_env").value=s.caption.api_key_env||"";
+  $("caption_api_model").value=s.caption.api_model||"";
+  $("caption_api_base_url").value=s.caption.api_base_url||"";
   $("caption_model_status").textContent=s.caption.model_path
-    ? "configured: "+s.caption.model_path
-    : (s.caption.runtime==="onnx" ? "default: HuggingFaceTB/SmolVLM2-500M-Video-Instruct" : "no model uploaded");
+    ?"configured: "+s.caption.model_path
+    :"no model uploaded";
   $("caption_mmproj_status").textContent=s.caption.mmproj_path?"configured: "+s.caption.mmproj_path:"no mmproj uploaded";
   syncCaptionRuntimeUI();
   $("caption_max_tokens").value=s.caption.max_tokens;
@@ -1396,6 +1432,9 @@ async function saveSettings(){
         caption_chat_format:$("caption_chat_format").value,
         caption_model_path:$("caption_model_path").value.trim(),
         caption_mmproj_path:$("caption_mmproj_path").value.trim(),
+        caption_api_key_env:$("caption_api_key_env").value.trim(),
+        caption_api_model:$("caption_api_model").value.trim(),
+        caption_api_base_url:$("caption_api_base_url").value.trim(),
         caption_max_tokens:captionMaxTokens,
         face_crop:$("face_crop").checked,
         face_padding:facePadding,
@@ -1717,7 +1756,7 @@ $("quality").addEventListener("input",()=>{$("qv").textContent=$("quality").valu
 $("caption_max_tokens").addEventListener("input",()=>{$("caption_tokens_value").textContent=$("caption_max_tokens").value});
 [
   "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count",
-  "mode","width","height","quality","caption_backend","caption_runtime","caption_chat_format","caption_model_path","caption_mmproj_path","caption_max_tokens","face_crop","face_padding","person_check",
+  "mode","width","height","quality","caption_backend","caption_runtime","caption_chat_format","caption_model_path","caption_mmproj_path","caption_api_key_env","caption_api_model","caption_api_base_url","caption_max_tokens","face_crop","face_padding","person_check",
   "max_persons","person_threshold","min_subject_area","min_subject_visibility",
   "text_check","text_confidence","text_min_area_ratio"
 ].forEach(id=>{
@@ -2027,6 +2066,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     "chat_format": "mtmd",
                     "model_path": "",
                     "mmproj_path": "",
+                    "api_key_env": "",
+                    "api_model": "",
+                    "api_base_url": "",
                     "max_tokens": 77,
                 },
                 "scraper": {
@@ -2104,6 +2146,15 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 if isinstance(caption.get("vlm"), dict)
                 else "",
                 "mmproj_path": str(caption.get("vlm", {}).get("mmproj_path", ""))
+                if isinstance(caption.get("vlm"), dict)
+                else "",
+                "api_key_env": str(caption.get("vlm", {}).get("api_key_env", ""))
+                if isinstance(caption.get("vlm"), dict)
+                else "",
+                "api_model": str(caption.get("vlm", {}).get("api_model", ""))
+                if isinstance(caption.get("vlm"), dict)
+                else "",
+                "api_base_url": str(caption.get("vlm", {}).get("api_base_url", ""))
                 if isinstance(caption.get("vlm"), dict)
                 else "",
                 "max_tokens": int(caption.get("max_tokens", 77)),
@@ -2261,14 +2312,28 @@ def create_app(root: Path | str = ".") -> FastAPI:
         caption_mmproj_path = str(
             payload.get("caption_mmproj_path", current_vlm.get("mmproj_path", ""))
         ).strip()
+        caption_api_key_env = str(
+            payload.get("caption_api_key_env", current_vlm.get("api_key_env", ""))
+        ).strip()
+        caption_api_model = str(
+            payload.get("caption_api_model", current_vlm.get("api_model", ""))
+        ).strip()
+        caption_api_base_url = str(
+            payload.get("caption_api_base_url", current_vlm.get("api_base_url", ""))
+        ).strip()
         if caption_backend not in {"deterministic", "vlm"}:
             raise HTTPException(400, "caption backend must be deterministic or vlm")
-        if caption_runtime not in {"llama_cpp", "onnx"}:
+        if caption_runtime not in {"llama_cpp", "onnx", "gemini", "openai_compatible"}:
             raise HTTPException(400, "unsupported VLM runtime")
         if caption_runtime == "onnx":
             caption_chat_format = "smolvlm"
         elif caption_chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5", "smolvlm"}:
             raise HTTPException(400, "unsupported VLM chat format")
+        if caption_backend == "vlm" and caption_runtime in {"gemini", "openai_compatible"}:
+            if not caption_api_key_env:
+                raise HTTPException(400, "API key environment variable is required")
+            if not caption_api_model:
+                raise HTTPException(400, "API model is required")
         if caption_backend == "vlm" and caption_runtime == "llama_cpp" and not caption_model_path:
             raise HTTPException(400, "VLM model path is required for llama.cpp")
         if caption_backend == "vlm" and caption_runtime == "llama_cpp" and not caption_mmproj_path:
@@ -2291,6 +2356,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
                         "mmproj_path": caption_mmproj_path,
                         "runtime": caption_runtime,
                         "chat_format": caption_chat_format,
+                        "api_key_env": caption_api_key_env,
+                        "api_model": caption_api_model,
+                        "api_base_url": caption_api_base_url,
                     },
                 },
                 root=current_root,
@@ -2337,6 +2405,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 "mmproj_path": caption_mmproj_path,
                 "runtime": caption_runtime,
                 "chat_format": caption_chat_format,
+                "api_key_env": caption_api_key_env,
+                "api_model": caption_api_model,
+                "api_base_url": caption_api_base_url,
             },
             current_root,
         )
