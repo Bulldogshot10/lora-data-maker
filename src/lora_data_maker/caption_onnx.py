@@ -623,10 +623,13 @@ class SmolVlmOnnxCaptioner:
             generated: list[int] = []
             current_input_ids = token_ids
             current_attention_mask = np.asarray(attention_mask, dtype=np.int64)
-            current_position_ids = np.cumsum(
-                current_attention_mask,
-                axis=-1,
-                dtype=np.int64,
+            current_position_ids = (
+                np.cumsum(current_attention_mask, axis=-1, dtype=np.int64) - 1
+            )
+            current_position_ids = np.where(
+                current_attention_mask == 0,
+                0,
+                current_position_ids,
             )
             image_features = None
 
