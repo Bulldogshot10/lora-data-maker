@@ -32,6 +32,11 @@ HTML = r"""
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#090b10">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+<link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="manifest" href="/site.webmanifest">
 <title>LoRA Data Maker</title>
 <style>
 :root{
@@ -1716,6 +1721,7 @@ class JobStore:
 
 def create_app(root: Path | str = ".") -> FastAPI:
     app = FastAPI(title="LoRA Data Maker WebUI")
+    static_root = Path(__file__).resolve().parent / "static"
     project_root = Path(root).expanduser().resolve()
     workspace_root = project_root.parent
     jobs = JobStore()
@@ -1805,6 +1811,34 @@ def create_app(root: Path | str = ".") -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def index():
         return HTML
+
+    @app.get("/favicon.ico")
+    def favicon():
+        return FileResponse(static_root / "favicon.ico", media_type="image/x-icon")
+
+    @app.get("/favicon-16x16.png")
+    def favicon_16():
+        return FileResponse(static_root / "favicon-16x16.png", media_type="image/png")
+
+    @app.get("/favicon-32x32.png")
+    def favicon_32():
+        return FileResponse(static_root / "favicon-32x32.png", media_type="image/png")
+
+    @app.get("/apple-touch-icon.png")
+    def apple_touch_icon():
+        return FileResponse(static_root / "apple-touch-icon.png", media_type="image/png")
+
+    @app.get("/android-chrome-192x192.png")
+    def android_chrome_192():
+        return FileResponse(static_root / "android-chrome-192x192.png", media_type="image/png")
+
+    @app.get("/android-chrome-512x512.png")
+    def android_chrome_512():
+        return FileResponse(static_root / "android-chrome-512x512.png", media_type="image/png")
+
+    @app.get("/site.webmanifest")
+    def site_webmanifest():
+        return FileResponse(static_root / "site.webmanifest", media_type="application/manifest+json")
 
     @app.get("/api/state")
     def state():
