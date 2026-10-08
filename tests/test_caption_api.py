@@ -79,6 +79,10 @@ def test_gemini_caption_uses_fixed_prompt_and_inline_image(monkeypatch, tmp_path
     payload = kwargs["json"]
     assert payload["contents"][0]["parts"][1]["text"] == API_VLM_PROMPT
     assert payload["contents"][0]["parts"][0]["inline_data"]["mime_type"] == "image/jpeg"
+    assert "generationConfig" not in payload
+    assert "temperature" not in payload
+    assert "topP" not in payload
+    assert "topK" not in payload
 
 
 def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
