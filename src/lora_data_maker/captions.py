@@ -426,26 +426,32 @@ def build_api_vlm_caption(
     trigger: str,
     config: CaptionConfig,
 ) -> str:
-    """Build an API VLM caption from one plain model-generated caption."""
-    value = clean_api_vlm_caption(raw_caption)
-    if not value:
-        raise VlmCaptionerError("API VLM returned an empty caption")
-
+    """Parse a four-field API VLM caption and inject the dataset trigger."""
+    fields = parse_vlm_fields(raw_caption)
     resolved_trigger = resolve_trigger(
         subject=subject,
         trigger=trigger,
         trigger_from_subject=config.trigger_from_subject,
     )
-    if resolved_trigger:
-        pattern = re.compile(
-            rf"(?<![A-Za-z0-9_]){re.escape(resolved_trigger)}(?![A-Za-z0-9_])",
-            re.IGNORECASE,
-        )
-        value = pattern.sub("", value)
-        value = re.sub(r"\s+", " ", value).strip(" ,;:")
-        return config.separator.join((resolved_trigger, value))
 
-    return value
+    cleaned_fields: list[str] = []
+    for field_value in fields:
+        value = field_value
+        if resolved_trigger and value:
+            pattern = re.compile(
+                rf"(?<![A-Za-z0-9_]){re.escape(resolved_trigger)}(?![A-Za-z0-9_])",
+                re.IGNORECASE,
+            )
+            value = pattern.sub("", value)
+            value = re.sub(r"\s+", " ", value).strip(" ,.;:")
+        if value:
+            cleaned_fields.append(value)
+
+    parts: list[str] = []
+    if resolved_trigger:
+        parts.append(resolved_trigger)
+    parts.extend(cleaned_fields)
+    return config.separator.join(parts)
 
 
 def build_vlm_caption(
