@@ -137,6 +137,7 @@ def test_caption_command_persists_manifest(tmp_path):
         "julia, 1girl, blue eyes\n"
     )
     assert refreshed.manifest.source["last_caption_trigger"] == "julia"
+    assert refreshed.manifest.source["last_caption_max_tokens"] == 77
 
 
 def test_clean_vlm_caption_removes_common_prose_and_markdown():
