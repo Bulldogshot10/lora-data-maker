@@ -27,6 +27,8 @@ def test_caption_config_resolves_relative_vlm_paths(tmp_path):
 
 
 def test_caption_config_accepts_onnx_runtime_without_mmproj(tmp_path):
+    model_dir = tmp_path / "models" / "SmolVLM2-500M-Video-Instruct"
+    model_dir.mkdir(parents=True)
     settings = caption_config_from_dict(
         {
             "backend": "vlm",
@@ -240,3 +242,62 @@ def test_caption_manifest_loads_owned_vlm_runtime_once(tmp_path, monkeypatch):
     assert summary.captioned == 2
     assert summary.fallback == 0
     assert state == {"init": 1, "caption": 2, "close": 1}
+
+
+def test_onnx_model_resolver_auto_downloads_default_repo(tmp_path, monkeypatch):
+    import sys
+    import types
+
+    from lora_data_maker.caption_onnx import SmolVlmOnnxCaptioner
+
+    snapshot_root = tmp_path / "hf-snapshot"
+    calls = {}
+
+    def fake_snapshot_download(*, repo_id, allow_patterns):
+        calls["repo_id"] = repo_id
+        calls["allow_patterns"] = list(allow_patterns)
+        return str(snapshot_root)
+
+    monkeypatch.setitem(
+        sys.modules,
+        "huggingface_hub",
+        types.SimpleNamespace(snapshot_download=fake_snapshot_download),
+    )
+
+    resolved = SmolVlmOnnxCaptioner._resolve_model_root("")
+
+    assert resolved == snapshot_root.resolve()
+    assert calls["repo_id"] == SmolVlmOnnxCaptioner._DEFAULT_REPO_ID
+    assert "onnx/decoder_model_merged_q4f16.onnx" in calls["allow_patterns"]
+    assert "onnx/embed_tokens_q4f16.onnx" in calls["allow_patterns"]
+    assert "onnx/vision_encoder_q4f16.onnx" in calls["allow_patterns"]
+
+
+def test_onnx_cache_shape_resolver_uses_empty_sequence():
+    from lora_data_maker.caption_onnx import _resolve_empty_cache_shape
+
+    shape = _resolve_empty_cache_shape(
+        ("batch_size", 5, "past_sequence_length", 64),
+        batch_size=1,
+        num_kv_heads=5,
+    )
+
+    assert shape == (1, 5, 0, 64)
+
+
+def test_onnx_position_ids_match_transformers_cache_semantics():
+    import numpy as np
+
+    from lora_data_maker.caption_onnx import SmolVlmOnnxCaptioner
+
+    runtime = SmolVlmOnnxCaptioner.__new__(SmolVlmOnnxCaptioner)
+    mask = np.ones((1, 5), dtype=np.int64)
+
+    np.testing.assert_array_equal(
+        runtime._position_ids(mask),
+        np.array([[0, 1, 2, 3, 4]], dtype=np.int64),
+    )
+    np.testing.assert_array_equal(
+        runtime._position_ids(mask, last_only=True),
+        np.array([[4]], dtype=np.int64),
+    )
