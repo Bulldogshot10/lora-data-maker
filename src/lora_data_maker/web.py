@@ -835,31 +835,31 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
           <button type="button" class="step primary" data-run-stage="prepare">
             <span class="step-number">all stages</span>
             <span class="step-name">prepare dataset</span>
-            <span class="step-hint">validate → process → tag → clean tags → caption → export → ZIP</span>
+            <span class="step-hint">validate → clean / dedup → process → tag → clean tags → caption → export → ZIP</span>
           </button>
           <button type="button" class="step" data-run-stage="validate">
             <span class="step-number">01 · input</span><span class="step-name">validate</span><span class="step-hint">scan and validate raw images</span>
           </button>
+          <button type="button" class="step" data-run-stage="clean">
+            <span class="step-number">02 · quality</span><span class="step-name">clean / dedup</span><span class="step-hint">remove duplicates, text, and low-quality images</span>
+          </button>
           <button type="button" class="step" data-run-stage="process">
-            <span class="step-number">02 · image</span><span class="step-name">stage / resize</span><span class="step-hint">make training-ready images</span>
+            <span class="step-number">03 · image</span><span class="step-name">stage / resize</span><span class="step-hint">make training-ready images</span>
           </button>
           <button type="button" class="step" data-run-stage="tag">
-            <span class="step-number">03 · metadata</span><span class="step-name">tag</span><span class="step-hint">generate automatic tags</span>
+            <span class="step-number">04 · metadata</span><span class="step-name">tag</span><span class="step-hint">generate automatic tags</span>
           </button>
           <button type="button" class="step" data-run-stage="clean-tags">
-            <span class="step-number">04 · metadata</span><span class="step-name">clean tags</span><span class="step-hint">apply tag removal rules</span>
+            <span class="step-number">05 · metadata</span><span class="step-name">clean tags</span><span class="step-hint">apply tag removal rules</span>
           </button>
           <button type="button" class="step" data-run-stage="caption">
-            <span class="step-number">05 · metadata</span><span class="step-name">caption</span><span class="step-hint">write .txt captions</span>
+            <span class="step-number">06 · metadata</span><span class="step-name">caption</span><span class="step-hint">write .txt captions</span>
           </button>
           <button type="button" class="step" data-run-stage="export">
-            <span class="step-number">06 · output</span><span class="step-name">export</span><span class="step-hint">create Kohya-ready folder</span>
+            <span class="step-number">07 · output</span><span class="step-name">export</span><span class="step-hint">create Kohya-ready folder</span>
           </button>
           <button type="button" class="step" data-run-stage="pack">
-            <span class="step-number">07 · output</span><span class="step-name">make ZIP</span><span class="step-hint">build final archive</span>
-          </button>
-          <button type="button" class="step" data-run-stage="clean">
-            <span class="step-number">optional</span><span class="step-name">image clean / dedup</span><span class="step-hint">quality gate and duplicate pass</span>
+            <span class="step-number">08 · output</span><span class="step-name">make ZIP</span><span class="step-hint">build final archive</span>
           </button>
         </div>
       </section>
@@ -2389,7 +2389,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 p.manifest.source.update({"last_pack_archive": manifest_path(root_path, archive), "last_pack_sha256": s.sha256}); p.save()
                 return "ZIP ready: " + archive.name
             if stage == "prepare":
-                for part in ("validate", "process", "tag", "clean-tags", "caption", "export", "pack"):
+                for part in ("validate", "clean", "process", "tag", "clean-tags", "caption", "export", "pack"):
                     make_job(part, root_path)(progress, cancel_event)
                 return "dataset ready"
             raise RuntimeError("unknown stage: " + stage)
