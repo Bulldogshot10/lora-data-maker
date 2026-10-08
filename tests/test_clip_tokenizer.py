@@ -43,6 +43,52 @@ def test_pack_clip_caption_uses_custom_separator():
     assert caption == "julia; standing; black dress"
 
 
+def test_pure_python_clip_tokenizer_fallback_works_without_tokenizers(
+    tmp_path, monkeypatch
+):
+    import sys
+    import types
+
+    from lora_data_maker import clip_tokenizer
+
+    byte_encoder = clip_tokenizer._bytes_to_unicode()
+    vocab = {str(value): index for index, value in enumerate(byte_encoder.values())}
+    vocab["a</w>"] = 300
+    vocab["b</w>"] = 301
+    vocab["c</w>"] = 302
+    vocab["<|startoftext|>"] = 49406
+    vocab["<|endoftext|>"] = 49407
+    (tmp_path / "vocab.json").write_text(
+        __import__("json").dumps(vocab),
+        encoding="utf-8",
+    )
+    (tmp_path / "merges.txt").write_text("#version: 0.2\n", encoding="utf-8")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(),
+    )
+    monkeypatch.setenv(
+        clip_tokenizer.CLIP_TOKENIZER_PATH_ENV,
+        str(tmp_path),
+    )
+
+    clip_tokenizer.load_clip_tokenizer.cache_clear()
+    try:
+        tokenizer = clip_tokenizer.load_clip_tokenizer()
+        assert isinstance(
+            tokenizer,
+            clip_tokenizer.PurePythonCLIPTokenizer,
+        )
+        assert tokenizer.model_max_length == 77
+        assert tokenizer.name_or_path == clip_tokenizer.CLIP_TOKENIZER_ID
+        assert clip_tokenizer.count_clip_tokens("abc", tokenizer=tokenizer) == 5
+    finally:
+        clip_tokenizer.load_clip_tokenizer.cache_clear()
+
+
+
 def test_clip_tokenizer_error_is_application_error():
     assert issubclass(ClipTokenizerError, LoraDataMakerError)
 
