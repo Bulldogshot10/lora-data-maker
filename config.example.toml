@@ -83,7 +83,7 @@ model_path = ""
 mmproj_path = ""
 chat_format = "mtmd"
 # llama_cpp: model_path is a GGUF and mmproj_path is required.
-# gemini: set api_key_env; api_model defaults to gemini-2.5-flash-lite; api_base_url is optional.
+# gemini: set api_key_env; api_model defaults to gemini-3.5-flash-lite; api_base_url is optional.
 # openai_compatible: set api_key_env, api_model; api_base_url is optional.
 api_key_env = ""
 api_model = ""
