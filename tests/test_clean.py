@@ -181,6 +181,7 @@ def test_clean_command_keeps_legacy_person_gate_opt_in(tmp_path, monkeypatch):
     config_path = root / "config.toml"
     config = config_path.read_text(encoding="utf-8")
     config = config.replace("person_check = false\n", "", 1)
+    config = config.replace("text_check = true\n", "text_check = false\n", 1)
     config_path.write_text(config, encoding="utf-8")
 
     class UnexpectedDetector:
