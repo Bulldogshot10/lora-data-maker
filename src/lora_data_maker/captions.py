@@ -256,18 +256,6 @@ def parse_vlm_fields(raw_caption: str) -> list[str]:
     if not lines:
         raise VlmCaptionerError("VLM caption is empty")
 
-    structured = any(
-        re.match(
-            r"^(?:pose|clothing|expression|background)\s*:",
-            line,
-            re.IGNORECASE,
-        )
-        for line in lines
-    )
-    if not structured:
-        cleaned = clean_vlm_caption(value)
-        return [cleaned] if cleaned else []
-
     if len(lines) != len(_VLM_FIELDS):
         raise VlmCaptionerError(
             "VLM caption must contain exactly four non-empty fields"
