@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterable
 
-from .caption_api import GeminiVlmCaptioner, OpenAICompatibleVlmCaptioner
+from .caption_api import API_VLM_PROMPT, GeminiVlmCaptioner, OpenAICompatibleVlmCaptioner
 from .caption_vlm import (
     DEFAULT_VLM_PROMPT,
     Captioner,
@@ -175,7 +175,7 @@ def caption_config_from_dict(
         mmproj_path=mmproj_path,
         runtime=vlm_runtime,
         chat_format=vlm_chat_format,
-        prompt=string_field("prompt", DEFAULT_VLM_PROMPT),
+        prompt=(API_VLM_PROMPT if vlm_runtime in {"gemini", "openai_compatible"} else string_field("prompt", DEFAULT_VLM_PROMPT)),
         max_tokens=int_field("max_tokens", 64),
         temperature=float_field("temperature", 0.1),
         top_p=float_field("top_p", 0.95),
