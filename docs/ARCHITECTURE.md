@@ -17,14 +17,10 @@ deduplicate
 quality filter
   ↓
 process / crop / resize
-  ↓
-tag
-  ↓
-tag filtering
-  ↓
-subject / trigger injection
-  ↓
-caption write
+  ├──→ tag → tag filtering → structured metadata
+  │
+  └──→ caption backend → cleanup → subject / trigger injection → .txt
+                   (deterministic or local VLM)
   ↓
 export
   ↓
