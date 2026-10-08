@@ -61,17 +61,7 @@ def test_gemini_caption_uses_fixed_prompt_and_inline_image(monkeypatch, tmp_path
     image = tmp_path / "image.jpg"
     Image.new("RGB", (16, 16), "white").save(image)
 
-    runtime = GeminiVlmCaptioner(
-        VlmConfig(
-            runtime="gemini",
-            api_key_env="TEST_GEMINI_KEY",
-            api_model="gemini-test",
-            api_base_url="https://example.test/v1beta",
-        )
-    )
     monkeypatch.setenv("TEST_GEMINI_KEY", "secret")
-    runtime.close()
-
     runtime = GeminiVlmCaptioner(
         VlmConfig(
             runtime="gemini",
