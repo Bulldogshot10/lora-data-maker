@@ -348,6 +348,61 @@ def test_caption_manifest_fails_without_deterministic_fallback(tmp_path, monkeyp
     assert not (root / "work" / "captions" / f"{image.image_id}.txt").exists()
 
 
+def test_caption_manifest_clears_stale_vlm_caption_after_failure(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    manifest = ProjectManifest(
+        project_name="julia-set",
+        subject="julia",
+        trigger="julia",
+    )
+    image = ImageRecord(
+        path="raw/001.jpg",
+        status="captioned",
+        tags=["booru", "blue_eyes"],
+        processed_path="work/processed/001.jpg",
+        caption_path="work/captions/001.txt",
+    )
+    manifest.add_image(image)
+
+    processed = root / image.processed_path
+    processed.parent.mkdir(parents=True, exist_ok=True)
+    processed.write_bytes(b"processed-image")
+    stale = root / image.caption_path
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("julia, stale caption\n", encoding="utf-8")
+
+    class FailingCaptioner:
+        def caption(self, image_path):
+            raise VlmCaptionerError("boom")
+        def close(self):
+            pass
+
+    config = CaptionConfig(
+        backend="vlm",
+        vlm=VlmConfig(
+            model_path="model.gguf",
+            mmproj_path="mmproj.gguf",
+        ),
+    )
+    monkeypatch.setattr(
+        "lora_data_maker.captions.load_clip_tokenizer",
+        lambda: FakeClipTokenizer(),
+    )
+
+    summary = caption_manifest(
+        manifest,
+        root=root,
+        output_dir=root / "work" / "captions",
+        config=config,
+        captioner=FailingCaptioner(),
+    )
+
+    assert summary.failed == 1
+    assert image.status == "processed"
+    assert image.caption_path is None
+    assert not stale.exists()
+
+
 def test_caption_manifest_rejects_budget_that_cannot_preserve_trigger(tmp_path):
     root = tmp_path / "project"
     manifest = ProjectManifest(
