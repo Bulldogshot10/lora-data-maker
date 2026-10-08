@@ -31,6 +31,21 @@ from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
 from .scrapers.base import ScraperCancelledError
 from .taggers import build_tagger, clean_tag_manifest, resolve_tagger_preset, tag_manifest
 
+
+def _api_runtime_settings(runtime: str, base_url: str = "") -> tuple[str, str]:
+    selected = runtime.strip().lower()
+    if selected == "gemini":
+        return (
+            "GEMINI_API_KEY",
+            (base_url.strip() or "https://generativelanguage.googleapis.com/v1beta").rstrip("/"),
+        )
+    if selected == "openai_compatible":
+        return (
+            "OPENAI_API_KEY",
+            (base_url.strip() or "https://api.openai.com/v1").rstrip("/"),
+        )
+    raise ValueError("unsupported API VLM runtime")
+
 HTML = r"""
 <!doctype html>
 <html lang="en">
@@ -1503,6 +1518,46 @@ async function saveSettings(){
     return false;
   }
 }
+async function setVlmApiKey(){
+  const runtime=$("caption_runtime").value;
+  if(runtime!=="gemini"&&runtime!=="openai_compatible")return;
+  const key=$("caption_api_key").value.trim();
+  if(!key){
+    toast("paste an API key first.","bad");
+    return;
+  }
+  try{
+    const d=await api("/api/vlm/api-key",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({runtime:runtime,api_key:key})
+    });
+    $("caption_api_key").value="";
+    $("caption_api_key_status").textContent="API key loaded into "+d.env+" in the WebUI server process";
+    await loadVlmModels();
+    toast("API key loaded","ok");
+  }catch(e){
+    $("caption_api_key_status").textContent=e.message;
+    toast(e.message,"bad");
+  }
+}
+async function clearVlmApiKey(){
+  const runtime=$("caption_runtime").value;
+  if(runtime!=="gemini"&&runtime!=="openai_compatible")return;
+  try{
+    const d=await api("/api/vlm/api-key",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({runtime:runtime,api_key:""})
+    });
+    $("caption_api_key").value="";
+    $("caption_api_key_status").textContent="API key cleared from "+d.env;
+    $("caption_api_model").innerHTML='<option value="">select model…</option>';
+    toast("API key cleared","ok");
+  }catch(e){
+    toast(e.message,"bad");
+  }
+}
 function schedulePoll(id){
   if(appState.pollTimer)clearTimeout(appState.pollTimer);
   appState.pollTimer=setTimeout(()=>poll(id),850);
@@ -2115,6 +2170,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     "api_key_env": "",
                     "api_model": "",
                     "api_base_url": "",
+                    "api_key_set": False,
                     "max_tokens": 77,
                 },
                 "scraper": {
@@ -2203,6 +2259,16 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 "api_base_url": str(caption.get("vlm", {}).get("api_base_url", ""))
                 if isinstance(caption.get("vlm"), dict)
                 else "",
+                "api_key_set": (
+                    bool(os.environ.get(
+                        "GEMINI_API_KEY"
+                        if str(caption.get("vlm", {}).get("runtime", "")).strip().lower() == "gemini"
+                        else "OPENAI_API_KEY"
+                    ).strip())
+                    if str(caption.get("vlm", {}).get("runtime", "")).strip().lower()
+                    in {"gemini", "openai_compatible"}
+                    else False
+                ),
                 "max_tokens": int(caption.get("max_tokens", 77)),
             },
             "scraper": {
@@ -2270,6 +2336,120 @@ def create_app(root: Path | str = ".") -> FastAPI:
             "trigger": p.manifest.trigger,
             "path": target.as_posix(),
         }
+
+    @app.post("/api/vlm/api-key")
+    def set_vlm_api_key(payload: dict[str, Any]):
+        runtime = str(payload.get("runtime", "")).strip().lower()
+        if runtime not in {"gemini", "openai_compatible"}:
+            raise HTTPException(400, "API key can only be set for an API VLM runtime")
+        env_name, _ = _api_runtime_settings(runtime)
+        value = str(payload.get("api_key", "")).strip()
+        if value:
+            os.environ[env_name] = value
+        else:
+            os.environ.pop(env_name, None)
+        return {"ok": True, "runtime": runtime, "env": env_name, "key_set": bool(value)}
+
+
+    @app.get("/api/vlm/models")
+    def vlm_models(runtime: str = "gemini", base_url: str = ""):
+        selected = runtime.strip().lower()
+        if selected not in {"gemini", "openai_compatible"}:
+            raise HTTPException(400, "unsupported API VLM runtime")
+
+        env_name, api_base = _api_runtime_settings(selected, base_url)
+        api_key = os.environ.get(env_name, "").strip()
+        if not api_key:
+            raise HTTPException(
+                400,
+                f"{env_name} is not set; enter the API key in WebUI first",
+            )
+
+        try:
+            import requests
+        except ImportError as exc:
+            raise HTTPException(
+                500,
+                "the requests package is required for API VLM runtimes",
+            ) from exc
+
+        try:
+            if selected == "gemini":
+                models: list[dict[str, str]] = []
+                page_token = ""
+                for _ in range(10):
+                    params = {"pageSize": "1000"}
+                    if page_token:
+                        params["pageToken"] = page_token
+                    response = requests.get(
+                        f"{api_base}/models",
+                        headers={"x-goog-api-key": api_key},
+                        params=params,
+                        timeout=30,
+                    )
+                    if not response.ok:
+                        detail = response.text.strip()[:500] or f"HTTP {response.status_code}"
+                        raise HTTPException(502, f"Gemini model list failed: {detail}")
+                    data = response.json()
+                    for item in data.get("models", []):
+                        if not isinstance(item, dict):
+                            continue
+                        methods = item.get("supportedGenerationMethods", [])
+                        if "generateContent" not in methods:
+                            continue
+                        name = str(item.get("name", "")).strip()
+                        if not name:
+                            continue
+                        model_id = name.removeprefix("models/")
+                        models.append({
+                            "id": model_id,
+                            "label": str(item.get("displayName") or model_id),
+                        })
+                    page_token = str(data.get("nextPageToken", "") or "").strip()
+                    if not page_token:
+                        break
+                models.sort(key=lambda item: item["label"].lower())
+                return {
+                    "runtime": selected,
+                    "env": env_name,
+                    "key_set": True,
+                    "models": models,
+                }
+
+            models = []
+            response = requests.get(
+                f"{api_base}/models"
+                if api_base.endswith("/v1") or api_base.endswith("/v1/")
+                else f"{api_base}/models",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=30,
+            )
+            if not response.ok:
+                detail = response.text.strip()[:500] or f"HTTP {response.status_code}"
+                raise HTTPException(502, f"OpenAI-compatible model list failed: {detail}")
+            data = response.json()
+            raw_models = data.get("data", data.get("models", []))
+            if not isinstance(raw_models, list):
+                raise HTTPException(502, "OpenAI-compatible model list has an invalid format")
+            for item in raw_models:
+                if isinstance(item, dict):
+                    model_id = str(item.get("id") or item.get("name") or "").strip()
+                else:
+                    model_id = str(item).strip()
+                if model_id:
+                    models.append({"id": model_id, "label": model_id})
+            models.sort(key=lambda item: item["label"].lower())
+            return {
+                "runtime": selected,
+                "env": env_name,
+                "key_set": True,
+                "models": models,
+            }
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(502, f"could not fetch VLM models: {exc}") from exc
+
 
     @app.post("/api/settings")
     def settings(payload: dict[str, Any]):
