@@ -93,6 +93,7 @@ def _load_chat_handler(
     *,
     chat_format: str,
     mmproj_path: str,
+    use_gpu: bool,
 ) -> Any:
     try:
         from llama_cpp import llama_chat_format
@@ -115,7 +116,13 @@ def _load_chat_handler(
         )
 
     try:
-        return handler_class(clip_model_path=mmproj_path, verbose=False)
+        kwargs: dict[str, Any] = {
+            "clip_model_path": mmproj_path,
+            "verbose": False,
+        }
+        if chat_format in {"mtmd", "gemma4"}:
+            kwargs["use_gpu"] = use_gpu
+        return handler_class(**kwargs)
     except Exception as exc:
         raise VlmCaptionerError(
             f"could not initialize {chat_format} multimodal projector: {exc}"
@@ -148,6 +155,7 @@ class LlamaCppVlmCaptioner:
         handler = _load_chat_handler(
             chat_format=config.chat_format,
             mmproj_path=str(mmproj_path),
+            use_gpu=config.n_gpu_layers != 0,
         )
 
         try:
