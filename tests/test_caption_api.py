@@ -44,7 +44,7 @@ def test_gemini_caption_uses_fixed_prompt_and_inline_image(monkeypatch, tmp_path
                             "parts": [
                                 {
                                     "text": (
-                                        "standing straight-on, white top, neutral, indoors with soft lighting"
+                                        "pose: standing straight-on\nclothing: white top\nexpression: neutral\nbackground: indoors with soft lighting"
                                     )
                                 }
                             ]
@@ -72,7 +72,7 @@ def test_gemini_caption_uses_fixed_prompt_and_inline_image(monkeypatch, tmp_path
     finally:
         runtime.close()
 
-    assert raw.startswith("standing straight-on")
+    assert raw.startswith("pose: standing")
     url, kwargs = FakeSession.payloads[-1]
     assert url == "https://example.test/v1beta/models/gemini-test:generateContent"
     assert kwargs["headers"]["x-goog-api-key"] == "secret"
@@ -91,7 +91,7 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
                     {
                         "message": {
                             "content": (
-                                "sitting straight-on, black dress, smiling, indoors with soft lighting"
+                                "pose: sitting straight-on\nclothing: black dress\nexpression: smiling\nbackground: indoors with soft lighting"
                             )
                         }
                     }
@@ -117,7 +117,7 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
     finally:
         runtime.close()
 
-    assert raw.startswith("sitting straight-on")
+    assert raw.startswith("pose: sitting")
     url, kwargs = FakeSession.payloads[-1]
     assert url == "https://example.test/v1/chat/completions"
     assert kwargs["headers"]["Authorization"] == "Bearer secret"
@@ -140,7 +140,7 @@ def test_api_vlm_caption_injects_trigger_from_four_fields(monkeypatch, tmp_path)
                             "parts": [
                                 {
                                     "text": (
-                                        "standing straight-on, wearing a white spandex top, neutral expression, indoors with soft lighting"
+                                        "pose: standing straight-on\nclothing: white spandex top\nexpression: neutral\nbackground: indoor soft lighting"
                                     )
                                 }
                             ]
