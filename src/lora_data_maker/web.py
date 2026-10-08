@@ -1061,9 +1061,10 @@ function updateBusyUI(){
 }
 function applySettings(s,force=false){
   if(appState.settingsDirty&&!force)return;
-  $("name").value=s.project.name;
-  $("subject").value=s.project.subject;
-  $("trigger").value=s.project.trigger;
+  const project=s.project||{name:"",subject:"",trigger:""};
+  $("name").value=project.name||"";
+  $("subject").value=project.subject||"";
+  $("trigger").value=project.trigger||"";
   $("preset").value=s.tagger.preset;
   $("mode").value=s.processing.mode;
   $("width").value=s.processing.width;
@@ -1186,10 +1187,16 @@ function renderGallery(images){
 }
 function updateProjectHeader(s){
   const project=s.project||{};
-  $("topbar-project").textContent=project.name||"dataset";
-  $("hero-name").textContent=project.name||"dataset";
-  $("hero-description").textContent=(project.subject||"")+" · trigger: "+(project.trigger||"");
-  $("collect-project").textContent=project.name||"dataset";
+  const hasProject=!!s.project;
+  $("topbar-project").textContent=project.name||"no dataset selected";
+  $("hero-name").textContent=project.name||"create your first dataset";
+  $("hero-description").textContent=hasProject
+    ? (project.subject||"")+" · trigger: "+(project.trigger||"")
+    : "use + new dataset in the sidebar to get started.";
+  $("collect-project").textContent=project.name||"no dataset";
+  $("status-context").textContent=hasProject
+    ? s.project_count+" dataset"+(s.project_count===1?"":"s")+" in workspace"
+    : "no active dataset";
 }
 function setView(view,push=true){
   const allowed=new Set(["overview","collect","prepare","settings"]);
@@ -1234,6 +1241,10 @@ async function refresh(forceSettings=false){
   }
 }
 async function saveSettings(){
+  if(!appState.activeProjectPath){
+    toast("create or open a dataset first.","bad");
+    return false;
+  }
   if(isBusyOnActiveProject()){
     toast("this dataset is busy. wait for the current job to finish.","bad");
     return false;
@@ -1352,6 +1363,10 @@ async function deleteImage(id,path){
   }
 }
 async function runStage(stage){
+  if(!appState.activeProjectPath){
+    toast("create or open a dataset first.","bad");
+    return;
+  }
   if(isBusyOnActiveProject()){
     toast("this dataset is already running a job.","bad");
     return;
@@ -1372,7 +1387,7 @@ async function runStage(stage){
   }
 }
 function markDirty(){
-  if(isBusyOnActiveProject())return;
+  if(!appState.activeProjectPath||isBusyOnActiveProject())return;
   appState.settingsDirty=true;
   updateDirtyUI();
 }
@@ -1484,6 +1499,10 @@ function finishConfirm(value){
   if(resolve)resolve(value);
 }
 async function upload(){
+  if(!appState.activeProjectPath){
+    toast("create or open a dataset first.","bad");
+    return;
+  }
   if(isBusyOnActiveProject()){
     toast("this dataset is busy. wait for the current job to finish.","bad");
     return;
