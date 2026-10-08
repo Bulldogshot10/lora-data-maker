@@ -148,16 +148,12 @@ class ImageDownloader:
 
                 temp_path.replace(output_path)
 
-                if cancel_event is not None and cancel_event.is_set():
-                    raise ScraperCancelledError("scrape cancelled")
-
                 if archive is not None:
                     archive.add(url)
 
                 if self.delay:
                     if cancel_event is not None:
-                        if cancel_event.wait(self.delay):
-                            raise ScraperCancelledError("scrape cancelled")
+                        cancel_event.wait(self.delay)
                     else:
                         time.sleep(self.delay)
 
