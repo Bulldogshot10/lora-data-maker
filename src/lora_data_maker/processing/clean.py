@@ -66,7 +66,7 @@ def clean_manifest(
                 min_subject_area=min_subject_area,
                 min_subject_visibility=min_subject_visibility,
             )
-        except (OSError, ValueError, RuntimeError):
+        except OSError:
             image.set_status(
                 "rejected",
                 reason="quality check could not read image",
