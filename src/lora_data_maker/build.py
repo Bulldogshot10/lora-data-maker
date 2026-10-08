@@ -135,6 +135,23 @@ def run_build(
         skip=skip,
     )
 
+    caption_config = config.get("caption", {})
+    if not isinstance(caption_config, dict):
+        raise ValueError("config section [caption] must be a table")
+    caption_backend = str(
+        caption_config.get("backend", "deterministic")
+    ).strip().lower()
+    if caption_backend not in {"deterministic", "vlm"}:
+        raise ValueError(
+            "caption.backend must be 'deterministic' or 'vlm'"
+        )
+
+    if caption_backend == "vlm":
+        selected = tuple(
+            stage for stage in selected
+            if stage not in {"tag", "clean-tags"}
+        )
+
     commands = {
         "scrape": command_scrape,
         "validate": command_validate,
