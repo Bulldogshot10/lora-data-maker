@@ -193,3 +193,27 @@ def test_clean_command_keeps_legacy_person_gate_opt_in(tmp_path, monkeypatch):
     )
 
     assert command_clean(Namespace(path=str(root))) == 0
+
+
+def test_clean_manifest_rejects_pillow_image_decode_failure(tmp_path, monkeypatch):
+    from lora_data_maker.processing import clean as clean_module
+    from PIL.Image import DecompressionBombError
+
+    manifest = _manifest_for("raw/bad.png")
+
+    def broken_quality(*args, **kwargs):
+        raise DecompressionBombError("image too large")
+
+    monkeypatch.setattr(clean_module, "evaluate_quality", broken_quality)
+
+    summary = clean_module.clean_manifest(
+        manifest,
+        root=tmp_path,
+        exact=False,
+        perceptual=False,
+    )
+
+    record = manifest.images[next(iter(manifest.images))]
+    assert summary.quality_rejected == 1
+    assert record.status == "rejected"
+    assert record.rejection_reason == "quality check could not read image"
