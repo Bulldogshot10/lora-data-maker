@@ -7,7 +7,7 @@ from typing import Sequence
 
 from . import __version__
 from .build import BUILD_STAGES, run_build
-from .captions import CaptionConfig, caption_manifest
+from .captions import caption_config_from_dict, caption_manifest
 from .export import export_manifest, kohya_folder_name, safe_component
 from .config import load_config, write_default_config
 from .dataset import DatasetProject
@@ -751,26 +751,7 @@ def command_caption(args: argparse.Namespace) -> int:
     if not isinstance(caption_config, dict):
         raise LoraDataMakerError("config section [caption] must be a table")
 
-    separator = caption_config.get("separator", ", ")
-    subject_position = caption_config.get("subject_position", "first")
-    trigger_from_subject = caption_config.get("trigger_from_subject", True)
-
-    if not isinstance(separator, str):
-        raise LoraDataMakerError("config field caption.separator must be a string")
-    if not isinstance(subject_position, str):
-        raise LoraDataMakerError(
-            "config field caption.subject_position must be a string"
-        )
-    if not isinstance(trigger_from_subject, bool):
-        raise LoraDataMakerError(
-            "config field caption.trigger_from_subject must be a boolean"
-        )
-
-    settings = CaptionConfig(
-        separator=separator,
-        subject_position=subject_position,
-        trigger_from_subject=trigger_from_subject,
-    )
+    settings = caption_config_from_dict(caption_config)
 
     summary = caption_manifest(
         project.manifest,
@@ -785,14 +766,16 @@ def command_caption(args: argparse.Namespace) -> int:
             "last_caption_captioned": summary.captioned,
             "last_caption_failed": summary.failed,
             "last_caption_skipped": summary.skipped,
-            "last_caption_separator": separator,
+            "last_caption_fallback": summary.fallback,
+            "last_caption_backend": settings.backend,
+            "last_caption_separator": settings.separator,
             "last_caption_subject": project.manifest.subject,
             "last_caption_trigger": (
                 project.manifest.subject
-                if trigger_from_subject
+                if settings.trigger_from_subject
                 else project.manifest.trigger
             ),
-            "last_caption_trigger_from_subject": trigger_from_subject,
+            "last_caption_trigger_from_subject": settings.trigger_from_subject,
         }
     )
     project.save()
@@ -800,11 +783,12 @@ def command_caption(args: argparse.Namespace) -> int:
     print(f"scanned: {summary.scanned}")
     print(f"captioned: {summary.captioned}")
     print(f"failed: {summary.failed}")
+    print(f"fallback: {summary.fallback}")
     print(f"skipped: {summary.skipped}")
+    print(f"backend: {settings.backend}")
     print(f"captions: {paths.work / 'captions'}")
 
     return 0 if summary.captioned or summary.skipped else 1
-
 
 
 def command_export(args: argparse.Namespace) -> int:
