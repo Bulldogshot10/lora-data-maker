@@ -53,10 +53,10 @@ class VlmConfig:
     seed: int = 42
 
     def __post_init__(self) -> None:
-        if self.chat_format not in {"mtmd", "qwen2.5-vl", "gemma4"}:
+        if self.chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5"}:
             raise ValueError(
                 "caption.vlm.chat_format must be one of "
-                "'mtmd', 'qwen2.5-vl', or 'gemma4'"
+                "'mtmd', 'qwen2.5-vl', 'gemma4', or 'qwen3.5'"
             )
 
         has_model = bool(self.model_path.strip())
@@ -111,15 +111,28 @@ def _load_chat_handler(
         ) from exc
 
     handler_map = {
-        "mtmd": getattr(llama_chat_format, "MTMDChatHandler", None),
-        "qwen2.5-vl": getattr(llama_chat_format, "Qwen25VLChatHandler", None),
-        "gemma4": getattr(llama_chat_format, "Gemma4ChatHandler", None),
+        "mtmd": (
+            getattr(llama_chat_format, "MTMDChatHandler", None),
+            "MTMDChatHandler",
+        ),
+        "qwen3.5": (
+            getattr(llama_chat_format, "MTMDChatHandler", None),
+            "MTMDChatHandler",
+        ),
+        "qwen2.5-vl": (
+            getattr(llama_chat_format, "Qwen25VLChatHandler", None),
+            "Qwen25VLChatHandler",
+        ),
+        "gemma4": (
+            getattr(llama_chat_format, "Gemma4ChatHandler", None),
+            "Gemma4ChatHandler",
+        ),
     }
-    handler_class = handler_map.get(chat_format)
+    handler_class, handler_name = handler_map[chat_format]
     if handler_class is None:
         raise VlmCaptionerError(
             f"installed llama-cpp-python does not provide the "
-            f"{chat_format!r} multimodal chat handler"
+            f"{handler_name} required by chat format {chat_format!r}"
         )
 
     try:
