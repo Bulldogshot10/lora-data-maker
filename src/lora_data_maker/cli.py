@@ -19,6 +19,7 @@ from .pack import pack_dataset
 from .paths import ProjectPaths, find_project_root, manifest_path
 from .reconcile import reconcile_raw
 from .processing import (
+from .processing.text import PPOCRTextDetector
     ProcessConfig,
     YOLOXNanoPersonDetector,
     YuNetFaceDetector,
@@ -470,7 +471,9 @@ def command_clean(args: argparse.Namespace) -> int:
             )
 
     person_check = bool(quality_config.get("person_check", False))
+    text_check = bool(quality_config.get("text_check", True))
     person_detector = None
+    text_detector = None
     has_quality_candidates = any(
         image.status == "validated"
         for image in project.manifest.images.values()
@@ -486,6 +489,21 @@ def command_clean(args: argparse.Namespace) -> int:
         except (RuntimeError, ValueError) as exc:
             raise LoraDataMakerError(str(exc)) from exc
         print("person detector: YOLOX-Nano ONNX")
+
+    if text_check and has_quality_candidates:
+        try:
+            text_detector = PPOCRTextDetector(
+                cache_dir=paths.cache / "text",
+                confidence_threshold=float(
+                    quality_config.get("text_confidence", 0.5)
+                ),
+                min_area_ratio=float(
+                    quality_config.get("text_min_area_ratio", 0.0004)
+                ),
+            )
+        except (RuntimeError, ValueError) as exc:
+            raise LoraDataMakerError(str(exc)) from exc
+        print("text detector: PP-OCRv3 ONNX")
 
     summary = clean_manifest(
         project.manifest,
@@ -508,6 +526,7 @@ def command_clean(args: argparse.Namespace) -> int:
         min_subject_visibility=float(
             quality_config.get("min_subject_visibility", 0.35)
         ),
+        text_detector=text_detector,
     )
 
     project.manifest.source.update(
@@ -528,6 +547,13 @@ def command_clean(args: argparse.Namespace) -> int:
             ),
             "last_clean_min_subject_visibility": float(
                 quality_config.get("min_subject_visibility", 0.35)
+            ),
+            "last_clean_text_check": text_check,
+            "last_clean_text_confidence": float(
+                quality_config.get("text_confidence", 0.5)
+            ),
+            "last_clean_text_min_area_ratio": float(
+                quality_config.get("text_min_area_ratio", 0.0004)
             ),
             "last_clean_kept": summary.kept,
         }
