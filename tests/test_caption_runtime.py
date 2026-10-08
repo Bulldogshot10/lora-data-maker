@@ -111,6 +111,7 @@ def test_caption_manifest_routes_onnx_vlm_runtime(tmp_path, monkeypatch):
             assert Path(image_path).is_file()
             return (
                 "pose: standing\n"
+                "angle camera: straight-on\n"
                 "clothing: white top\n"
                 "expression: neutral\n"
                 "background: indoors"
@@ -243,6 +244,7 @@ def test_caption_manifest_loads_owned_vlm_runtime_once(tmp_path, monkeypatch):
             assert Path(image_path).is_file()
             return (
                 "pose: standing with arms raised\n"
+                "angle camera: straight-on\n"
                 "clothing: white top\n"
                 "expression: neutral\n"
                 "background: indoors"
@@ -357,7 +359,7 @@ def test_onnx_caption_end_to_end_uses_prefill_and_kv_cache(tmp_path):
         eos_token_id = 49279
 
         def decode(self, token_ids, skip_special_tokens=True):
-            return "pose: standing\nclothing: white top\nexpression: neutral\nbackground: indoors"
+            return "pose: standing\nangle camera: straight-on\nclothing: white top\nexpression: neutral\nbackground: indoors"
 
     class FakeProcessor:
         tokenizer = FakeTokenizer()
