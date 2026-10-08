@@ -60,6 +60,28 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert updated["processing"]["height"] == 512
     assert updated["processing"]["quality"] == 92
 
+    assert updated["caption"]["max_tokens"] == 77
+
+    caption_budget = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "new_person",
+            "trigger": "new_person",
+            "preset": "joytag",
+            "mode": "cover",
+            "width": 768,
+            "height": 512,
+            "quality": 92,
+            "caption_max_tokens": 64,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert caption_budget.status_code == 200
+    budget_state = client.get("/api/state").json()
+    assert budget_state["caption"]["max_tokens"] == 64
+
     joytag = client.post(
         "/api/settings",
         json={
@@ -96,6 +118,8 @@ def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: P
     assert 'aria-live="polite"' in html
     assert 'id="project_explorer"' in html
     assert 'id="progress-fill"' in html
+    assert 'id="caption_max_tokens"' in html
+    assert 'max="77"' in html
     assert 'id="preview-modal"' in html
     assert 'rel="icon" href="/favicon.ico"' in html
     assert 'sizes="32x32"' in html
