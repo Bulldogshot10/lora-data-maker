@@ -293,11 +293,12 @@ Install the WebUI and tagger extras:
 
     pip install -e ".[web,tagger]"
 
-From an initialized dataset project:
+Start the WebUI from a dataset workspace:
 
-    lora-data-maker web --path .
+    mkdir -p ~/datasets
+    lora-data-maker web --path ~/datasets
 
-Then open http://127.0.0.1:8787 in the browser.
+Then open http://127.0.0.1:8787 in the browser. The WebUI can create a new dataset project from the workspace, open existing projects, and switch between them without using the CLI init command.
 
 The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection, validation, staging, tagging, tag cleaning, caption generation, Kohya export, ZIP packaging, gallery preview, manual image removal for cherry-picking, scraper cancellation, and ZIP download.
 
