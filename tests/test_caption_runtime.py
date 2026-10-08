@@ -301,3 +301,136 @@ def test_onnx_position_ids_match_transformers_cache_semantics():
         runtime._position_ids(mask, last_only=True),
         np.array([[4]], dtype=np.int64),
     )
+
+
+def test_onnx_caption_end_to_end_uses_prefill_and_kv_cache(tmp_path):
+    import numpy as np
+    from PIL import Image
+
+    from lora_data_maker.caption_onnx import SmolVlmOnnxCaptioner
+    from lora_data_maker.caption_vlm import VlmConfig
+
+    class Meta:
+        def __init__(self, name, type_, shape):
+            self.name = name
+            self.type = type_
+            self.shape = shape
+
+    class FakeTokenizer:
+        eos_token_id = 49279
+
+        def decode(self, token_ids, skip_special_tokens=True):
+            return "pose: standing\nclothing: white top\nexpression: neutral\nbackground: indoors"
+
+    class FakeProcessor:
+        tokenizer = FakeTokenizer()
+
+        def apply_chat_template(self, messages, **kwargs):
+            assert messages[0]["content"][0]["image"] is image
+            assert kwargs["add_generation_prompt"] is True
+            assert kwargs["tokenize"] is True
+            assert kwargs["return_dict"] is True
+            assert kwargs["return_tensors"] == "np"
+            return {
+                "input_ids": np.array([[101, 49190, 49190, 102]], dtype=np.int64),
+                "attention_mask": np.ones((1, 4), dtype=np.int64),
+                "pixel_values": np.ones((1, 1, 3, 16, 16), dtype=np.float32),
+                "pixel_attention_mask": np.ones((1, 1, 16, 16), dtype=np.bool_),
+            }
+
+    class FakeVision:
+        def __init__(self):
+            self._inputs = [
+                Meta("pixel_values", "tensor(float)", [1, "num_patches", 3, 16, 16]),
+                Meta("pixel_attention_mask", "tensor(bool)", [1, "num_patches", 16, 16]),
+            ]
+            self._outputs = [Meta("image_features", "tensor(float)", [1, 2, 4])]
+
+        def get_inputs(self):
+            return self._inputs
+
+        def get_outputs(self):
+            return self._outputs
+
+        def run(self, output_names, feeds):
+            assert feeds["pixel_values"].shape == (1, 1, 3, 16, 16)
+            return [np.ones((1, 2, 4), dtype=np.float32)]
+
+    class FakeEmbed:
+        def get_inputs(self):
+            return [Meta("input_ids", "tensor(int64)", ["batch", "sequence"])]
+
+        def get_outputs(self):
+            return [Meta("inputs_embeds", "tensor(float)", ["batch", "sequence", 4])]
+
+        def run(self, output_names, feeds):
+            ids = feeds["input_ids"]
+            return [np.zeros((ids.shape[0], ids.shape[1], 4), dtype=np.float32)]
+
+    class FakeDecoder:
+        def __init__(self):
+            self.calls = []
+            self._inputs = [
+                Meta("inputs_embeds", "tensor(float16)", ["batch", "sequence", 4]),
+                Meta("attention_mask", "tensor(int64)", ["batch", "total_sequence"]),
+                Meta("position_ids", "tensor(int64)", ["batch", "sequence"]),
+                Meta("use_cache_branch", "tensor(bool)", []),
+                Meta("num_logits_to_keep", "tensor(int64)", []),
+                Meta("past_key_values.0.key", "tensor(float16)", ["batch", 1, "past_sequence", 2]),
+                Meta("past_key_values.0.value", "tensor(float16)", ["batch", 1, "past_sequence", 2]),
+            ]
+            self._outputs = [
+                Meta("logits", "tensor(float32)", ["batch", "sequence", 49280]),
+                Meta("present.0.key", "tensor(float16)", ["batch", 1, "present_sequence", 2]),
+                Meta("present.0.value", "tensor(float16)", ["batch", 1, "present_sequence", 2]),
+            ]
+
+        def get_inputs(self):
+            return self._inputs
+
+        def get_outputs(self):
+            return self._outputs
+
+        def run(self, output_names, feeds):
+            self.calls.append(feeds)
+            logits = np.full((1, 1, 49280), -1000.0, dtype=np.float32)
+            token = 123 if len(self.calls) == 1 else 49279
+            logits[0, 0, token] = 1000.0
+            cache_len = 4 if len(self.calls) == 1 else 5
+            present = np.zeros((1, 1, cache_len, 2), dtype=np.float16)
+            return [logits, present, present.copy()]
+
+    root = tmp_path
+    image_path = root / "image.jpg"
+    image_path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (16, 16), "white").save(image_path)
+
+    image = Image.open(image_path).convert("RGB")
+    runtime = SmolVlmOnnxCaptioner.__new__(SmolVlmOnnxCaptioner)
+    runtime.config = VlmConfig(runtime="onnx", max_tokens=4)
+    runtime._processor = FakeProcessor()
+    runtime._prompt = "caption"
+    runtime._max_new_tokens = 4
+    runtime._vision = FakeVision()
+    runtime._embed = FakeEmbed()
+    runtime._decoder = FakeDecoder()
+    runtime._vision_inputs = _session_inputs(runtime._vision)
+    runtime._decoder_inputs = _session_inputs(runtime._decoder)
+    runtime._decoder_outputs = _session_outputs(runtime._decoder)
+    runtime._embed_input_name = "input_ids"
+    runtime._embed_output_name = "inputs_embeds"
+    runtime._image_token_id = 49190
+    runtime._eos_token_id = 49279
+
+    try:
+        caption = runtime.caption(image_path)
+    finally:
+        image.close()
+
+    assert caption.startswith("pose: standing")
+    assert len(runtime._decoder.calls) == 2
+    assert runtime._decoder.calls[0]["use_cache_branch"].item() is False
+    assert runtime._decoder.calls[1]["use_cache_branch"].item() is True
+    assert runtime._decoder.calls[0]["inputs_embeds"].shape == (1, 4, 4)
+    assert runtime._decoder.calls[1]["inputs_embeds"].shape == (1, 1, 4)
+    assert runtime._decoder.calls[1]["attention_mask"].shape == (1, 5)
