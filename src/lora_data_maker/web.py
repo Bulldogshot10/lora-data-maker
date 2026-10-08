@@ -1165,7 +1165,9 @@ function applySettings(s,force=false){
   $("caption_chat_format").value=s.caption.chat_format||"mtmd";
   $("caption_model_path").value=s.caption.model_path||"";
   $("caption_mmproj_path").value=s.caption.mmproj_path||"";
-  $("caption_model_status").textContent=s.caption.model_path?"configured: "+s.caption.model_path:"no model uploaded";
+  $("caption_model_status").textContent=s.caption.model_path
+    ? "configured: "+s.caption.model_path
+    : (s.caption.runtime==="onnx" ? "default: HuggingFaceTB/SmolVLM2-500M-Video-Instruct" : "no model uploaded");
   $("caption_mmproj_status").textContent=s.caption.mmproj_path?"configured: "+s.caption.mmproj_path:"no mmproj uploaded";
   syncCaptionRuntimeUI();
   $("caption_max_tokens").value=s.caption.max_tokens;
@@ -2267,8 +2269,8 @@ def create_app(root: Path | str = ".") -> FastAPI:
             caption_chat_format = "smolvlm"
         elif caption_chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5", "smolvlm"}:
             raise HTTPException(400, "unsupported VLM chat format")
-        if caption_backend == "vlm" and not caption_model_path:
-            raise HTTPException(400, "VLM model path is required")
+        if caption_backend == "vlm" and caption_runtime == "llama_cpp" and not caption_model_path:
+            raise HTTPException(400, "VLM model path is required for llama.cpp")
         if caption_backend == "vlm" and caption_runtime == "llama_cpp" and not caption_mmproj_path:
             raise HTTPException(400, "VLM mmproj path is required for llama.cpp")
 
