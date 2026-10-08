@@ -39,6 +39,21 @@ def test_caption_config_accepts_qwen35_chat_format(tmp_path):
     assert settings.vlm.chat_format == "qwen3.5"
 
 
+def test_caption_config_accepts_smolvlm_chat_format(tmp_path):
+    settings = caption_config_from_dict(
+        {
+            "backend": "vlm",
+            "vlm": {
+                "model_path": "models/model.gguf",
+                "mmproj_path": "models/mmproj.gguf",
+                "chat_format": "smolvlm",
+            },
+        },
+        root=tmp_path,
+    )
+    assert settings.vlm.chat_format == "smolvlm"
+
+
 def test_qwen35_handler_disables_thinking():
     seen = {}
 
