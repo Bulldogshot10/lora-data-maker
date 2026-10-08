@@ -2373,7 +2373,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 cc = cfg.get("caption", {})
                 if not isinstance(cc, dict):
                     raise RuntimeError("config section [caption] must be a table")
-                settings = caption_config_from_dict(cc)
+                settings = caption_config_from_dict(cc, root=root_path)
                 s = caption_manifest(
                     p.manifest,
                     root=root_path,
