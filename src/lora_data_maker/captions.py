@@ -193,7 +193,11 @@ def build_caption(
         ]
         normalized_tags.insert(0, resolved_trigger)
 
-    return settings.separator.join(normalized_tags)
+    return truncate_caption(
+        settings.separator.join(normalized_tags),
+        settings.max_tokens,
+        separator=settings.separator,
+    )
 
 
 _LEADING_NOISE = re.compile(
