@@ -14,6 +14,12 @@ from .caption_vlm import (
     VlmConfig,
     VlmCaptionerError,
 )
+from .clip_tokenizer import (
+    ClipTokenizerError,
+    count_clip_tokens,
+    load_clip_tokenizer,
+    pack_clip_caption,
+)
 from .paths import manifest_path
 from .taggers.filters import normalize_tag
 
@@ -243,20 +249,24 @@ _VLM_FIELD_RE = re.compile(
 )
 
 
-def parse_vlm_caption(raw_caption: str) -> str:
-    """Parse the strict four-field VLM response into one caption fragment."""
+def parse_vlm_fields(raw_caption: str) -> list[str]:
+    """Parse the strict four-field VLM response into ordered caption fields."""
     value = str(raw_caption).replace("\r\n", "\n").replace("\r", "\n").strip()
     lines = [line.strip() for line in value.split("\n") if line.strip()]
     if not lines:
         raise VlmCaptionerError("VLM caption is empty")
 
     structured = any(
-        re.match(r"^(?:pose|clothing|expression|background)\s*:", line, re.IGNORECASE)
+        re.match(
+            r"^(?:pose|clothing|expression|background)\s*:",
+            line,
+            re.IGNORECASE,
+        )
         for line in lines
     )
     if not structured:
-        # Keep custom VLM prompts compatible with the older freeform caption format.
-        return clean_vlm_caption(value)
+        cleaned = clean_vlm_caption(value)
+        return [cleaned] if cleaned else []
 
     if len(lines) != len(_VLM_FIELDS):
         raise VlmCaptionerError(
@@ -279,7 +289,12 @@ def parse_vlm_caption(raw_caption: str) -> str:
             )
         fields.append(phrase)
 
-    return ", ".join(fields)
+    return fields
+
+
+def parse_vlm_caption(raw_caption: str) -> str:
+    """Parse the VLM response into one ordered caption fragment."""
+    return ", ".join(parse_vlm_fields(raw_caption))
 
 
 def build_vlm_caption(
@@ -287,18 +302,41 @@ def build_vlm_caption(
     *,
     subject: str,
     trigger: str,
-    tags: Iterable[str],
     config: CaptionConfig,
+    tokenizer: object | None = None,
 ) -> str:
-    """Parse, clean, and combine VLM + tagger output into one bounded caption."""
-    return combine_caption_sources(
-        vlm_caption=parse_vlm_caption(raw_caption),
-        tags=tags,
+    """Build a VLM-only caption bounded by the exact SD1.x CLIP tokenizer."""
+    fields = parse_vlm_fields(raw_caption)
+    resolved_trigger = resolve_trigger(
         subject=subject,
         trigger=trigger,
-        config=config,
+        trigger_from_subject=config.trigger_from_subject,
     )
 
+    cleaned_fields: list[str] = []
+    for field_value in fields:
+        value = field_value
+        if resolved_trigger and value:
+            pattern = re.compile(
+                rf"(?<![A-Za-z0-9_]){re.escape(resolved_trigger)}(?![A-Za-z0-9_])",
+                re.IGNORECASE,
+            )
+            value = pattern.sub("", value)
+            value = re.sub(r"\s+", " ", value).strip(" ,.;:")
+        if value:
+            cleaned_fields.append(value)
+
+    parts: list[str] = []
+    if resolved_trigger:
+        parts.append(resolved_trigger)
+    parts.extend(cleaned_fields)
+
+    return pack_clip_caption(
+        parts,
+        config.max_tokens,
+        separator=config.separator,
+        tokenizer=tokenizer,
+    )
 
 def estimate_caption_tokens(text: str) -> int:
     """Estimate SD1.5 caption token usage without adding a tokenizer dependency."""
@@ -449,85 +487,104 @@ def caption_manifest(
     config: CaptionConfig | None = None,
     captioner: Captioner | None = None,
 ) -> CaptionSummary:
-    """Write deterministic or local-VLM captions for tagged/captioned records."""
+    """Write deterministic or local-VLM captions for eligible records."""
     root_path = Path(root).expanduser().resolve()
     caption_root = Path(output_dir).expanduser().resolve()
     settings = config or CaptionConfig()
 
+    eligible_statuses = (
+        {"processed", "captioned"}
+        if settings.backend == "vlm"
+        else {"tagged", "captioned"}
+    )
     candidates = sorted(
         (
             image
             for image in manifest.images.values()
-            if image.status in {"tagged", "captioned"}
+            if image.status in eligible_statuses
         ),
         key=lambda image: image.path,
     )
 
     runtime = captioner
     owns_runtime = False
-    if settings.backend == "vlm" and runtime is None:
-        runtime = LlamaCppVlmCaptioner(settings.vlm)
-        owns_runtime = True
+    clip_tokenizer = None
+    if settings.backend == "vlm":
+        try:
+            clip_tokenizer = load_clip_tokenizer()
+        except ClipTokenizerError:
+            raise
+        if runtime is None:
+            runtime = LlamaCppVlmCaptioner(settings.vlm)
+            owns_runtime = True
 
-    fallback_count = 0
     hard_failures = 0
+    captioned_count = 0
+    failed_count = 0
     try:
+        resolved_trigger = resolve_trigger(
+            subject=manifest.subject,
+            trigger=manifest.trigger,
+            trigger_from_subject=settings.trigger_from_subject,
+        )
+        if settings.backend == "vlm":
+            trigger_tokens = count_clip_tokens(
+                resolved_trigger,
+                tokenizer=clip_tokenizer,
+            ) if resolved_trigger else 0
+        else:
+            trigger_tokens = estimate_caption_tokens(resolved_trigger)
+
+        if resolved_trigger and trigger_tokens > settings.max_tokens:
+            raise ValueError(
+                "caption.max_tokens is too small to preserve the resolved trigger"
+            )
+
         for image in candidates:
-            resolved_trigger = resolve_trigger(
+            deterministic_caption = build_caption(
+                image.tags,
                 subject=manifest.subject,
                 trigger=manifest.trigger,
-                trigger_from_subject=settings.trigger_from_subject,
-            )
-            if (
-                resolved_trigger
-                and estimate_caption_tokens(resolved_trigger) > settings.max_tokens
-            ):
-                raise ValueError(
-                    "caption.max_tokens is too small to preserve the resolved trigger"
-                )
-
-            deterministic_caption = truncate_caption(
-                build_caption(
-                    image.tags,
-                    subject=manifest.subject,
-                    trigger=manifest.trigger,
-                    config=settings,
-                ),
-                settings.max_tokens,
-                separator=settings.separator,
+                config=settings,
             )
             caption = deterministic_caption
-            used_fallback = False
-
             if settings.backend == "vlm":
                 processed_path = (
                     root_path / str(image.processed_path)
                     if image.processed_path
                     else None
                 )
-                if processed_path is None:
-                    used_fallback = True
+                if processed_path is None or not processed_path.is_file():
+                    failed_count += 1
+                    image.metadata["caption_stage"] = "failed"
                     image.metadata["caption_vlm_error"] = (
                         "processed image path is missing"
                     )
-                else:
-                    try:
-                        assert runtime is not None
-                        raw_caption = runtime.caption(processed_path)
-                        caption = build_vlm_caption(
-                            raw_caption,
-                            subject=manifest.subject,
-                            trigger=manifest.trigger,
-                            tags=image.tags,
-                            config=settings,
+                    continue
+
+                try:
+                    assert runtime is not None
+                    raw_caption = runtime.caption(processed_path)
+                    caption = build_vlm_caption(
+                        raw_caption,
+                        subject=manifest.subject,
+                        trigger=manifest.trigger,
+                        config=settings,
+                        tokenizer=clip_tokenizer,
+                    )
+                    if not caption:
+                        raise VlmCaptionerError(
+                            f"VLM returned an empty caption for {image.path}"
                         )
-                        if not caption:
-                            raise VlmCaptionerError(
-                                f"VLM returned an empty caption for {image.path}"
-                            )
-                    except Exception as exc:
-                        used_fallback = True
-                        image.metadata["caption_vlm_error"] = str(exc)[:500]
+                except Exception as exc:
+                    failed_count += 1
+                    image.metadata["caption_stage"] = "failed"
+                    image.metadata["caption_vlm_error"] = str(exc)[:500]
+                    image.metadata["caption_backend"] = "vlm"
+                    image.metadata["caption_tokenizer"] = (
+                        "openai/clip-vit-large-patch14"
+                    )
+                    continue
 
             try:
                 target = caption_root / f"{image.image_id}.txt"
@@ -546,18 +603,18 @@ def caption_manifest(
             image.metadata["caption_trigger_from_subject"] = (
                 settings.trigger_from_subject
             )
-            image.metadata["caption_tag_count"] = len(image.tags)
+            image.metadata["caption_tag_count"] = (
+                0 if settings.backend == "vlm" else len(image.tags)
+            )
             image.metadata["caption_token_budget"] = settings.max_tokens
-            image.metadata["caption_estimated_tokens"] = estimate_caption_tokens(caption)
-            image.metadata["caption_fallback"] = used_fallback
-            if used_fallback:
-                fallback_count += 1
-                image.metadata["caption_fallback_backend"] = "deterministic"
-            else:
-                image.metadata.pop("caption_vlm_error", None)
-                image.metadata.pop("caption_fallback_backend", None)
-
             if settings.backend == "vlm":
+                image.metadata["caption_clip_tokens"] = count_clip_tokens(
+                    caption,
+                    tokenizer=clip_tokenizer,
+                )
+                image.metadata["caption_tokenizer"] = (
+                    "openai/clip-vit-large-patch14"
+                )
                 image.metadata["caption_vlm_model"] = (
                     str(Path(settings.vlm.model_path).expanduser())
                     if settings.vlm.model_path
@@ -566,28 +623,39 @@ def caption_manifest(
                 image.metadata["caption_vlm_chat_format"] = (
                     settings.vlm.chat_format
                 )
+                image.metadata.pop("caption_vlm_error", None)
+                image.metadata.pop("caption_fallback_backend", None)
             else:
+                image.metadata["caption_estimated_tokens"] = (
+                    estimate_caption_tokens(caption)
+                )
                 for key in (
                     "caption_vlm_error",
                     "caption_fallback_backend",
                     "caption_vlm_model",
                     "caption_vlm_chat_format",
+                    "caption_clip_tokens",
+                    "caption_tokenizer",
                 ):
                     image.metadata.pop(key, None)
 
+            image.metadata["caption_fallback"] = False
             image.set_status("captioned")
+            captioned_count += 1
     finally:
         if owns_runtime and runtime is not None:
             runtime.close()
 
+    total_failures = failed_count + hard_failures
+    skipped = sum(
+        1
+        for image in manifest.images.values()
+        if image.status not in eligible_statuses and image.status != "captioned"
+    )
     return CaptionSummary(
         scanned=len(candidates),
-        captioned=len(candidates) - hard_failures,
-        failed=hard_failures,
-        skipped=sum(
-            1
-            for image in manifest.images.values()
-            if image.status not in {"tagged", "captioned"}
-        ),
-        fallback=fallback_count,
+        captioned=captioned_count,
+        failed=total_failures,
+        skipped=skipped,
+        fallback=0,
     )
