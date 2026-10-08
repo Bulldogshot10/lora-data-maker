@@ -5,7 +5,7 @@ import re
 import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Iterable
+from typing import TYPE_CHECKING, Callable, Iterable
 
 from .caption_vlm import (
     DEFAULT_VLM_PROMPT,
@@ -472,6 +472,7 @@ def caption_manifest(
     output_dir: Path | str,
     config: CaptionConfig | None = None,
     captioner: Captioner | None = None,
+    progress: Callable[[int, int, str], None] | None = None,
 ) -> CaptionSummary:
     """Write deterministic or local-VLM captions for eligible records."""
     root_path = Path(root).expanduser().resolve()
@@ -522,8 +523,15 @@ def caption_manifest(
                     "caption.max_tokens is too small to preserve the resolved trigger"
                 )
 
-        for image in candidates:
+        total_candidates = len(candidates)
+        for index, image in enumerate(candidates, start=1):
             caption = ""
+            if progress is not None:
+                progress(
+                    index - 1,
+                    total_candidates,
+                    f"captioning {index}/{total_candidates}: {image.path}",
+                )
             if settings.backend == "vlm":
                 processed_path = (
                     root_path / str(image.processed_path)
@@ -582,6 +590,12 @@ def caption_manifest(
                                 pass
                     image.caption_path = None
                     image.set_status("processed")
+                    if progress is not None:
+                        progress(
+                            index,
+                            total_candidates,
+                            f"caption failed {index}/{total_candidates}: {image.path}",
+                        )
                     continue
 
             if settings.backend != "vlm":
@@ -642,6 +656,12 @@ def caption_manifest(
             image.metadata["caption_fallback"] = False
             image.set_status("captioned")
             captioned_count += 1
+            if progress is not None:
+                progress(
+                    index,
+                    total_candidates,
+                    f"captioned {index}/{total_candidates}: {image.path}",
+                )
     finally:
         if owns_runtime and runtime is not None:
             runtime.close()
