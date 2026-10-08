@@ -125,7 +125,7 @@ In the WebUI, choose the Gemini or OpenAI-compatible runtime, paste the API key 
 
 Gemini model discovery calls the provider's model-list endpoint and keeps models that advertise `generateContent` support. The WebUI therefore does not require a model-name textbox. For OpenAI-compatible runtimes, the WebUI reads the standard `/models` response from the configured base URL and exposes the returned model IDs in the selector. OpenAI-compatible endpoints use `/chat/completions` for image-to-text captioning. citeturn293663search0turn405087search4
 
-For an OpenAI-compatible custom provider, only the API base URL may need to be changed in Settings. The model is always selected from the discovered dropdown.
+For an OpenAI-compatible custom provider, only the API base URL may need to be changed in Settings. The model is always selected from the discovered dropdown. Providers that do not expose a compatible /models endpoint may need model configuration outside the current WebUI discovery flow.
 
 The selected model is stored in the dataset config so the next caption job uses the same model. The API key itself is process-only, so it must be set again after the WebUI server process is restarted.
 
