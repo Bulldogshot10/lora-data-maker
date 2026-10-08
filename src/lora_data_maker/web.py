@@ -21,7 +21,12 @@ from .pack import pack_dataset
 from .paths import ProjectPaths, manifest_path
 from .processing import ProcessConfig, YOLOXNanoPersonDetector, YuNetFaceDetector, clean_manifest, process_manifest, validate_image
 from .reconcile import reconcile_raw
-from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
+from .scrapers import (
+    SCRAPER_BACKENDS,
+    ScraperCancelledError,
+    ScraperError,
+    ScraperManager,
+)
 from .taggers import build_tagger, clean_tag_manifest, resolve_tagger_preset, tag_manifest
 
 HTML = r"""
@@ -346,6 +351,7 @@ button,input,select{border-radius:11px}
 .progress-fill{height:100%;width:0;border-radius:999px;background:var(--accent);transition:width .22s ease}
 .progress-fill.done{background:var(--ok)}
 .progress-fill.bad{background:var(--bad)}
+.progress-fill.cancelled{background:var(--warn)}
 .progress-fill.indeterminate{width:34%;animation:indeterminate 1.2s ease-in-out infinite}
 @keyframes indeterminate{
   0%{transform:translateX(-140%)}
@@ -353,12 +359,20 @@ button,input,select{border-radius:11px}
   100%{transform:translateX(340%)}
 }
 .job-footer{display:flex;justify-content:flex-end;margin-top:11px}
+.job-footer a,.job-footer button{
+  min-height:32px;display:inline-flex;align-items:center;justify-content:center;
+  padding:0 9px;border-radius:9px;font-size:10px;font-weight:760;
+}
 .job-footer a{
   color:var(--text);text-decoration:none;
-  min-height:32px;display:inline-flex;align-items:center;padding:0 9px;
-  border-radius:9px;background:#151a22;border:1px solid var(--line);
-  font-size:10px;font-weight:760;
+  background:#151a22;border:1px solid var(--line);
 }
+.job-footer button{
+  color:var(--warn);
+  background:rgba(240,199,110,.08);
+  border:1px solid #564a2c;
+}
+.job-footer button:hover{background:rgba(240,199,110,.14);border-color:#75613a}
 .pipeline{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}
 .step{
   min-height:112px;
@@ -444,7 +458,7 @@ input:focus,select:focus{border-color:#5b507d;box-shadow:0 0 0 3px rgba(167,149,
   grid-template-columns:repeat(auto-fill,minmax(138px,1fr));
   gap:8px;
 }
-.tile{min-width:0;cursor:zoom-in}
+.tile{min-width:0}
 .tile img{
   display:block;width:100%;aspect-ratio:1;object-fit:cover;
   border-radius:11px;border:1px solid var(--line);
@@ -455,6 +469,13 @@ input:focus,select:focus{border-color:#5b507d;box-shadow:0 0 0 3px rgba(167,149,
 .tile-meta{padding:6px 2px 0}
 .tile-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px}
 .tile-status{margin-top:1px;color:var(--muted-2);font-size:8px;text-transform:uppercase;letter-spacing:.05em}
+.tile-actions{margin-top:6px;display:flex}
+.tile-delete{
+  width:100%;min-height:29px;padding:0 8px;
+  color:var(--bad);background:transparent;border:1px solid #4d2c33;
+  border-radius:9px;font-size:9px;font-weight:790;
+}
+.tile-delete:hover{background:var(--bad-soft);border-color:#70414a}
 .empty{
   padding:26px;text-align:center;color:var(--muted-2);
   border:1px dashed var(--line);border-radius:13px;font-size:11px;
@@ -1028,8 +1049,9 @@ function updateDirtyUI(){
 }
 function updateBusyUI(){
   const busy=isBusyOnActiveProject();
-  document.querySelectorAll("[data-run-stage]").forEach(button=>{button.disabled=busy});
+   document.querySelectorAll("[data-run-stage]").forEach(button=>{button.disabled=busy});
   $("upload-button").disabled=busy;
+   document.querySelectorAll("[data-image-delete]").forEach(button=>{button.disabled=busy});
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
@@ -1089,10 +1111,15 @@ function renderProjects(projects){
     return '<div class="project-item'+(p.active?' active':'')+'"><div class="project-info"><div class="project-name-row"><div class="project-name">'+esc(p.name)+'</div>'+badges+'</div><div class="project-meta">'+esc(p.subject)+' · '+esc(p.image_count)+' images</div></div><div class="project-actions">'+open+remove+'</div></div>';
   }).join("");
 }
-function renderDownload(name,url){
-  $("job-footer").innerHTML=url
-    ? '<a href="'+esc(url)+'">download ZIP</a>'
-    : "";
+function renderDownload(name,url,job){
+  const actions=[];
+  if(job&&job.status==="running"&&job.stage==="scrape"){
+    const cancelling=!!job.cancel_requested;
+    actions.push('<button type="button" data-job-cancel="'+esc(appState.jobId)+'"'+(cancelling?" disabled":"")+'>'
+      +(cancelling?"cancelling…":"cancel scrape")+"</button>");
+  }
+  if(url)actions.push('<a href="'+esc(url)+'">download ZIP</a>');
+  $("job-footer").innerHTML=actions.join("");
   if(name){
     $("job-footer").dataset.archive=name;
   }else{
@@ -1122,7 +1149,7 @@ function renderJob(job){
   }
   $("job-empty").hidden=true;
   $("job-content").hidden=false;
-  $("job-state").textContent=job.status==="running"?"running":job.status==="done"?"complete":"failed";
+  $("job-state").textContent=job.status==="running"?"running":job.status==="done"?"complete":job.status==="cancelled"?"cancelled":"failed";
   $("job-title").textContent=job.message||job.status;
   $("job-sub").textContent=job.progress&&job.progress.label?job.progress.label:"";
   $("job-project").textContent=job.project_path||"";
@@ -1137,14 +1164,16 @@ function renderJob(job){
   fill.className="progress-fill";
   if(job.status==="done")fill.classList.add("done");
   if(job.status==="failed")fill.classList.add("bad");
+  if(job.status==="cancelled")fill.classList.add("cancelled");
   if(job.status==="running"&&total<=0)fill.classList.add("indeterminate");
   fill.style.width=total>0?percent+"%":job.status==="running"?"34%":"0%";
-  renderDownload(job.download?"archive": "",job.download||"");
+  renderDownload(job.download?"archive": "",job.download||"",job);
   updateBusyUI();
 }
 function renderGallery(images){
   const all=images||[];
   const visible=all.slice(-120);
+  const busy=isBusyOnActiveProject();
   $("gallery-count").textContent=all.length+" images"+(all.length>120?" · showing latest 120":"");
   if(!visible.length){
     $("gallery").innerHTML='<div class="empty">no images yet. collect or upload some raw images first.</div>';
@@ -1152,7 +1181,7 @@ function renderGallery(images){
   }
   $("gallery").innerHTML=visible.map(x=>{
     const src="/media/"+encodeURIComponent(x.path);
-    return '<div class="tile" data-preview-path="'+esc(src)+'" data-preview-name="'+esc(x.path)+'" data-preview-status="'+esc(x.status)+'"><img loading="lazy" src="'+esc(src)+'" alt="'+esc(x.path)+'"><div class="tile-meta"><div class="tile-path" title="'+esc(x.path)+'">'+esc(x.path)+'</div><div class="tile-status">'+esc(x.status)+'</div></div></div>';
+    return '<div class="tile" data-preview-path="'+esc(src)+'" data-preview-name="'+esc(x.path)+'" data-preview-status="'+esc(x.status)+'"><img loading="lazy" src="'+esc(src)+'" alt="'+esc(x.path)+'"><div class="tile-meta"><div class="tile-path" title="'+esc(x.path)+'">'+esc(x.path)+'</div><div class="tile-status">'+esc(x.status)+'</div><div class="tile-actions"><button type="button" class="tile-delete" data-image-delete="'+esc(x.id)+'"'+(busy?" disabled":"")+' aria-label="remove '+esc(x.path)+' from dataset">remove</button></div></div></div>';
   }).join("");
 }
 function updateProjectHeader(s){
@@ -1270,7 +1299,7 @@ async function poll(id){
   try{
     const d=await api("/api/jobs/"+encodeURIComponent(id));
     renderJob(d);
-    const kind=d.status==="failed"?"bad":d.status==="done"?"ok":"running";
+    const kind=d.status==="failed"?"bad":d.status==="done"?"ok":d.status==="cancelled"?"cancelled":"running";
     setStatus(d.message||d.status,kind);
     if(d.status==="running"){
       schedulePoll(id);
@@ -1280,6 +1309,7 @@ async function poll(id){
       await refresh();
       if(d.status==="done")toast("job complete","ok");
       if(d.status==="failed")toast(d.message||"job failed","bad");
+      if(d.status==="cancelled")toast(d.message||"scrape cancelled","ok");
     }
   }catch(e){
     setStatus(e.message,"bad");
@@ -1289,6 +1319,37 @@ async function poll(id){
 async function ensureSaved(){
   if(!appState.settingsDirty)return true;
   return saveSettings();
+}
+async function cancelScrape(id){
+  if(!id)return;
+  try{
+    await api("/api/jobs/"+encodeURIComponent(id)+"/cancel",{method:"POST"});
+    toast("cancelling scrape...","running");
+    await poll(id);
+  }catch(e){
+    setStatus(e.message,"bad");
+    toast(e.message,"bad");
+    await refresh();
+  }
+}
+async function deleteImage(id,path){
+  if(isBusyOnActiveProject())return;
+  const accepted=await confirmAction(
+    "remove this image?",
+    "this removes \""+path+"\" and its derived files from the dataset. this cannot be undone.",
+    "remove image",
+    true
+  );
+  if(!accepted)return;
+  try{
+    await api("/api/images/"+encodeURIComponent(id),{method:"DELETE"});
+    toast("removed image","ok");
+    await refresh();
+  }catch(e){
+    setStatus(e.message,"bad");
+    toast(e.message,"bad");
+    await refresh();
+  }
 }
 async function runStage(stage){
   if(isBusyOnActiveProject()){
@@ -1491,10 +1552,19 @@ $("quality").addEventListener("input",()=>{$("qv").textContent=$("quality").valu
   $(id).addEventListener("input",markDirty);
   $(id).addEventListener("change",markDirty);
 });
-$("gallery").addEventListener("click",event=>{
-  const tile=event.target.closest("[data-preview-path]");
-  if(tile)openPreview(tile);
-});
+  $("job-footer").addEventListener("click",event=>{
+    const cancel=event.target.closest("[data-job-cancel]");
+    if(cancel)cancelScrape(cancel.dataset.jobCancel);
+  });
+  $("gallery").addEventListener("click",event=>{
+    const remove=event.target.closest("[data-image-delete]");
+    if(remove){
+      deleteImage(remove.dataset.imageDelete, remove.getAttribute("aria-label")||"image");
+      return;
+    }
+    const tile=event.target.closest("[data-preview-path]");
+    if(tile)openPreview(tile);
+  });
 const drop=$("drop");
 ["dragenter","dragover"].forEach(type=>drop.addEventListener(type,event=>{
   event.preventDefault();
@@ -1540,12 +1610,23 @@ refresh().then(()=>{
 </body>
 </html>
 """
+class JobCancelledError(Exception):
+    """Raised when a running WebUI job observes a cancellation request."""
+
+
 class JobStore:
     def __init__(self) -> None:
         self.lock = threading.Lock()
         self.jobs: dict[str, dict[str, Any]] = {}
 
-    def start(self, label: str, fn, *, project_root: Path | None = None) -> str:
+    def start(
+        self,
+        label: str,
+        fn,
+        *,
+        project_root: Path | None = None,
+        stage: str = "",
+    ) -> str:
         with self.lock:
             if any(job["status"] == "running" for job in self.jobs.values()):
                 raise RuntimeError("another job is already running")
@@ -1553,6 +1634,9 @@ class JobStore:
             self.jobs[job_id] = {
                 "status": "running",
                 "message": label,
+                "stage": stage,
+                "cancel_requested": False,
+                "_cancel_event": threading.Event(),
                 "_project_root": project_root.as_posix() if project_root is not None else None,
                 "progress": {
                     "current": 0,
@@ -1563,6 +1647,20 @@ class JobStore:
             }
         threading.Thread(target=self._worker, args=(job_id, fn), daemon=True).start()
         return job_id
+
+    def cancel(self, job_id: str) -> dict[str, Any]:
+        with self.lock:
+            job = self.jobs.get(job_id)
+            if job is None:
+                raise KeyError("job not found")
+            if job["status"] != "running":
+                raise RuntimeError("job is no longer running")
+            if job.get("stage") != "scrape":
+                raise RuntimeError("only scrape jobs can be cancelled")
+            job["_cancel_event"].set()
+            job["cancel_requested"] = True
+            job["message"] = "cancelling scrape..."
+            return dict(job)
 
     def has_running_project(self, project_root: Path) -> bool:
         target = project_root.expanduser().resolve()
@@ -1595,17 +1693,28 @@ class JobStore:
         def progress(current: int, total: int, label: str) -> None:
             self.update_progress(job_id, current, total, label)
 
+        with self.lock:
+            event = self.jobs[job_id]["_cancel_event"]
+
         try:
-            result = fn(progress)
+            result = fn(progress, event)
             with self.lock:
                 self.jobs[job_id].update({"status": "done", "message": result or "done"})
+        except JobCancelledError as exc:
+            with self.lock:
+                self.jobs[job_id].update({"status": "cancelled", "message": str(exc)})
         except Exception as exc:
             with self.lock:
                 self.jobs[job_id].update({"status": "failed", "message": str(exc)})
 
     def get(self, job_id: str) -> dict[str, Any]:
         with self.lock:
-            return dict(self.jobs.get(job_id, {"status": "missing", "message": "job not found"}))
+            value = self.jobs.get(job_id)
+            if value is None:
+                return {"status": "missing", "message": "job not found"}
+            result = dict(value)
+            result.pop("_cancel_event", None)
+            return result
 
 
 def create_app(root: Path | str = ".") -> FastAPI:
@@ -1854,6 +1963,60 @@ def create_app(root: Path | str = ".") -> FastAPI:
         p.save()
         return {"ok": True}
 
+    @app.delete("/api/images/{image_id}")
+    def delete_image(image_id: str):
+        current_root = active_root()
+        if jobs.has_running_project(current_root):
+            raise HTTPException(409, "dataset has a running job; wait for it to finish before editing images")
+
+        p = project(current_root)
+        record = p.manifest.images.get(image_id)
+        if record is None:
+            raise HTTPException(404, "image not found")
+
+        relative_paths: list[str] = []
+        for value in (
+            record.path,
+            record.processed_path,
+            record.caption_path,
+            record.metadata.get("export_image_path"),
+            record.metadata.get("export_caption_path"),
+        ):
+            if isinstance(value, str) and value.strip():
+                relative_paths.append(value)
+
+        targets: list[Path] = []
+        seen: set[Path] = set()
+        for value in relative_paths:
+            target = (current_root / value).resolve()
+            try:
+                target.relative_to(current_root)
+            except ValueError as exc:
+                raise HTTPException(400, "invalid image artifact path") from exc
+            if target == current_root:
+                raise HTTPException(400, "invalid image artifact path")
+            if target not in seen:
+                seen.add(target)
+                targets.append(target)
+
+        try:
+            for target in targets:
+                if target.is_file():
+                    target.unlink()
+                elif target.exists():
+                    raise OSError(f"image artifact is not a file: {target}")
+            del p.manifest.images[image_id]
+            p.manifest.touch()
+            p.save()
+        except OSError as exc:
+            raise HTTPException(500, f"could not delete image: {exc}") from exc
+
+        return {
+            "ok": True,
+            "image_id": image_id,
+            "deleted": [manifest_path(current_root, target) for target in targets],
+        }
+
     @app.post("/api/upload")
     async def upload(files: Annotated[list[UploadFile], File()]):
         current_root = active_root()
@@ -1885,7 +2048,10 @@ def create_app(root: Path | str = ".") -> FastAPI:
         return {"uploaded": uploaded, "skipped": skipped}
 
     def make_job(stage: str, root_path: Path):
-        def run_stage(progress: Callable[[int, int, str], None]) -> str:
+        def run_stage(
+            progress: Callable[[int, int, str], None],
+            cancel_event: threading.Event,
+        ) -> str:
             p, ps, cfg = project(root_path), paths(root_path), load_config(root_path / "config.toml")
             if stage == "scrape":
                 sc = cfg.get("scraper", {})
@@ -1926,6 +2092,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     count=count,
                     known_urls=known_urls,
                     progress=progress,
+                    cancel_event=cancel_event,
                 )
                 search_error = manager.last_search_error
 
@@ -1957,6 +2124,11 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     }
                 )
                 p.save()
+
+                if manager.cancelled:
+                    raise JobCancelledError(
+                        f"scrape cancelled: downloaded {len(downloads)}/{count}"
+                    )
 
                 if len(downloads) >= count:
                     return f"scrape complete: downloaded {len(downloads)}/{count}"
@@ -2079,7 +2251,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 return "ZIP ready: " + archive.name
             if stage == "prepare":
                 for part in ("validate", "process", "tag", "clean-tags", "caption", "export", "pack"):
-                    make_job(part, root_path)(progress)
+                    make_job(part, root_path)(progress, cancel_event)
                 return "dataset ready"
             raise RuntimeError("unknown stage: " + stage)
         return run_stage
@@ -2093,9 +2265,22 @@ def create_app(root: Path | str = ".") -> FastAPI:
             "running " + stage + "...",
             make_job(stage, current_root),
             project_root=current_root,
+            stage=stage,
         )
         except RuntimeError as exc: raise HTTPException(409, str(exc))
         return {"job_id": job_id, "message": "running " + stage + "..."}
+
+    @app.post("/api/jobs/{job_id}/cancel")
+    def cancel_job(job_id: str):
+        try:
+            data = jobs.cancel(job_id)
+        except KeyError as exc:
+            raise HTTPException(404, "job not found") from exc
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        data.pop("_cancel_event", None)
+        data.pop("_project_root", None)
+        return data
 
     @app.get("/api/jobs/{job_id}")
     def job_status(job_id: str):
