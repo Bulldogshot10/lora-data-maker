@@ -35,9 +35,10 @@ class PPOCRTextDetector:
     """PP-OCRv3 English scene-text detector via OpenCV DNN."""
 
     MODEL_FILENAME = "text_detection_en_ppocrv3_2023may.onnx"
+    MODEL_REVISION = "eb8f1ab7550dc8d895a1c950f6a7e9ba52df0d27"
     MODEL_URL = (
         "https://huggingface.co/opencv/text_detection_ppocr/resolve/"
-        "main/text_detection_en_ppocrv3_2023may.onnx"
+        f"{MODEL_REVISION}/text_detection_en_ppocrv3_2023may.onnx"
     )
     MODEL_SHA256 = (
         "03f550c6b406fda8bf54bd8327815f6c7e2edd98cea02348c93d879254366587"
