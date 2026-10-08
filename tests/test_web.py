@@ -264,3 +264,37 @@ def test_running_job_stays_bound_to_original_project_after_switch(
 
     state = client.get("/api/state").json()
     assert state["project"]["name"] == "second"
+
+
+def test_dataset_explorer_deletes_inactive_project(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    second = tmp_path / "second"
+    second_paths = ProjectPaths.from_root(second)
+    second_paths.create_directories()
+    write_default_config(
+        second_paths.config,
+        name="second",
+        subject="cat",
+        trigger="catx",
+    )
+    DatasetProject.create(second_paths)
+
+    client = TestClient(create_app(root))
+
+    deleted = client.delete("/api/projects/second")
+    assert deleted.status_code == 200
+    assert deleted.json() == {"ok": True, "name": "second"}
+    assert not second.exists()
+
+    projects = client.get("/api/projects").json()["projects"]
+    assert {item["name"] for item in projects} == {"dataset"}
+
+
+def test_dataset_explorer_refuses_active_project_delete(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    response = client.delete("/api/projects/dataset")
+    assert response.status_code == 409
+    assert "active project" in response.json()["detail"]
+    assert root.exists()
