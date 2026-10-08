@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterable
 
+from .caption_api import GeminiVlmCaptioner, OpenAICompatibleVlmCaptioner
 from .caption_vlm import (
     DEFAULT_VLM_PROMPT,
     Captioner,
@@ -144,6 +145,18 @@ def caption_config_from_dict(
     if vlm_runtime == "onnx":
         vlm_chat_format = "smolvlm"
 
+    default_api_key_env = (
+        "GEMINI_API_KEY" if vlm_runtime == "gemini" else "OPENAI_API_KEY"
+    )
+    default_api_model = (
+        "gemini-2.5-flash-lite" if vlm_runtime == "gemini" else ""
+    )
+    default_api_base_url = (
+        "https://generativelanguage.googleapis.com/v1beta"
+        if vlm_runtime == "gemini"
+        else "https://api.openai.com/v1"
+    )
+
     vlm = VlmConfig(
         model_path=model_path,
         mmproj_path=mmproj_path,
@@ -158,6 +171,10 @@ def caption_config_from_dict(
         n_threads=int_field("n_threads", 4),
         n_gpu_layers=int_field("n_gpu_layers", 0),
         seed=int_field("seed", 42),
+        api_key_env=string_field("api_key_env", default_api_key_env),
+        api_model=string_field("api_model", default_api_model),
+        api_base_url=string_field("api_base_url", default_api_base_url),
+        api_timeout=float_field("api_timeout", 120.0),
     )
 
     return CaptionConfig(
@@ -509,6 +526,10 @@ def caption_manifest(
             from .caption_onnx import SmolVlmOnnxCaptioner
 
             runtime = SmolVlmOnnxCaptioner(settings.vlm)
+        elif settings.vlm.runtime == "gemini":
+            runtime = GeminiVlmCaptioner(settings.vlm)
+        elif settings.vlm.runtime == "openai_compatible":
+            runtime = OpenAICompatibleVlmCaptioner(settings.vlm)
         else:
             runtime = LlamaCppVlmCaptioner(settings.vlm)
         owns_runtime = True
