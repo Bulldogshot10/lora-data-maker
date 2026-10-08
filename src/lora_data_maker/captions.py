@@ -7,7 +7,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
-from .caption_onnx import SmolVlmOnnxCaptioner
 from .caption_vlm import (
     DEFAULT_VLM_PROMPT,
     Captioner,
@@ -483,6 +482,8 @@ def caption_manifest(
     owns_runtime = False
     if settings.backend == "vlm" and runtime is None:
         if settings.vlm.runtime == "onnx":
+            from .caption_onnx import SmolVlmOnnxCaptioner
+
             runtime = SmolVlmOnnxCaptioner(settings.vlm)
         else:
             runtime = LlamaCppVlmCaptioner(settings.vlm)
