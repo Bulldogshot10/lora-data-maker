@@ -6,9 +6,11 @@ import pytest
 from lora_data_maker.captions import (
     CaptionConfig,
     build_caption,
+    build_api_vlm_caption,
     build_vlm_caption,
     caption_config_from_dict,
     caption_manifest,
+    clean_api_vlm_caption,
     clean_vlm_caption,
     estimate_caption_tokens,
     parse_vlm_caption,
