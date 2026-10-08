@@ -52,10 +52,11 @@ class CaptionConfig:
         if not 1 <= self.max_tokens <= 77:
             raise ValueError("caption.max_tokens must be between 1 and 77")
         if self.backend == "vlm":
-            if not self.vlm.model_path.strip() or not self.vlm.mmproj_path.strip():
+            if not self.vlm.model_path.strip():
+                raise ValueError("caption.vlm.model_path is required for VLM captions")
+            if self.vlm.runtime == "llama_cpp" and not self.vlm.mmproj_path.strip():
                 raise ValueError(
-                    "caption.vlm.model_path and caption.vlm.mmproj_path "
-                    "are required for VLM captions"
+                    "caption.vlm.mmproj_path is required for the llama_cpp runtime"
                 )
         if not isinstance(self.separator, str):
             raise ValueError("caption.separator must be a string")
