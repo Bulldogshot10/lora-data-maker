@@ -324,7 +324,7 @@ def build_vlm_caption(
     trigger: str,
     config: CaptionConfig,
 ) -> str:
-    """Build a VLM caption from strict fields without CLIP tokenization."""
+    """Build a VLM caption from strict fields."""
     fields = parse_vlm_fields(raw_caption)
     resolved_trigger = resolve_trigger(
         subject=subject,
@@ -354,7 +354,7 @@ def build_vlm_caption(
 
 
 def estimate_caption_tokens(text: str) -> int:
-    """Estimate SD1.5 caption token usage without adding a tokenizer dependency."""
+    """Estimate deterministic caption token usage without a tokenizer dependency."""
     value = str(text).strip()
     if not value:
         return 0
