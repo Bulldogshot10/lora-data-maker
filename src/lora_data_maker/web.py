@@ -2142,9 +2142,6 @@ def create_app(root: Path | str = ".") -> FastAPI:
             or not 0 <= text_min_area_ratio <= 1
         ):
             raise HTTPException(400, "invalid settings")
-        set_config("project", {"name": name, "subject": subject, "trigger": trigger}, current_root)
-        set_config("processing", {"resize_mode": mode, "target_width": width, "target_height": height, "jpeg_quality": quality, "face_crop": face_crop, "face_padding": face_padding}, current_root)
-        set_config("tagger", {"backend": "joytag" if resolved_preset.kind == "joytag" else "wd14", "preset": preset}, current_root)
         current_caption = current_config.get("caption", {})
         if not isinstance(current_caption, dict):
             current_caption = {}
@@ -2198,6 +2195,31 @@ def create_app(root: Path | str = ".") -> FastAPI:
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
+        set_config(
+            "project",
+            {"name": name, "subject": subject, "trigger": trigger},
+            current_root,
+        )
+        set_config(
+            "processing",
+            {
+                "resize_mode": mode,
+                "target_width": width,
+                "target_height": height,
+                "jpeg_quality": quality,
+                "face_crop": face_crop,
+                "face_padding": face_padding,
+            },
+            current_root,
+        )
+        set_config(
+            "tagger",
+            {
+                "backend": "joytag" if resolved_preset.kind == "joytag" else "wd14",
+                "preset": preset,
+            },
+            current_root,
+        )
         set_config(
             "caption",
             {"backend": caption_backend, "max_tokens": caption_max_tokens},
