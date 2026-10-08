@@ -926,6 +926,13 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
             </select>
           </div>
           <div class="field">
+            <label for="caption_runtime">VLM runtime</label>
+            <select id="caption_runtime">
+              <option value="llama_cpp">llama.cpp · GGUF</option>
+              <option value="onnx">onnxruntime · SmolVLM2</option>
+            </select>
+          </div>
+          <div class="field">
             <label for="caption_chat_format">VLM chat format</label>
             <select id="caption_chat_format">
               <option value="mtmd">mtmd</option>
@@ -945,11 +952,11 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
         </div>
         <div class="form-grid" style="margin-top:12px">
           <div class="field">
-            <label for="caption_model_path">VLM model GGUF</label>
+            <label for="caption_model_path">VLM model path</label>
             <div style="display:flex;gap:8px"><input id="caption_model_path" autocomplete="off" placeholder="/path/to/model.gguf"><button type="button" class="action-secondary" id="caption_model_upload">upload</button></div><input id="caption_model_file" type="file" accept=".gguf" hidden><div class="field-note" id="caption_model_status">no model uploaded</div>
           </div>
           <div class="field">
-            <label for="caption_mmproj_path">VLM mmproj GGUF</label>
+            <label for="caption_mmproj_path">VLM mmproj GGUF · llama.cpp only</label>
             <div style="display:flex;gap:8px"><input id="caption_mmproj_path" autocomplete="off" placeholder="/path/to/mmproj.gguf"><button type="button" class="action-secondary" id="caption_mmproj_upload">upload</button></div><input id="caption_mmproj_file" type="file" accept=".gguf" hidden><div class="field-note" id="caption_mmproj_status">no mmproj uploaded</div>
           </div>
         </div>
@@ -1111,7 +1118,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
     if(el)el.disabled=busy;
   });
   const vlmOnly=$("caption_backend").value==="vlm";
@@ -1123,6 +1130,27 @@ function updateBusyUI(){
     });
   });
 }
+function syncCaptionRuntimeUI(){
+  const onnx=$("caption_runtime").value==="onnx";
+  $("caption_chat_format").disabled=onnx;
+  $("caption_mmproj_path").disabled=onnx;
+  $("caption_mmproj_upload").disabled=onnx;
+  $("caption_mmproj_file").disabled=onnx;
+  if(onnx){
+    $("caption_chat_format").value="smolvlm";
+    $("caption_model_path").placeholder="/path/to/SmolVLM2-500M-Video-Instruct";
+    $("caption_model_status").textContent=$("caption_model_path").value
+      ?"configured: "+$("caption_model_path").value
+      :"set a local SmolVLM2 model directory";
+    $("caption_mmproj_status").textContent="unused by ONNX runtime";
+  }else{
+    $("caption_model_path").placeholder="/path/to/model.gguf";
+    $("caption_mmproj_path").placeholder="/path/to/mmproj.gguf";
+    $("caption_mmproj_status").textContent=$("caption_mmproj_path").value
+      ?"configured: "+$("caption_mmproj_path").value
+      :"no mmproj uploaded";
+  }
+}
 function applySettings(s,force=false){
   if(appState.settingsDirty&&!force)return;
   const project=s.project||{name:"",subject:"",trigger:""};
@@ -1131,11 +1159,13 @@ function applySettings(s,force=false){
   $("trigger").value=project.trigger||"";
   $("preset").value=s.tagger.preset;
   $("caption_backend").value=s.caption.backend||"deterministic";
+  $("caption_runtime").value=s.caption.runtime||"llama_cpp";
   $("caption_chat_format").value=s.caption.chat_format||"mtmd";
   $("caption_model_path").value=s.caption.model_path||"";
   $("caption_mmproj_path").value=s.caption.mmproj_path||"";
   $("caption_model_status").textContent=s.caption.model_path?"configured: "+s.caption.model_path:"no model uploaded";
   $("caption_mmproj_status").textContent=s.caption.mmproj_path?"configured: "+s.caption.mmproj_path:"no mmproj uploaded";
+  syncCaptionRuntimeUI();
   $("caption_max_tokens").value=s.caption.max_tokens;
   $("caption_tokens_value").textContent=s.caption.max_tokens;
   $("mode").value=s.processing.mode;
@@ -1358,6 +1388,7 @@ async function saveSettings(){
         height:height,
         quality:quality,
         caption_backend:$("caption_backend").value,
+        caption_runtime:$("caption_runtime").value,
         caption_chat_format:$("caption_chat_format").value,
         caption_model_path:$("caption_model_path").value.trim(),
         caption_mmproj_path:$("caption_mmproj_path").value.trim(),
@@ -1673,6 +1704,7 @@ document.querySelectorAll("[data-run-stage]").forEach(button=>{
 $("choose-images").addEventListener("click",()=>$("files").click());
 $("caption_model_upload").addEventListener("click",()=>$("caption_model_file").click());
 $("caption_mmproj_upload").addEventListener("click",()=>$("caption_mmproj_file").click());
+$("caption_runtime").addEventListener("change",syncCaptionRuntimeUI);
 $("caption_model_file").addEventListener("change",()=>uploadVlmFile("model","caption_model_file","caption_model_path","caption_model_status"));
 $("caption_mmproj_file").addEventListener("change",()=>uploadVlmFile("mmproj","caption_mmproj_file","caption_mmproj_path","caption_mmproj_status"));
 $("upload-button").addEventListener("click",upload);
@@ -1681,7 +1713,7 @@ $("quality").addEventListener("input",()=>{$("qv").textContent=$("quality").valu
 $("caption_max_tokens").addEventListener("input",()=>{$("caption_tokens_value").textContent=$("caption_max_tokens").value});
 [
   "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count",
-  "mode","width","height","quality","caption_backend","caption_chat_format","caption_model_path","caption_mmproj_path","caption_max_tokens","face_crop","face_padding","person_check",
+  "mode","width","height","quality","caption_backend","caption_runtime","caption_chat_format","caption_model_path","caption_mmproj_path","caption_max_tokens","face_crop","face_padding","person_check",
   "max_persons","person_threshold","min_subject_area","min_subject_visibility",
   "text_check","text_confidence","text_min_area_ratio"
 ].forEach(id=>{
@@ -1985,7 +2017,14 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     "face_padding": 1.75,
                 },
                 "tagger": {"backend": "wd14", "preset": "sweetspot"},
-                "caption": {"backend": "deterministic", "max_tokens": 77},
+                "caption": {
+                    "backend": "deterministic",
+                    "runtime": "llama_cpp",
+                    "chat_format": "mtmd",
+                    "model_path": "",
+                    "mmproj_path": "",
+                    "max_tokens": 77,
+                },
                 "scraper": {
                     "backend": "duckduckgo",
                     "query": "",
@@ -2051,6 +2090,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
             },
             "caption": {
                 "backend": str(caption.get("backend", "deterministic")),
+                "runtime": str(caption.get("vlm", {}).get("runtime", "llama_cpp"))
+                if isinstance(caption.get("vlm"), dict)
+                else "llama_cpp",
                 "chat_format": str(caption.get("vlm", {}).get("chat_format", "mtmd"))
                 if isinstance(caption.get("vlm"), dict)
                 else "mtmd",
@@ -2203,6 +2245,9 @@ def create_app(root: Path | str = ".") -> FastAPI:
         current_vlm = current_caption.get("vlm", {})
         if not isinstance(current_vlm, dict):
             current_vlm = {}
+        caption_runtime = str(
+            payload.get("caption_runtime", current_vlm.get("runtime", "llama_cpp"))
+        ).strip().lower()
         caption_chat_format = str(
             payload.get("caption_chat_format", current_vlm.get("chat_format", "mtmd"))
         ).strip().lower()
@@ -2214,10 +2259,16 @@ def create_app(root: Path | str = ".") -> FastAPI:
         ).strip()
         if caption_backend not in {"deterministic", "vlm"}:
             raise HTTPException(400, "caption backend must be deterministic or vlm")
-        if caption_chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5", "smolvlm"}:
+        if caption_runtime not in {"llama_cpp", "onnx"}:
+            raise HTTPException(400, "unsupported VLM runtime")
+        if caption_runtime == "onnx":
+            caption_chat_format = "smolvlm"
+        elif caption_chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5", "smolvlm"}:
             raise HTTPException(400, "unsupported VLM chat format")
-        if caption_backend == "vlm" and (not caption_model_path or not caption_mmproj_path):
-            raise HTTPException(400, "VLM model and mmproj paths are required")
+        if caption_backend == "vlm" and not caption_model_path:
+            raise HTTPException(400, "VLM model path is required")
+        if caption_backend == "vlm" and caption_runtime == "llama_cpp" and not caption_mmproj_path:
+            raise HTTPException(400, "VLM mmproj path is required for llama.cpp")
 
         tagger_disabled = preset == "off"
         resolved_preset = None
@@ -2234,6 +2285,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     "vlm": {
                         "model_path": caption_model_path,
                         "mmproj_path": caption_mmproj_path,
+                        "runtime": caption_runtime,
                         "chat_format": caption_chat_format,
                     },
                 },
