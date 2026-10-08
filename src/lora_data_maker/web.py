@@ -1250,9 +1250,14 @@ async function loadVlmModels(){
       option.textContent=String(model.label||model.id||model.name||"");
       select.appendChild(option);
     }
-    if(selected&&models.some(m=>String(m.id||m.name||"")===selected)){
-      select.value=selected;
+    const selectedExists=selected&&models.some(m=>String(m.id||m.name||"")===selected);
+    if(selected&&!selectedExists){
+      const option=document.createElement("option");
+      option.value=selected;
+      option.textContent=selected+" (saved, not currently listed by API)";
+      select.appendChild(option);
     }
+    if(selected)select.value=selected;
     select.dataset.selectedModel=select.value;
   };
   try{
