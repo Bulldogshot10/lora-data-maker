@@ -170,6 +170,37 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert 'mmproj_path = "models/mmproj.gguf"' in config
     assert 'chat_format = "qwen2.5-vl"' in config
 
+    onnx = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "new_person",
+            "trigger": "new_person",
+            "preset": "joytag",
+            "mode": "cover",
+            "width": 768,
+            "height": 512,
+            "quality": 92,
+            "caption_backend": "vlm",
+            "caption_runtime": "onnx",
+            "caption_chat_format": "mtmd",
+            "caption_model_path": "",
+            "caption_mmproj_path": "",
+            "caption_max_tokens": 77,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert onnx.status_code == 200
+    onnx_state = client.get("/api/state").json()
+    assert onnx_state["caption"]["backend"] == "vlm"
+    assert onnx_state["caption"]["runtime"] == "onnx"
+    assert onnx_state["caption"]["chat_format"] == "smolvlm"
+
+    onnx_config = (root / "config.toml").read_text(encoding="utf-8")
+    assert 'runtime = "onnx"' in onnx_config
+    assert 'chat_format = "smolvlm"' in onnx_config
+
     qwen35 = client.post(
         "/api/settings",
         json={
