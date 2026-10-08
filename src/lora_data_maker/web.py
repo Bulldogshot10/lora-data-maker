@@ -20,6 +20,7 @@ from .manifest import find_image_by_source_url, register_image
 from .pack import pack_dataset
 from .paths import ProjectPaths, manifest_path
 from .processing import ProcessConfig, YOLOXNanoPersonDetector, YuNetFaceDetector, clean_manifest, process_manifest, validate_image
+from .processing.text import PPOCRTextDetector
 from .reconcile import reconcile_raw
 from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
 from .scrapers.base import ScraperCancelledError
