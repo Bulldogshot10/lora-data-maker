@@ -164,3 +164,21 @@ def test_clean_manifest_propagates_person_detector_runtime_error(tmp_path):
         )
 
     assert record.status == "validated"
+
+
+def test_quality_rejects_detected_text(tmp_path):
+    from lora_data_maker.processing.text import TextRegion
+
+    class Detector:
+        def detect(self, image):
+            return (TextRegion(80, 100, 560, 150, 0.91),)
+
+    path = tmp_path / "text.png"
+    _make_checkerboard(640).save(path)
+
+    result = evaluate_quality(path, text_detector=Detector())
+
+    assert result.valid is False
+    assert result.text_count == 1
+    assert result.text_confidence == 0.91
+    assert "text detected" in (result.reason or "")
