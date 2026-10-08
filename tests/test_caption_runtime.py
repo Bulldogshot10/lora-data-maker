@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from lora_data_maker.caption_vlm import _Qwen35NoThinkingChatHandler
 from lora_data_maker.captions import caption_config_from_dict, caption_manifest
 from lora_data_maker.models import ImageRecord, ProjectManifest
 
@@ -36,6 +37,20 @@ def test_caption_config_accepts_qwen35_chat_format(tmp_path):
         root=tmp_path,
     )
     assert settings.vlm.chat_format == "qwen3.5"
+
+
+def test_qwen35_handler_disables_thinking():
+    seen = {}
+
+    class FakeHandler:
+        def __call__(self, **kwargs):
+            seen.update(kwargs)
+            return "ok"
+
+    handler = _Qwen35NoThinkingChatHandler(FakeHandler())
+
+    assert handler(messages=[], temperature=0.1) == "ok"
+    assert seen["enable_thinking"] is False
 
 
 def test_caption_manifest_loads_owned_vlm_runtime_once(tmp_path, monkeypatch):
