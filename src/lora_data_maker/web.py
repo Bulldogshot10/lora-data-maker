@@ -670,6 +670,17 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
       </div>
 
       <div class="layout">
+        <section class="card card-pad" id="archive-card" hidden>
+          <div class="card-title-row">
+            <div class="card-title">latest export</div>
+            <div class="card-kicker">ready to download</div>
+          </div>
+          <div class="output">
+            <div><div class="output-name" id="archive-name"></div><div class="output-meta">final dataset archive</div></div>
+            <a id="archive-link" href="/api/download">download ZIP</a>
+          </div>
+        </section>
+
         <section class="card card-pad">
           <div class="card-title-row">
             <div class="card-title">dataset status</div>
@@ -978,7 +989,8 @@ const appState={
   jobId:localStorage.getItem("ldm.jobId")||"",
   pollTimer:null,
   confirmResolve:null,
-  toastSeq:0
+  toastSeq:0,
+  projects:[]
 };
 
 async function api(url,opt={}){
@@ -1018,6 +1030,7 @@ function updateBusyUI(){
   const busy=isBusyOnActiveProject();
   document.querySelectorAll("[data-run-stage]").forEach(button=>{button.disabled=busy});
   $("upload-button").disabled=busy;
+  document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
   document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility").forEach(el=>{
@@ -1054,6 +1067,7 @@ function renderStats(counts){
   $("stats").innerHTML=keys.map(k=>'<div class="stat"><div class="stat-value">'+esc(counts[k]??0)+'</div><div class="stat-label">'+esc(labels[k])+'</div></div>').join("");
 }
 function renderProjects(projects){
+  appState.projects=projects||[];
   const filter=$("project_filter").value.trim().toLowerCase();
   const items=(projects||[]).filter(p=>{
     const hay=(String(p.name||"")+" "+String(p.subject||"")+" "+String(p.path||"")).toLowerCase();
@@ -1084,6 +1098,16 @@ function renderDownload(name,url){
   }else{
     delete $("job-footer").dataset.archive;
   }
+}
+function renderArchive(name){
+  const box=$("archive-card");
+  if(!name){
+    box.hidden=true;
+    return;
+  }
+  box.hidden=false;
+  $("archive-name").textContent=name;
+  $("archive-link").href="/api/download";
 }
 function renderJob(job){
   appState.currentJob=job||null;
@@ -1167,6 +1191,7 @@ async function refresh(forceSettings=false){
     renderStats(s.counts);
     renderGallery(s.images);
     renderProjects(s.projects);
+    renderArchive(s.archive);
     $("project_workspace").textContent=s.workspace+" · "+s.project_count+" dataset projects";
     appState.activeProjectPath=((s.projects||[]).find(p=>p.active)||{}).path||"";
     if(forceSettings||!appState.settingsDirty)applySettings(s,true);
@@ -1445,9 +1470,7 @@ $("project_explorer").addEventListener("click",event=>{
   if(open)selectProject(open.dataset.projectOpen);
   if(remove)deleteProject(remove.dataset.projectDelete);
 });
-$("project_filter").addEventListener("input",()=>{
-  api("/api/projects").then(d=>renderProjects(d.projects)).catch(e=>setStatus(e.message,"bad"));
-});
+$("project_filter").addEventListener("input",()=>renderProjects(appState.projects));
 $("refresh-projects").addEventListener("click",refreshProjects);
 $("new-dataset").addEventListener("click",openNewDataset);
 $("new-top").addEventListener("click",openNewDataset);
