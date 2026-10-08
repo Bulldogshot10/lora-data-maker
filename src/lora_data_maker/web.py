@@ -2198,13 +2198,6 @@ def create_app(root: Path | str = ".") -> FastAPI:
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
-        p = project(current_root)
-        if caption_backend == "deterministic":
-            reset_vlm_captions_for_deterministic(
-                p.manifest,
-                root=current_root,
-            )
-
         set_config(
             "caption",
             {"backend": caption_backend, "max_tokens": caption_max_tokens},
@@ -2242,6 +2235,12 @@ def create_app(root: Path | str = ".") -> FastAPI:
             },
             current_root,
         )
+        p = project(current_root)
+        if caption_backend == "deterministic":
+            reset_vlm_captions_for_deterministic(
+                p.manifest,
+                root=current_root,
+            )
         p.manifest.project_name, p.manifest.subject, p.manifest.trigger = name, subject, trigger
         p.save()
         return {"ok": True}
