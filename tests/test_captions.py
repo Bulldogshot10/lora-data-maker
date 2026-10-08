@@ -236,6 +236,28 @@ def test_parse_vlm_caption_accepts_longer_fields_without_failing():
     )
 
 
+def test_build_api_vlm_caption_injects_trigger_without_field_parsing():
+    config = CaptionConfig(backend="vlm")
+    assert build_api_vlm_caption(
+        "standing in a white top, smiling, indoors with soft window lighting",
+        subject="Julia",
+        trigger="ignored",
+        config=config,
+    ) == (
+        "julia, standing in a white top, smiling, indoors with soft window lighting"
+    )
+
+
+def test_clean_api_vlm_caption_removes_wrappers_and_thinking():
+    fence = "\x60\x60\x60"
+    assert clean_api_vlm_caption(
+        "<think>internal reasoning</think>\n"
+        + fence + "text\n"
+        + "Caption: standing, smiling\n"
+        + fence
+    ) == "standing, smiling"
+
+
 def test_build_vlm_caption_removes_repeated_trigger_mentions():
     config = CaptionConfig(
         backend="vlm",
