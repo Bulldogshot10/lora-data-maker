@@ -14,12 +14,6 @@ from .caption_vlm import (
     VlmConfig,
     VlmCaptionerError,
 )
-from .clip_tokenizer import (
-    ClipTokenizerError,
-    count_clip_tokens,
-    load_clip_tokenizer,
-    pack_clip_caption,
-)
 from .paths import manifest_path
 from .taggers.filters import normalize_tag
 
@@ -329,9 +323,8 @@ def build_vlm_caption(
     subject: str,
     trigger: str,
     config: CaptionConfig,
-    tokenizer: object | None = None,
 ) -> str:
-    """Build a VLM-only caption bounded by the exact SD1.x CLIP tokenizer."""
+    """Build a VLM caption from strict fields without CLIP tokenization."""
     fields = parse_vlm_fields(raw_caption)
     resolved_trigger = resolve_trigger(
         subject=subject,
@@ -357,12 +350,8 @@ def build_vlm_caption(
         parts.append(resolved_trigger)
     parts.extend(cleaned_fields)
 
-    return pack_clip_caption(
-        parts,
-        config.max_tokens,
-        separator=config.separator,
-        tokenizer=tokenizer,
-    )
+    return config.separator.join(parts)
+
 
 def estimate_caption_tokens(text: str) -> int:
     """Estimate SD1.5 caption token usage without adding a tokenizer dependency."""
@@ -489,15 +478,9 @@ def caption_manifest(
 
     runtime = captioner
     owns_runtime = False
-    clip_tokenizer = None
-    if settings.backend == "vlm":
-        try:
-            clip_tokenizer = load_clip_tokenizer()
-        except ClipTokenizerError:
-            raise
-        if runtime is None:
-            runtime = LlamaCppVlmCaptioner(settings.vlm)
-            owns_runtime = True
+    if settings.backend == "vlm" and runtime is None:
+        runtime = LlamaCppVlmCaptioner(settings.vlm)
+        owns_runtime = True
 
     hard_failures = 0
     captioned_count = 0
@@ -508,18 +491,12 @@ def caption_manifest(
             trigger=manifest.trigger,
             trigger_from_subject=settings.trigger_from_subject,
         )
-        if settings.backend == "vlm":
-            trigger_tokens = count_clip_tokens(
-                resolved_trigger,
-                tokenizer=clip_tokenizer,
-            ) if resolved_trigger else 0
-        else:
+        if settings.backend != "vlm":
             trigger_tokens = estimate_caption_tokens(resolved_trigger)
-
-        if resolved_trigger and trigger_tokens > settings.max_tokens:
-            raise ValueError(
-                "caption.max_tokens is too small to preserve the resolved trigger"
-            )
+            if resolved_trigger and trigger_tokens > settings.max_tokens:
+                raise ValueError(
+                    "caption.max_tokens is too small to preserve the resolved trigger"
+                )
 
         for image in candidates:
             caption = ""
@@ -558,7 +535,6 @@ def caption_manifest(
                         subject=manifest.subject,
                         trigger=manifest.trigger,
                         config=settings,
-                        tokenizer=clip_tokenizer,
                     )
                     if not caption:
                         raise VlmCaptionerError(
@@ -569,9 +545,6 @@ def caption_manifest(
                     image.metadata["caption_stage"] = "failed"
                     image.metadata["caption_vlm_error"] = str(exc)[:500]
                     image.metadata["caption_backend"] = "vlm"
-                    image.metadata["caption_tokenizer"] = (
-                        "openai/clip-vit-large-patch14"
-                    )
                     if image.caption_path:
                         stale_caption = (root_path / image.caption_path).resolve()
                         try:
@@ -615,15 +588,8 @@ def caption_manifest(
             image.metadata["caption_tag_count"] = (
                 0 if settings.backend == "vlm" else len(image.tags)
             )
-            image.metadata["caption_token_budget"] = settings.max_tokens
             if settings.backend == "vlm":
-                image.metadata["caption_clip_tokens"] = count_clip_tokens(
-                    caption,
-                    tokenizer=clip_tokenizer,
-                )
-                image.metadata["caption_tokenizer"] = (
-                    "openai/clip-vit-large-patch14"
-                )
+                image.metadata.pop("caption_token_budget", None)
                 image.metadata["caption_vlm_model"] = (
                     str(Path(settings.vlm.model_path).expanduser())
                     if settings.vlm.model_path
@@ -638,13 +604,12 @@ def caption_manifest(
                 image.metadata["caption_estimated_tokens"] = (
                     estimate_caption_tokens(caption)
                 )
+                image.metadata["caption_token_budget"] = settings.max_tokens
                 for key in (
                     "caption_vlm_error",
                     "caption_fallback_backend",
                     "caption_vlm_model",
                     "caption_vlm_chat_format",
-                    "caption_clip_tokens",
-                    "caption_tokenizer",
                 ):
                     image.metadata.pop(key, None)
 
