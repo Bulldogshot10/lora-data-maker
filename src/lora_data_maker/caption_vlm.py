@@ -10,9 +10,10 @@ from .exceptions import LoraDataMakerError
 
 DEFAULT_VLM_PROMPT = (
     "describe this photo for a stable diffusion character lora training caption.\n"
-    "use exactly these 4 fields, one per line.\n"
+    "use exactly these 5 fields, one per line.\n"
     "use short phrases only, with a maximum of 5 words per field.\n\n"
-    "pose: include body pose plus one camera view term when visible\n"
+    "pose: describe body pose\n"
+    "angle camera: describe the visible camera angle or view\n"
     "prefer camera terms: straight-on, from above, from below, high-angle shot, low-angle shot, overhead shot.\n"
     "clothing:\n"
     "expression:\n"
