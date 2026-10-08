@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import BinaryIO
@@ -115,7 +117,13 @@ class HuggingFaceModelCache:
             f"{DEFAULT_HF_BASE_URL}/{self.repo_id}"
             f"/resolve/{self.revision}/{filename}"
         )
-        temp = destination.with_suffix(destination.suffix + ".part")
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{destination.name}.",
+            suffix=".part",
+            dir=destination.parent,
+        )
+        temp = Path(temp_name)
+        open_fd = fd
         digest = hashlib.sha256()
 
         try:
@@ -126,9 +134,11 @@ class HuggingFaceModelCache:
                 allow_redirects=True,
             ) as response:
                 response.raise_for_status()
-                with temp.open("wb") as handle:
+                with os.fdopen(open_fd, "wb") as handle:
+                    open_fd = -1
                     _stream_response(response, handle, digest)
                     handle.flush()
+                    os.fsync(handle.fileno())
 
             if expected_sha256 and digest.hexdigest().lower() != expected_sha256.lower():
                 raise ModelDownloadError(
@@ -145,6 +155,9 @@ class HuggingFaceModelCache:
             raise ModelDownloadError(
                 f"failed downloading {self.repo_id}/{filename}: {exc}"
             ) from exc
+        finally:
+            if open_fd >= 0:
+                os.close(open_fd)
 
 
 def _is_safe_filename(filename: str) -> bool:
