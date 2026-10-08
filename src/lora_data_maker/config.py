@@ -91,7 +91,7 @@ model_path = ""
 mmproj_path = ""
 chat_format = "mtmd"
 # supported: mtmd, qwen2.5-vl, gemma4, qwen3.5
-max_tokens = 128
+max_tokens = 64
 temperature = 0.1
 top_p = 0.95
 top_k = 40
