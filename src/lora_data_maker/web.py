@@ -1136,6 +1136,8 @@ function syncCaptionRuntimeUI(){
   $("caption_mmproj_path").disabled=onnx;
   $("caption_mmproj_upload").disabled=onnx;
   $("caption_mmproj_file").disabled=onnx;
+  $("caption_model_upload").disabled=onnx;
+  $("caption_model_file").disabled=onnx;
   if(onnx){
     $("caption_chat_format").value="smolvlm";
     $("caption_model_path").placeholder="/path/to/SmolVLM2-500M-Video-Instruct";
