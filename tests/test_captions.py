@@ -483,7 +483,7 @@ def test_vlm_truncation_preserves_custom_separator(monkeypatch):
     )
     assert caption.startswith("julia; ")
     assert "; " in caption
-    assert estimate_caption_tokens(caption) <= 12
+    assert count_clip_tokens(caption, tokenizer=FakeClipTokenizer()) <= 12
 
 
 def test_vlm_caption_ignores_tagger_tags_and_uses_exact_budget():
