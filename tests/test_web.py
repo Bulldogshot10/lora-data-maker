@@ -97,7 +97,23 @@ def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: P
     assert 'id="project_explorer"' in html
     assert 'id="progress-fill"' in html
     assert 'id="preview-modal"' in html
+    assert 'rel="icon" href="/favicon.ico"' in html
+    assert 'sizes="32x32"' in html
+    assert 'rel="manifest" href="/site.webmanifest"' in html
     assert "onclick=" not in html
+
+    for path in (
+        "/favicon.ico",
+        "/favicon-16x16.png",
+        "/favicon-32x32.png",
+        "/apple-touch-icon.png",
+        "/android-chrome-192x192.png",
+        "/android-chrome-512x512.png",
+        "/site.webmanifest",
+    ):
+        response = TestClient(create_app(make_project(tmp_path))).get(path)
+        assert response.status_code == 200
+        assert response.content
 
 
 def test_webui_javascript_syntax_when_node_is_available(tmp_path: Path) -> None:
