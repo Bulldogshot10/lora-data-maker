@@ -149,7 +149,7 @@ def caption_config_from_dict(
         "GEMINI_API_KEY" if vlm_runtime == "gemini" else "OPENAI_API_KEY"
     )
     default_api_model = (
-        "gemini-2.5-flash-lite" if vlm_runtime == "gemini" else ""
+        "gemini-3.5-flash-lite" if vlm_runtime == "gemini" else ""
     )
     default_api_base_url = (
         "https://generativelanguage.googleapis.com/v1beta"
