@@ -181,8 +181,10 @@ seed = 42
 backend = "deterministic" keeps the existing tag-based captioner. Set backend = "vlm" to caption each processed image with the local llama-cpp-python runtime.
 model_path points to the local VLM GGUF and mmproj_path points to its multimodal projector GGUF. Both must be set together.
 chat_format supports mtmd, qwen2.5-vl, and gemma4.
-The VLM receives only the processed image and the configured prompt. Tagger output is not passed into the VLM.
-VLM inference failures fall back to the deterministic tag caption for that image and are recorded in manifest metadata.
+The VLM receives only the processed image and the configured prompt. Its prompt requests exactly four short fields: pose, clothing, expression, and background with lighting. Hair color, eye color, face, age, and gender are intentionally excluded from the VLM output.
+The caption parser strips the field labels and merges the four phrases with cleaned tagger output into one final caption file.
+The final caption has one shared caption.max_tokens budget of 1–77 tokens, default 77. Truncation preserves the configured separator, and the caption stage rejects a budget too small to preserve the resolved trigger.
+VLM inference or formatting failures fall back to the deterministic tag caption for that image and are recorded in manifest metadata.
 
 Install the optional runtime with:
 
