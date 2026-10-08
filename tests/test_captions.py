@@ -11,10 +11,11 @@ from lora_data_maker.captions import (
     caption_manifest,
     clean_vlm_caption,
     estimate_caption_tokens,
+    truncate_caption,
     resolve_trigger,
     write_caption,
 )
-from lora_data_maker.caption_vlm import VlmCaptionerError, VlmConfig
+from lora_data_maker.caption_vlm import DEFAULT_VLM_PROMPT, VlmCaptionerError, VlmConfig
 from lora_data_maker.cli import command_caption, command_init
 from lora_data_maker.dataset import DatasetProject
 from lora_data_maker.models import ImageRecord, ProjectManifest
@@ -144,6 +145,11 @@ She is sitting outdoors."""
     assert clean_vlm_caption(raw) == "a woman in a black dress. She is sitting outdoors."
 
 
+def test_default_vlm_prompt_has_compact_word_limit():
+    assert "no more than 25 words" in DEFAULT_VLM_PROMPT
+    assert "return exactly one compact natural-language caption" in DEFAULT_VLM_PROMPT
+
+
 def test_build_vlm_caption_injects_trigger_once():
     config = CaptionConfig(
         backend="vlm",
@@ -229,7 +235,7 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path):
     assert image.metadata["caption_fallback"] is False
     assert (
         (root / image.caption_path).read_text(encoding="utf-8")
-        == "julia, a woman with blue eyes, wearing a black shirt.\n"
+        == "julia, a woman with blue eyes, wearing a black shirt., 1girl, blue eyes\n"
     )
 
 
@@ -293,6 +299,15 @@ def test_caption_token_budget_is_enforced():
         trigger="julia",
         config=config,
     )
+    assert estimate_caption_tokens(caption) <= 12
+
+
+def test_truncate_caption_drops_later_content_when_budget_is_full():
+    caption = truncate_caption(
+        "julia, a woman with long blonde hair and blue eyes, black dress, indoors",
+        12,
+    )
+    assert caption.startswith("julia")
     assert estimate_caption_tokens(caption) <= 12
 
 
