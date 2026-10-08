@@ -789,7 +789,7 @@ def command_caption(args: argparse.Namespace) -> int:
     print(f"backend: {settings.backend}")
     print(f"captions: {paths.work / 'captions'}")
 
-    return 0 if summary.captioned or summary.skipped else 1
+    return 0 if summary.failed == 0 and (summary.captioned or summary.skipped) else 1
 
 
 def command_export(args: argparse.Namespace) -> int:
