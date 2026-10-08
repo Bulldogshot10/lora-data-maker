@@ -7,6 +7,8 @@ from .exceptions import LoraDataMakerError
 
 CLIP_TOKENIZER_ID = "openai/clip-vit-large-patch14"
 CLIP_CONTEXT_LENGTH = 77
+CLIP_TOKENIZER_PATH_ENV = "LORA_DATA_MAKER_CLIP_TOKENIZER_PATH"
+CLIP_TOKENIZER_OFFLINE_ENV = "LORA_DATA_MAKER_CLIP_TOKENIZER_OFFLINE"
 
 
 class ClipTokenizerError(LoraDataMakerError):
@@ -15,7 +17,7 @@ class ClipTokenizerError(LoraDataMakerError):
 
 @lru_cache(maxsize=1)
 def load_clip_tokenizer() -> Any:
-    """Load the exact Hugging Face CLIP tokenizer used by the SD1.x text encoder."""
+    """Load the exact Hugging Face CLIP tokenizer, preferring local cache/files."""
     try:
         from transformers import CLIPTokenizer
     except ImportError as exc:
@@ -24,14 +26,49 @@ def load_clip_tokenizer() -> Any:
             "lora-data-maker[caption-vlm]"
         ) from exc
 
-    try:
-        tokenizer = CLIPTokenizer.from_pretrained(CLIP_TOKENIZER_ID)
-    except Exception as exc:
-        raise ClipTokenizerError(
-            f"could not load CLIP tokenizer {CLIP_TOKENIZER_ID}: {exc}"
-        ) from exc
+    local_path = os.environ.get(CLIP_TOKENIZER_PATH_ENV, "").strip()
+    offline = os.environ.get(CLIP_TOKENIZER_OFFLINE_ENV, "").strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
 
-    model_max_length = int(getattr(tokenizer, "model_max_length", CLIP_CONTEXT_LENGTH))
+    if local_path:
+        source: str | Path = Path(local_path).expanduser().resolve()
+        try:
+            tokenizer = CLIPTokenizer.from_pretrained(
+                source,
+                local_files_only=True,
+            )
+        except Exception as exc:
+            raise ClipTokenizerError(
+                f"could not load local CLIP tokenizer from {source}: {exc}"
+            ) from exc
+    else:
+        try:
+            tokenizer = CLIPTokenizer.from_pretrained(
+                CLIP_TOKENIZER_ID,
+                local_files_only=True,
+            )
+        except Exception as local_exc:
+            if offline:
+                raise ClipTokenizerError(
+                    f"CLIP tokenizer {CLIP_TOKENIZER_ID} is not available in the "
+                    "local Hugging Face cache and offline mode is enabled. "
+                    f"Unset {CLIP_TOKENIZER_OFFLINE_ENV} or pre-cache the tokenizer."
+                ) from local_exc
+            try:
+                tokenizer = CLIPTokenizer.from_pretrained(CLIP_TOKENIZER_ID)
+            except Exception as remote_exc:
+                raise ClipTokenizerError(
+                    f"could not load CLIP tokenizer {CLIP_TOKENIZER_ID} from local "
+                    f"cache or Hugging Face: {remote_exc}"
+                ) from remote_exc
+
+    model_max_length = int(
+        getattr(tokenizer, "model_max_length", CLIP_CONTEXT_LENGTH)
+    )
     if model_max_length != CLIP_CONTEXT_LENGTH:
         raise ClipTokenizerError(
             f"{CLIP_TOKENIZER_ID} reported an unexpected context length "
