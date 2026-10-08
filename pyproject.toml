@@ -52,3 +52,6 @@ face = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+lora_data_maker = ["static/*"]
