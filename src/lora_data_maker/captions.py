@@ -59,6 +59,15 @@ class CaptionConfig:
                 raise ValueError(
                     "caption.vlm.mmproj_path is required for the llama_cpp runtime"
                 )
+            if self.vlm.runtime in {"gemini", "openai_compatible"}:
+                if not self.vlm.api_key_env.strip():
+                    raise ValueError(
+                        "caption.vlm.api_key_env must not be empty for API runtimes"
+                    )
+                if not self.vlm.api_model.strip():
+                    raise ValueError(
+                        "caption.vlm.api_model must not be empty for API runtimes"
+                    )
         if not isinstance(self.separator, str):
             raise ValueError("caption.separator must be a string")
         if not isinstance(self.trigger_from_subject, bool):
@@ -169,6 +178,9 @@ def caption_config_from_dict(
             api_model = default_api_model
         if not api_base_url:
             api_base_url = default_api_base_url
+
+    if vlm_runtime == "gemini":
+        api_model = api_model.removeprefix("models/")
 
     vlm = VlmConfig(
         model_path=model_path,
