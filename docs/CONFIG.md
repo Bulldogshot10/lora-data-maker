@@ -187,9 +187,9 @@ backend = "deterministic" keeps the existing tag-based captioner. Set runtime to
 
 For API runtimes, api_key_env names the environment variable holding the API key. The secret itself is never stored in config.toml. api_model selects the model. api_base_url defaults to https://generativelanguage.googleapis.com/v1beta for Gemini and https://api.openai.com/v1 for OpenAI-compatible mode. The built-in Gemini example uses gemini-3.5-flash-lite. api_timeout controls the HTTP request timeout in seconds.
 
-Every VLM runtime uses the same strict caption prompt: exactly four fields in order, pose, clothing, expression, background; maximum five words per field; pose includes a camera view term when visible; background includes lighting; hair color, eye color, face, age, and gender are excluded. The parser rejects malformed responses.
+Local VLM runtimes use the structured four-field caption contract: pose, clothing, expression, background; pose includes a camera view term when visible; background includes lighting; hair color, eye color, face, age, and gender are excluded. Local parsing keeps this structure because local runtimes need an explicit output contract.
 
-The final VLM caption always injects the resolved dataset trigger first, removes duplicate trigger mentions from generated fields, and produces trigger → pose → clothing → expression → background. WD14/JoyTag tags are not merged into VLM prose, and the deterministic caption.max_tokens budget does not apply to VLM output.
+API VLM runtimes use a separate thin contract. The API receives only the image plus the built-in API caption prompt and returns one plain caption line. API requests do not expose local sampling settings such as temperature, top-p, top-k, seed, context size, or chat format. A small internal output-token guardrail is used by the API adapter. The backend cleans harmless wrappers, keeps the model's caption content intact, and injects the resolved dataset trigger first.
 
 Install the local runtime with:
 
