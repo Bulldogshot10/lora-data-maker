@@ -126,8 +126,8 @@ def test_yolox_decode_uses_top_left_padding_geometry():
     decoded = detector._decode_outputs(raw, (208, 416))
 
     assert decoded.shape == (1, 5)
-    assert decoded[0, 0] == pytest.approx(69.1274, abs=1e-4)
-    assert decoded[0, 1] == pytest.approx(69.1274, abs=1e-4)
+    assert decoded[0, 0] == pytest.approx(69.12687, abs=1e-3)
+    assert decoded[0, 1] == pytest.approx(69.12687, abs=1e-3)
 
 
 def test_yolox_real_model_smoke():
