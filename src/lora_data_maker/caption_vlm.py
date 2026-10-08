@@ -98,7 +98,9 @@ def _data_uri(path: Path) -> str:
 
 def _strip_qwen35_thinking(text: str) -> str:
     """Return only visible assistant content from a Qwen3.5 completion."""
-    value = str(text).strip()
+    if not isinstance(text, str):
+        return ""
+    value = text.strip()
     if "</think>" in value:
         value = value.split("</think>", 1)[1]
     return value.strip()
