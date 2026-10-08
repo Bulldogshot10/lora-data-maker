@@ -232,6 +232,41 @@ def clean_vlm_caption(text: str) -> str:
     return value.strip(chr(96)).strip()
 
 
+_VLM_FIELDS = ("pose", "clothing", "expression", "background")
+_VLM_FIELD_RE = re.compile(
+    r"^(pose|clothing|expression|background)\s*:\s*(.*?)\s*$",
+    re.IGNORECASE,
+)
+
+
+def parse_vlm_caption(raw_caption: str) -> str:
+    """Parse the strict four-field VLM response into one caption fragment."""
+    value = str(raw_caption).replace("\r\n", "\n").replace("\r", "\n").strip()
+    lines = [line.strip() for line in value.split("\n") if line.strip()]
+    if len(lines) != len(_VLM_FIELDS):
+        raise VlmCaptionerError(
+            "VLM caption must contain exactly four non-empty fields"
+        )
+
+    fields: list[str] = []
+    for expected, line in zip(_VLM_FIELDS, lines, strict=True):
+        match = _VLM_FIELD_RE.fullmatch(line)
+        if match is None or match.group(1).lower() != expected:
+            raise VlmCaptionerError(
+                "VLM caption fields must be pose, clothing, expression, background in order"
+            )
+        phrase = clean_vlm_caption(match.group(2))
+        if not phrase:
+            raise VlmCaptionerError(f"VLM field {expected} is empty")
+        if len(re.findall(r"\S+", phrase)) > 5:
+            raise VlmCaptionerError(
+                f"VLM field {expected} exceeds the 5-word limit"
+            )
+        fields.append(phrase)
+
+    return ", ".join(fields)
+
+
 def build_vlm_caption(
     raw_caption: str,
     *,
@@ -240,9 +275,9 @@ def build_vlm_caption(
     tags: Iterable[str],
     config: CaptionConfig,
 ) -> str:
-    """Clean and combine VLM + tagger output into one bounded caption."""
+    """Parse, clean, and combine VLM + tagger output into one bounded caption."""
     return combine_caption_sources(
-        vlm_caption=raw_caption,
+        vlm_caption=parse_vlm_caption(raw_caption),
         tags=tags,
         subject=subject,
         trigger=trigger,
@@ -265,28 +300,41 @@ def estimate_caption_tokens(text: str) -> int:
     return token_count
 
 
-def truncate_caption(text: str, max_tokens: int) -> str:
+def truncate_caption(
+    text: str,
+    max_tokens: int,
+    *,
+    separator: str = ", ",
+) -> str:
     """Trim a caption to the configured conservative token estimate."""
     if max_tokens < 1:
         raise ValueError("caption max tokens must be greater than zero")
+    if not isinstance(separator, str):
+        raise ValueError("caption separator must be a string")
 
     value = re.sub(r"\s+", " ", str(text)).strip(" ,.;:")
     if not value or estimate_caption_tokens(value) <= max_tokens:
         return value
 
-    parts = [part.strip(" ,.;:") for part in re.split(r"[,;.]\s*", value)]
+    if separator:
+        parts = [
+            part.strip(" ,.;:")
+            for part in re.split(re.escape(separator), value)
+        ]
+    else:
+        parts = [value]
     parts = [part for part in parts if part]
     selected: list[str] = []
 
     for part in parts:
-        candidate = ", ".join((*selected, part))
+        candidate = separator.join((*selected, part))
         if estimate_caption_tokens(candidate) <= max_tokens:
             selected.append(part)
             continue
         break
 
     if selected:
-        result = ", ".join(selected).strip(" ,.;:")
+        result = separator.join(selected).strip(" ,.;:")
         if result:
             return result
 
@@ -406,6 +454,19 @@ def caption_manifest(
     hard_failures = 0
     try:
         for image in candidates:
+            resolved_trigger = resolve_trigger(
+                subject=manifest.subject,
+                trigger=manifest.trigger,
+                trigger_from_subject=settings.trigger_from_subject,
+            )
+            if (
+                resolved_trigger
+                and estimate_caption_tokens(resolved_trigger) > settings.max_tokens
+            ):
+                raise ValueError(
+                    "caption.max_tokens is too small to preserve the resolved trigger"
+                )
+
             deterministic_caption = truncate_caption(
                 build_caption(
                     image.tags,
@@ -414,6 +475,7 @@ def caption_manifest(
                     config=settings,
                 ),
                 settings.max_tokens,
+                separator=settings.separator,
             )
             caption = deterministic_caption
             used_fallback = False
@@ -461,11 +523,7 @@ def caption_manifest(
             image.metadata["caption_backend"] = settings.backend
             image.metadata["caption_separator"] = settings.separator
             image.metadata["caption_subject"] = manifest.subject
-            image.metadata["caption_trigger"] = resolve_trigger(
-                subject=manifest.subject,
-                trigger=manifest.trigger,
-                trigger_from_subject=settings.trigger_from_subject,
-            )
+            image.metadata["caption_trigger"] = resolved_trigger
             image.metadata["caption_trigger_from_subject"] = (
                 settings.trigger_from_subject
             )
