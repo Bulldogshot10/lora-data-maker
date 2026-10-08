@@ -77,14 +77,17 @@ def _extract_openai_text(data: dict[str, Any]) -> str:
 
 API_VLM_PROMPT = (
     "caption this image for a stable diffusion character lora dataset. "
-    "return exactly one concise caption line in English. "
-    "describe only visible, concrete details. "
-    "include pose, camera or viewpoint when visible, clothing, expression, "
-    "background, and lighting. "
-    "do not mention hair color, eye color, face or facial identity, age, gender, "
-    "subject names, image quality, watermarks, text, metadata, ai, or this task. "
-    "do not explain your answer. do not use labels, bullets, markdown, or quotes. "
-    "do not guess hidden or ambiguous details."
+    "return exactly these 4 fields, one per line. "
+    "fields must be in this order: pose, clothing, expression, background. "
+    "use short phrases only, with a maximum of 5 words per field. "
+    "pose: describe body pose and include a camera view term when visible. "
+    "clothing: describe visible clothing. "
+    "expression: describe visible expression. "
+    "background: describe the visible background and include lighting. "
+    "do not mention hair color, eye color, face, age, or gender. "
+    "do not mention image quality, watermarks, text, metadata, ai, or this task. "
+    "do not guess hidden or ambiguous details. "
+    "no extra text, explanation, bullets, markdown, or quotes."
 )
 
 # Internal API guardrail, not an exposed generation setting.
