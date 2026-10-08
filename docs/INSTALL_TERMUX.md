@@ -22,7 +22,7 @@ pkg install python git
 git clone https://github.com/Bulldogshot10/lora-data-maker.git
 cd lora-data-maker
 
-python -m pip install .
+python -m pip install ".[quality]"
 ~~~
 
 Check the CLI:
@@ -72,6 +72,22 @@ lora-data-maker scrape playwright-google "julia russian woman" --count 10
 ~~~
 
 Google verification/consent pages are treated as a source failure. The scraper does not attempt to bypass them.
+
+## Quality/text-filter runtime
+
+The clean stage uses the PP-OCRv3 text detector when quality.text_check = true, which is the default for newly initialized projects. On regular Python environments install:
+
+~~~bash
+python -m pip install ".[quality]"
+~~~
+
+On Termux, use the native OpenCV package when the headless Python wheel is unavailable:
+
+~~~bash
+pkg install x11-repo opencv-python
+~~~
+
+The text detector model is cached under cache/text/ and checksum-verified.
 
 ## Optional tagger runtime
 
