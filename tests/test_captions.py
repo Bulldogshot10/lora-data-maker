@@ -14,6 +14,7 @@ from lora_data_maker.captions import (
     parse_vlm_caption,
     truncate_caption,
     resolve_trigger,
+    count_clip_tokens,
     write_caption,
 )
 from lora_data_maker.caption_vlm import DEFAULT_VLM_PROMPT, VlmCaptionerError, VlmConfig
@@ -448,7 +449,7 @@ def test_caption_token_budget_is_enforced():
         trigger="julia",
         config=config,
     )
-    assert estimate_caption_tokens(caption) <= 12
+    assert count_clip_tokens(caption, tokenizer=FakeClipTokenizer()) <= 12
 
 
 def test_truncate_caption_drops_later_content_when_budget_is_full():
@@ -504,6 +505,6 @@ def test_vlm_caption_ignores_tagger_tags_and_uses_exact_budget():
         config=config,
         tokenizer=FakeClipTokenizer(),
     )
-    assert caption == "julia, standing, black dress, smiling"
-    assert len(FakeClipTokenizer()(caption)["input_ids"]) <= 8
+    assert caption == "julia, standing, black dress, smiling, indoors"
+    assert count_clip_tokens(caption, tokenizer=FakeClipTokenizer()) <= 8
 
