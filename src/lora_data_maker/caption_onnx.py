@@ -66,11 +66,13 @@ class SmolVlmOnnxCaptioner:
 
     @classmethod
     def _resolve_model_root(cls, model_path: str) -> Path:
-        candidate = Path(model_path).expanduser()
-        if candidate.is_dir():
-            return candidate.resolve()
+        raw_model_path = model_path.strip()
+        if raw_model_path:
+            candidate = Path(raw_model_path).expanduser()
+            if candidate.is_dir():
+                return candidate.resolve()
 
-        repo_id = model_path.strip() or cls._DEFAULT_REPO_ID
+        repo_id = raw_model_path or cls._DEFAULT_REPO_ID
         if re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", repo_id):
             try:
                 from huggingface_hub import snapshot_download
