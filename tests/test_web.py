@@ -170,6 +170,30 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert 'mmproj_path = "models/mmproj.gguf"' in config
     assert 'chat_format = "qwen2.5-vl"' in config
 
+    qwen35 = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "new_person",
+            "trigger": "new_person",
+            "preset": "joytag",
+            "mode": "cover",
+            "width": 768,
+            "height": 512,
+            "quality": 92,
+            "caption_backend": "vlm",
+            "caption_chat_format": "qwen3.5",
+            "caption_model_path": "models/model.gguf",
+            "caption_mmproj_path": "models/mmproj.gguf",
+            "caption_max_tokens": 77,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert qwen35.status_code == 200
+    qwen35_state = client.get("/api/state").json()
+    assert qwen35_state["caption"]["chat_format"] == "qwen3.5"
+
     joytag = client.post(
         "/api/settings",
         json={
