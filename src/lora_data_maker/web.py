@@ -1143,7 +1143,7 @@ function syncCaptionRuntimeUI(){
     $("caption_model_path").placeholder="/path/to/SmolVLM2-500M-Video-Instruct";
     $("caption_model_status").textContent=$("caption_model_path").value
       ?"configured: "+$("caption_model_path").value
-      :"set a local SmolVLM2 model directory";
+      :"default: HuggingFaceTB/SmolVLM2-500M-Video-Instruct (auto-download)";
     $("caption_mmproj_status").textContent="unused by ONNX runtime";
   }else{
     $("caption_model_path").placeholder="/path/to/model.gguf";
