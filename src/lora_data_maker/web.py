@@ -1198,7 +1198,10 @@ function syncCaptionRuntimeUI(){
     if($("caption_api_key_status").textContent!=="API key not set")$("caption_api_key_status").textContent="Gemini key goes into GEMINI_API_KEY in the WebUI server process";
   }else{
     $("caption_api_key").placeholder="paste OpenAI-compatible API key";
-    if(!$("caption_api_base_url").value.trim())$("caption_api_base_url").value="https://api.openai.com/v1";
+    if(!$("caption_api_base_url").value.trim()
+      || $("caption_api_base_url").value==="https://generativelanguage.googleapis.com/v1beta"){
+      $("caption_api_base_url").value="https://api.openai.com/v1";
+    }
     $("caption_model_status").textContent="unused by OpenAI-compatible API";
     $("caption_mmproj_status").textContent="unused by OpenAI-compatible API";
     if($("caption_api_key_status").textContent!=="API key not set")$("caption_api_key_status").textContent="key goes into OPENAI_API_KEY in the WebUI server process";
@@ -1257,6 +1260,7 @@ function applySettings(s,force=false){
   $("caption_mmproj_path").value=s.caption.mmproj_path||"";
   $("caption_api_model").dataset.selectedModel=s.caption.api_model||"";
   $("caption_api_model").value=s.caption.api_model||"";
+  $("caption_api_model").dataset.selectedModel=s.caption.api_model||"";
   $("caption_api_base_url").value=s.caption.api_base_url||"";
   $("caption_model_status").textContent=s.caption.model_path
     ?"configured: "+s.caption.model_path
