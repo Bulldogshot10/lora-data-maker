@@ -909,6 +909,23 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
           </div>
         </div>
       </section>
+      <section class="card card-pad" style="margin-top:14px">
+        <div class="card-title">caption</div>
+        <div class="form-grid" style="margin-top:13px">
+          <div class="field">
+            <label for="caption_max_tokens">max caption tokens</label>
+            <div class="range">
+              <input id="caption_max_tokens" type="range" min="1" max="77" step="1">
+              <span class="range-value" id="caption_tokens_value"></span>
+            </div>
+            <div class="field-note">one final caption for SD1.5. VLM text + tagger tags share this 77-token budget.</div>
+          </div>
+          <div class="field">
+            <label>caption mode</label>
+            <div class="check"><span id="caption_mode_value">deterministic</span></div>
+          </div>
+        </div>
+      </section>
 
       <section class="card card-pad" style="margin-top:14px">
         <div class="card-title">processing</div>
@@ -1065,7 +1082,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio").forEach(el=>{
     if(el)el.disabled=busy;
   });
 }
@@ -1076,6 +1093,9 @@ function applySettings(s,force=false){
   $("subject").value=project.subject||"";
   $("trigger").value=project.trigger||"";
   $("preset").value=s.tagger.preset;
+  $("caption_max_tokens").value=s.caption.max_tokens;
+  $("caption_tokens_value").textContent=s.caption.max_tokens;
+  $("caption_mode_value").textContent=s.caption.backend;
   $("mode").value=s.processing.mode;
   $("width").value=s.processing.width;
   $("height").value=s.processing.height;
@@ -1265,6 +1285,7 @@ async function saveSettings(){
   const width=Number($("width").value);
   const height=Number($("height").value);
   const quality=Number($("quality").value);
+  const captionMaxTokens=Number($("caption_max_tokens").value);
   const facePadding=Number($("face_padding").value);
   const maxPersons=Number($("max_persons").value);
   const personThreshold=Number($("person_threshold").value);
@@ -1273,7 +1294,7 @@ async function saveSettings(){
   const textConfidence=Number($("text_confidence").value);
   const textMinArea=Number($("text_min_area_ratio").value);
   const scrapeCount=Number($("scrape_count").value);
-  if(!Number.isFinite(width)||!Number.isFinite(height)||!Number.isFinite(quality)||!Number.isFinite(facePadding)||!Number.isFinite(maxPersons)||!Number.isFinite(personThreshold)||!Number.isFinite(minArea)||!Number.isFinite(minVisibility)||!Number.isFinite(textConfidence)||!Number.isFinite(textMinArea)||!Number.isFinite(scrapeCount)){
+  if(!Number.isFinite(width)||!Number.isFinite(height)||!Number.isFinite(quality)||!Number.isFinite(captionMaxTokens)||!Number.isFinite(facePadding)||!Number.isFinite(maxPersons)||!Number.isFinite(personThreshold)||!Number.isFinite(minArea)||!Number.isFinite(minVisibility)||!Number.isFinite(textConfidence)||!Number.isFinite(textMinArea)||!Number.isFinite(scrapeCount)){
     toast("please fill every numeric setting with a valid value.","bad");
     return false;
   }
@@ -1294,6 +1315,7 @@ async function saveSettings(){
         width:width,
         height:height,
         quality:quality,
+        caption_max_tokens:captionMaxTokens,
         face_crop:$("face_crop").checked,
         face_padding:facePadding,
         person_check:$("person_check").checked,
@@ -1581,9 +1603,10 @@ $("choose-images").addEventListener("click",()=>$("files").click());
 $("upload-button").addEventListener("click",upload);
 $("files").addEventListener("change",updateFileSummary);
 $("quality").addEventListener("input",()=>{$("qv").textContent=$("quality").value});
+$("caption_max_tokens").addEventListener("input",()=>{$("caption_tokens_value").textContent=$("caption_max_tokens").value});
 [
   "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count",
-  "mode","width","height","quality","face_crop","face_padding","person_check",
+  "mode","width","height","quality","caption_max_tokens","face_crop","face_padding","person_check",
   "max_persons","person_threshold","min_subject_area","min_subject_visibility",
   "text_check","text_confidence","text_min_area_ratio"
 ].forEach(id=>{
@@ -1887,6 +1910,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     "face_padding": 1.75,
                 },
                 "tagger": {"backend": "wd14", "preset": "sweetspot"},
+                "caption": {"backend": "deterministic", "max_tokens": 77},
                 "scraper": {
                     "backend": "duckduckgo",
                     "query": "",
@@ -1922,8 +1946,10 @@ def create_app(root: Path | str = ".") -> FastAPI:
         cfg = load_config(current_root / "config.toml")
         processing = cfg.get("processing", {})
         tagger = cfg.get("tagger", {})
-        return {
-            "project": {
+        caption = cfg.get("caption", {})
+        if not isinstance(caption, dict):
+            caption = {}
+        return {            "project": {
                 "name": p.manifest.project_name,
                 "subject": p.manifest.subject,
                 "trigger": p.manifest.trigger,
@@ -1940,6 +1966,10 @@ def create_app(root: Path | str = ".") -> FastAPI:
             "tagger": {
                 "backend": str(tagger.get("backend", "wd14")),
                 "preset": str(tagger.get("preset", "sweetspot")),
+            },
+            "caption": {
+                "backend": str(caption.get("backend", "deterministic")),
+                "max_tokens": int(caption.get("max_tokens", 77)),
             },
             "scraper": {
                 "backend": str(cfg.get("scraper", {}).get("backend", "duckduckgo")),
@@ -2066,6 +2096,16 @@ def create_app(root: Path | str = ".") -> FastAPI:
         set_config("project", {"name": name, "subject": subject, "trigger": trigger}, current_root)
         set_config("processing", {"resize_mode": mode, "target_width": width, "target_height": height, "jpeg_quality": quality, "face_crop": face_crop, "face_padding": face_padding}, current_root)
         set_config("tagger", {"backend": "joytag" if resolved_preset.kind == "joytag" else "wd14", "preset": preset}, current_root)
+        current_caption = current_config.get("caption", {})
+        if not isinstance(current_caption, dict):
+            current_caption = {}
+        if not 1 <= int(payload.get("caption_max_tokens", current_caption.get("max_tokens", 77))) <= 77:
+            raise HTTPException(400, "caption max tokens must be between 1 and 77")
+        set_config(
+            "caption",
+            {"max_tokens": int(payload.get("caption_max_tokens", current_caption.get("max_tokens", 77)))},
+            current_root,
+        )
         set_config(
             "scraper",
             {
