@@ -130,6 +130,7 @@ def caption_config_from_dict(
     vlm = VlmConfig(
         model_path=model_path,
         mmproj_path=mmproj_path,
+        runtime=string_field("runtime", "llama_cpp"),
         chat_format=string_field("chat_format", "mtmd"),
         prompt=string_field("prompt", DEFAULT_VLM_PROMPT),
         max_tokens=int_field("max_tokens", 128),
