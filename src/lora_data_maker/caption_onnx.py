@@ -180,11 +180,20 @@ class SmolVlmOnnxCaptioner:
 
         try:
             import onnxruntime as ort
-            from transformers import AutoProcessor
         except ImportError as exc:
             raise VlmCaptionerError(
-                "ONNX VLM captions require onnxruntime and transformers; "
+                "ONNX VLM captions require onnxruntime; "
                 "install lora-data-maker[caption-onnx]"
+            ) from exc
+
+        try:
+            from transformers import AutoProcessor
+            from transformers import SmolVLMProcessor
+        except ImportError as exc:
+            raise VlmCaptionerError(
+                "ONNX VLM captions require a Transformers build with SmolVLMProcessor "
+                "and its dependencies; install or upgrade lora-data-maker[caption-onnx]. "
+                f"import error: {exc}"
             ) from exc
 
         options = ort.SessionOptions()
