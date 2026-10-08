@@ -1,4 +1,18 @@
-# Unreleased
+# v2.1.0
+
+## WebUI
+
+- Added the local WebUI dashboard shell, project explorer, project switching, image upload, pipeline controls, progress tracking, output download, and responsive mobile layouts.
+- Added manual image removal from Recent Images for dataset cherry-picking, including cleanup of derived artifacts.
+- Added scraper cancellation with preserved downloads completed before cancellation.
+- Added the WebUI favicon and packaged static icon assets.
+
+## Quality and runtime
+
+- Fixed YOLOX-Nano preprocessing, output decoding, and model-contract validation for the pinned runtime.
+- Added optional YOLOX person detection and YuNet face detection with pinned model revisions, SHA-256 verification, and local model caching.
+- Added JoyTag ONNX support and mobile-friendly tagger presets with concurrency-safe model downloads.
+- Improved quality-stage error handling, scraper resilience, manifest behavior, and tagger backend/preset consistency.
 
 ## Playwright image search
 
