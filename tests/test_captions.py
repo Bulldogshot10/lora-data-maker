@@ -238,16 +238,18 @@ def test_parse_vlm_caption_accepts_longer_fields_without_failing():
     )
 
 
-def test_build_api_vlm_caption_injects_trigger_without_field_parsing():
+def test_build_api_vlm_caption_injects_trigger_from_four_fields():
     config = CaptionConfig(backend="vlm")
     assert build_api_vlm_caption(
-        "standing in a white top, smiling, indoors with soft window lighting",
+        "pose: standing in place\n"
+        "clothing: white top\n"
+        "expression: smiling\n"
+        "background: indoors with soft lighting",
         subject="Julia",
         trigger="ignored",
         config=config,
-    ) == (
-        "julia, standing in a white top, smiling, indoors with soft window lighting"
-    )
+    ) == "julia, standing in place, white top, smiling, indoors with soft lighting"
+
 
 
 def test_clean_api_vlm_caption_removes_wrappers_and_thinking():
