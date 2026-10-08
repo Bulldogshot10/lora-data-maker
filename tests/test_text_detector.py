@@ -63,3 +63,19 @@ def test_text_detector_scales_boxes_and_filters_small_regions():
     assert regions[0].right == 220
     assert regions[0].bottom == 30
     assert regions[0].confidence == pytest.approx(0.9)
+
+
+def test_ppocr_real_model_smoke():
+    import os
+
+    model_path = os.environ.get("LORA_DATA_MAKER_TEXTOCR_MODEL")
+    image_path = os.environ.get("LORA_DATA_MAKER_TEXTOCR_IMAGE")
+    if not model_path or not image_path:
+        pytest.skip("real PP-OCR model/image not provided")
+
+    detector = PPOCRTextDetector(model_path=model_path)
+    with Image.open(image_path) as image:
+        regions = detector.detect(image.convert("RGB"))
+
+    assert isinstance(regions, tuple)
+    assert len(regions) > 0
