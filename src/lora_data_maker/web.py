@@ -21,12 +21,8 @@ from .pack import pack_dataset
 from .paths import ProjectPaths, manifest_path
 from .processing import ProcessConfig, YOLOXNanoPersonDetector, YuNetFaceDetector, clean_manifest, process_manifest, validate_image
 from .reconcile import reconcile_raw
-from .scrapers import (
-    SCRAPER_BACKENDS,
-    ScraperCancelledError,
-    ScraperError,
-    ScraperManager,
-)
+from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
+from .scrapers.base import ScraperCancelledError
 from .taggers import build_tagger, clean_tag_manifest, resolve_tagger_preset, tag_manifest
 
 HTML = r"""
@@ -331,6 +327,7 @@ button,input,select{border-radius:11px}
 .status-dot.running{background:var(--accent);box-shadow:0 0 0 5px rgba(167,149,255,.08),0 0 12px rgba(167,149,255,.6)}
 .status-dot.ok{background:var(--ok);box-shadow:0 0 0 5px rgba(117,216,164,.07)}
 .status-dot.bad{background:var(--bad);box-shadow:0 0 0 5px rgba(255,125,137,.07)}
+.status-dot.cancelled{background:var(--warn);box-shadow:0 0 0 5px rgba(240,199,110,.08)}
 .status-text{min-width:0;color:var(--muted);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .job{
   min-height:136px;
@@ -1181,7 +1178,7 @@ function renderGallery(images){
   }
   $("gallery").innerHTML=visible.map(x=>{
     const src="/media/"+encodeURIComponent(x.path);
-    return '<div class="tile" data-preview-path="'+esc(src)+'" data-preview-name="'+esc(x.path)+'" data-preview-status="'+esc(x.status)+'"><img loading="lazy" src="'+esc(src)+'" alt="'+esc(x.path)+'"><div class="tile-meta"><div class="tile-path" title="'+esc(x.path)+'">'+esc(x.path)+'</div><div class="tile-status">'+esc(x.status)+'</div><div class="tile-actions"><button type="button" class="tile-delete" data-image-delete="'+esc(x.id)+'"'+(busy?" disabled":"")+' aria-label="remove '+esc(x.path)+' from dataset">remove</button></div></div></div>';
+    return '<div class="tile" data-preview-path="'+esc(src)+'" data-preview-name="'+esc(x.path)+'" data-preview-status="'+esc(x.status)+'"><img loading="lazy" src="'+esc(src)+'" alt="'+esc(x.path)+'"><div class="tile-meta"><div class="tile-path" title="'+esc(x.path)+'">'+esc(x.path)+'</div><div class="tile-status">'+esc(x.status)+'</div><div class="tile-actions"><button type="button" class="tile-delete" data-image-delete="'+esc(x.id)+'" data-image-path="'+esc(x.path)+'"'+(busy?" disabled":"")+' aria-label="remove image">remove</button></div></div></div>';
   }).join("");
 }
 function updateProjectHeader(s){
@@ -1552,19 +1549,19 @@ $("quality").addEventListener("input",()=>{$("qv").textContent=$("quality").valu
   $(id).addEventListener("input",markDirty);
   $(id).addEventListener("change",markDirty);
 });
-  $("job-footer").addEventListener("click",event=>{
-    const cancel=event.target.closest("[data-job-cancel]");
-    if(cancel)cancelScrape(cancel.dataset.jobCancel);
-  });
-  $("gallery").addEventListener("click",event=>{
-    const remove=event.target.closest("[data-image-delete]");
-    if(remove){
-      deleteImage(remove.dataset.imageDelete, remove.getAttribute("aria-label")||"image");
-      return;
-    }
-    const tile=event.target.closest("[data-preview-path]");
-    if(tile)openPreview(tile);
-  });
+$("job-footer").addEventListener("click",event=>{
+  const cancel=event.target.closest("[data-job-cancel]");
+  if(cancel)cancelScrape(cancel.dataset.jobCancel);
+});
+$("gallery").addEventListener("click",event=>{
+  const remove=event.target.closest("[data-image-delete]");
+  if(remove){
+    deleteImage(remove.dataset.imageDelete, remove.dataset.imagePath||"image");
+    return;
+  }
+  const tile=event.target.closest("[data-preview-path]");
+  if(tile)openPreview(tile);
+});
 const drop=$("drop");
 ["dragenter","dragover"].forEach(type=>drop.addEventListener(type,event=>{
   event.preventDefault();
