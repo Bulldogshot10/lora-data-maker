@@ -602,6 +602,7 @@ def caption_manifest(
                     if settings.vlm.model_path
                     else ""
                 )
+                image.metadata["caption_vlm_runtime"] = settings.vlm.runtime
                 image.metadata["caption_vlm_chat_format"] = (
                     settings.vlm.chat_format
                 )
@@ -616,6 +617,7 @@ def caption_manifest(
                     "caption_vlm_error",
                     "caption_fallback_backend",
                     "caption_vlm_model",
+                    "caption_vlm_runtime",
                     "caption_vlm_chat_format",
                 ):
                     image.metadata.pop(key, None)
