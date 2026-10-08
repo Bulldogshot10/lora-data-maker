@@ -191,6 +191,59 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert joytag_state["tagger"]["backend"] == "joytag"
     assert joytag_state["tagger"]["preset"] == "joytag"
 
+    off = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "new_person",
+            "trigger": "new_person",
+            "preset": "off",
+            "mode": "cover",
+            "width": 768,
+            "height": 512,
+            "quality": 92,
+            "caption_backend": "vlm",
+            "caption_chat_format": "qwen2.5-vl",
+            "caption_model_path": "models/model.gguf",
+            "caption_mmproj_path": "models/mmproj.gguf",
+            "caption_max_tokens": 77,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert off.status_code == 200
+    off_state = client.get("/api/state").json()
+    assert off_state["tagger"]["backend"] == "off"
+    assert off_state["tagger"]["preset"] == "off"
+
+
+def test_webui_vlm_file_uploads_store_relative_paths(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    model = client.post(
+        "/api/vlm/upload/model",
+        files={"file": ("my-model.gguf", b"GGUF-MODEL", "application/octet-stream")},
+    )
+    assert model.status_code == 200
+    assert model.json()["kind"] == "model"
+    assert model.json()["path"] == "models/my-model.gguf"
+    assert (root / "models" / "my-model.gguf").read_bytes() == b"GGUF-MODEL"
+
+    mmproj = client.post(
+        "/api/vlm/upload/mmproj",
+        files={"file": ("vision.mmproj.gguf", b"GGUF-MMPROJ", "application/octet-stream")},
+    )
+    assert mmproj.status_code == 200
+    assert mmproj.json()["path"] == "models/vision.mmproj.gguf"
+    assert (root / "models" / "vision.mmproj.gguf").read_bytes() == b"GGUF-MMPROJ"
+
+    rejected = client.post(
+        "/api/vlm/upload/model",
+        files={"file": ("not-model.txt", b"nope", "text/plain")},
+    )
+    assert rejected.status_code == 400
+
 
 def test_webui_backend_switch_invalidates_vlm_captions(tmp_path: Path) -> None:
     root = make_project(tmp_path)
@@ -293,6 +346,42 @@ def test_webui_tag_stage_is_skipped_in_vlm_mode(tmp_path: Path, monkeypatch) -> 
             break
         time.sleep(0.01)
 
+    assert job["status"] == "done"
+
+
+def test_webui_tag_stage_is_skipped_when_tagger_is_off(tmp_path: Path, monkeypatch) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    response = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "trigger": "person",
+            "preset": "off",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert response.status_code == 200
+
+    def fail_if_built(*args, **kwargs):
+        raise AssertionError("disabled tagger must not be built")
+
+    monkeypatch.setattr("lora_data_maker.web.build_tagger", fail_if_built)
+    started = client.post("/api/run/tag")
+    assert started.status_code == 200
+    job_id = started.json()["job_id"]
+    for _ in range(100):
+        job = client.get(f"/api/jobs/{job_id}").json()
+        if job.get("status") != "running":
+            break
+        time.sleep(0.01)
     assert job["status"] == "done"
 
 
