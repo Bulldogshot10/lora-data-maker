@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
+from .caption_vlm import (
+    Captioner,
+    LlamaCppVlmCaptioner,
+    VlmConfig,
+    VlmCaptionerError,
+)
 from .paths import manifest_path
 from .taggers.filters import normalize_tag
 
@@ -19,6 +26,7 @@ class CaptionSummary:
     captioned: int = 0
     failed: int = 0
     skipped: int = 0
+    fallback: int = 0
 
 
 @dataclass(frozen=True)
@@ -26,12 +34,105 @@ class CaptionConfig:
     separator: str = ", "
     subject_position: str = "first"
     trigger_from_subject: bool = True
+    backend: str = "deterministic"
+    vlm: VlmConfig = field(default_factory=VlmConfig)
 
     def __post_init__(self) -> None:
         if self.subject_position != "first":
             raise ValueError(
                 "caption.subject_position must be 'first'"
             )
+        if self.backend not in {"deterministic", "vlm"}:
+            raise ValueError(
+                "caption.backend must be 'deterministic' or 'vlm'"
+            )
+        if not isinstance(self.separator, str):
+            raise ValueError("caption.separator must be a string")
+        if not isinstance(self.trigger_from_subject, bool):
+            raise ValueError(
+                "caption.trigger_from_subject must be a boolean"
+            )
+
+
+def caption_config_from_dict(data: dict[str, object]) -> CaptionConfig:
+    """Parse a project [caption] table into a validated runtime config."""
+    separator = data.get("separator", ", ")
+    subject_position = data.get("subject_position", "first")
+    trigger_from_subject = data.get("trigger_from_subject", True)
+    backend = str(data.get("backend", "deterministic")).strip().lower()
+
+    if not isinstance(separator, str):
+        raise ValueError("config field caption.separator must be a string")
+    if not isinstance(subject_position, str):
+        raise ValueError(
+            "config field caption.subject_position must be a string"
+        )
+    if not isinstance(trigger_from_subject, bool):
+        raise ValueError(
+            "config field caption.trigger_from_subject must be a boolean"
+        )
+
+    vlm_data = data.get("vlm", {})
+    if not isinstance(vlm_data, dict):
+        raise ValueError("config section [caption.vlm] must be a table")
+
+    def string_field(name: str, default: str) -> str:
+        value = vlm_data.get(name, default)
+        if not isinstance(value, str):
+            raise ValueError(
+                f"config field caption.vlm.{name} must be a string"
+            )
+        return value
+
+    def int_field(name: str, default: int) -> int:
+        value = vlm_data.get(name, default)
+        if isinstance(value, bool) or not isinstance(value, int):
+            raise ValueError(
+                f"config field caption.vlm.{name} must be an integer"
+            )
+        return value
+
+    def float_field(name: str, default: float) -> float:
+        value = vlm_data.get(name, default)
+        if isinstance(value, bool) or not isinstance(value, (int, float)):
+            raise ValueError(
+                f"config field caption.vlm.{name} must be a number"
+            )
+        return float(value)
+
+    vlm = VlmConfig(
+        model_path=string_field("model_path", ""),
+        mmproj_path=string_field("mmproj_path", ""),
+        chat_format=string_field("chat_format", "mtmd"),
+        prompt=string_field(
+            "prompt",
+            (
+                "describe this image for a stable diffusion character lora "
+                "dataset. be factual and concise. describe visible visual "
+                "attributes only. mention subject appearance, clothing, pose, "
+                "expression, framing, environment, and lighting when clearly "
+                "visible. do not invent details. do not mention image quality. "
+                "do not mention that you are an ai. do not use markdown. "
+                "return one concise caption."
+            ),
+        ),
+        max_tokens=int_field("max_tokens", 128),
+        temperature=float_field("temperature", 0.1),
+        top_p=float_field("top_p", 0.95),
+        top_k=int_field("top_k", 40),
+        n_ctx=int_field("n_ctx", 2048),
+        n_threads=int_field("n_threads", 4),
+        n_gpu_layers=int_field("n_gpu_layers", 0),
+        seed=int_field("seed", 42),
+    )
+
+    return CaptionConfig(
+        separator=separator,
+        subject_position=subject_position,
+        trigger_from_subject=trigger_from_subject,
+        backend=backend,
+        vlm=vlm,
+    )
 
 
 def resolve_trigger(
@@ -79,6 +180,71 @@ def build_caption(
     return settings.separator.join(normalized_tags)
 
 
+_LEADING_NOISE = re.compile(
+    r"^(?:caption|description|answer)\s*:\s*",
+    re.IGNORECASE,
+)
+_LEADING_PREFIXES = (
+    "the image shows ",
+    "this image shows ",
+    "the photo shows ",
+    "this photo shows ",
+    "the picture shows ",
+    "this picture shows ",
+    "this is a photo of ",
+    "this is an image of ",
+    "a photo of ",
+    "an image of ",
+)
+
+
+def clean_vlm_caption(text: str) -> str:
+    """Normalize raw VLM output into one compact training-caption line."""
+    value = str(text).replace("\r\n", "\n").replace("\r", "\n").strip()
+    value = _LEADING_NOISE.sub("", value)
+    value = value.replace("\n", " ")
+    value = value.strip().strip(chr(96)).strip()
+    value = re.sub(r"^[-*•]\s+", "", value)
+    value = re.sub(r"\s+", " ", value).strip()
+
+    lowered = value.lower()
+    for prefix in _LEADING_PREFIXES:
+        if lowered.startswith(prefix):
+            value = value[len(prefix):].lstrip()
+            break
+
+    return value.strip(chr(96)).strip()
+
+
+def build_vlm_caption(
+    raw_caption: str,
+    *,
+    subject: str,
+    trigger: str,
+    config: CaptionConfig,
+) -> str:
+    """Clean VLM text and inject the canonical trigger exactly once."""
+    value = clean_vlm_caption(raw_caption)
+    resolved_trigger = resolve_trigger(
+        subject=subject,
+        trigger=trigger,
+        trigger_from_subject=config.trigger_from_subject,
+    )
+
+    if resolved_trigger:
+        pattern = re.compile(
+            rf"^{re.escape(resolved_trigger)}(?:\s*[,.;:]\s*|\s+)",
+            re.IGNORECASE,
+        )
+        value = pattern.sub("", value, count=1).strip()
+
+    if not resolved_trigger:
+        return value
+    if not value:
+        return resolved_trigger
+    return config.separator.join((resolved_trigger, value))
+
+
 def write_caption(path: Path | str, caption: str) -> Path:
     """Atomically write a UTF-8 caption file with a single trailing newline."""
     target = Path(path).expanduser().resolve()
@@ -114,8 +280,9 @@ def caption_manifest(
     root: Path | str,
     output_dir: Path | str,
     config: CaptionConfig | None = None,
+    captioner: Captioner | None = None,
 ) -> CaptionSummary:
-    """Write deterministic captions for tagged/captioned records."""
+    """Write deterministic or local-VLM captions for tagged/captioned records."""
     root_path = Path(root).expanduser().resolve()
     caption_root = Path(output_dir).expanduser().resolve()
     settings = config or CaptionConfig()
@@ -129,41 +296,107 @@ def caption_manifest(
         key=lambda image: image.path,
     )
 
-    for image in candidates:
-        caption = build_caption(
-            image.tags,
-            subject=manifest.subject,
-            trigger=manifest.trigger,
-            config=settings,
-        )
+    runtime = captioner
+    owns_runtime = False
+    if settings.backend == "vlm" and runtime is None:
+        runtime = LlamaCppVlmCaptioner(settings.vlm)
+        owns_runtime = True
 
-        target = caption_root / f"{image.image_id}.txt"
-        write_caption(target, caption)
+    fallback_count = 0
+    hard_failures = 0
+    try:
+        for image in candidates:
+            deterministic_caption = build_caption(
+                image.tags,
+                subject=manifest.subject,
+                trigger=manifest.trigger,
+                config=settings,
+            )
+            caption = deterministic_caption
+            used_fallback = False
 
-        image.caption_path = manifest_path(root_path, target)
-        image.metadata["caption_stage"] = "captioned"
-        image.metadata["caption_separator"] = settings.separator
-        image.metadata["caption_subject"] = manifest.subject
-        image.metadata["caption_trigger"] = resolve_trigger(
-            subject=manifest.subject,
-            trigger=manifest.trigger,
-            trigger_from_subject=settings.trigger_from_subject,
-        )
-        image.metadata["caption_trigger_from_subject"] = (
-            settings.trigger_from_subject
-        )
-        image.metadata["caption_tag_count"] = len(image.tags)
-        image.set_status("captioned")
+            if settings.backend == "vlm":
+                processed_path = (
+                    root_path / str(image.processed_path)
+                    if image.processed_path
+                    else None
+                )
+                if processed_path is None:
+                    used_fallback = True
+                    image.metadata["caption_vlm_error"] = (
+                        "processed image path is missing"
+                    )
+                else:
+                    try:
+                        assert runtime is not None
+                        raw_caption = runtime.caption(processed_path)
+                        caption = build_vlm_caption(
+                            raw_caption,
+                            subject=manifest.subject,
+                            trigger=manifest.trigger,
+                            config=settings,
+                        )
+                        if not caption:
+                            raise VlmCaptionerError(
+                                f"VLM returned an empty caption for {image.path}"
+                            )
+                    except Exception as exc:
+                        used_fallback = True
+                        image.metadata["caption_vlm_error"] = str(exc)[:500]
 
-    skipped = sum(
-        1
-        for image in manifest.images.values()
-        if image.status not in {"tagged", "captioned"}
-    )
+            try:
+                target = caption_root / f"{image.image_id}.txt"
+                write_caption(target, caption)
+            except OSError:
+                hard_failures += 1
+                image.metadata["caption_stage"] = "failed"
+                raise
+
+            image.caption_path = manifest_path(root_path, target)
+            image.metadata["caption_stage"] = "captioned"
+            image.metadata["caption_backend"] = settings.backend
+            image.metadata["caption_separator"] = settings.separator
+            image.metadata["caption_subject"] = manifest.subject
+            image.metadata["caption_trigger"] = resolve_trigger(
+                subject=manifest.subject,
+                trigger=manifest.trigger,
+                trigger_from_subject=settings.trigger_from_subject,
+            )
+            image.metadata["caption_trigger_from_subject"] = (
+                settings.trigger_from_subject
+            )
+            image.metadata["caption_tag_count"] = len(image.tags)
+            image.metadata["caption_fallback"] = used_fallback
+            if used_fallback:
+                fallback_count += 1
+                image.metadata["caption_fallback_backend"] = "deterministic"
+            else:
+                image.metadata.pop("caption_vlm_error", None)
+                image.metadata.pop("caption_fallback_backend", None)
+
+            if settings.backend == "vlm":
+                image.metadata["caption_vlm_model"] = (
+                    str(Path(settings.vlm.model_path).expanduser())
+                    if settings.vlm.model_path
+                    else ""
+                )
+                image.metadata["caption_vlm_chat_format"] = (
+                    settings.vlm.chat_format
+                )
+
+            image.set_status("captioned")
+    finally:
+        if owns_runtime and runtime is not None:
+            runtime.close()
 
     return CaptionSummary(
         scanned=len(candidates),
-        captioned=len(candidates),
-        failed=0,
-        skipped=skipped,
+        captioned=len(candidates) - hard_failures,
+        failed=hard_failures,
+        skipped=sum(
+            1
+            for image in manifest.images.values()
+            if image.status not in {"tagged", "captioned"}
+        ),
+        fallback=fallback_count,
     )
