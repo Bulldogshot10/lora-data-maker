@@ -82,6 +82,24 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     budget_state = client.get("/api/state").json()
     assert budget_state["caption"]["max_tokens"] == 64
 
+    invalid_budget = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "new_person",
+            "trigger": "new_person",
+            "preset": "joytag",
+            "mode": "cover",
+            "width": 768,
+            "height": 512,
+            "quality": 92,
+            "caption_max_tokens": "not-a-number",
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert invalid_budget.status_code == 400
+
     joytag = client.post(
         "/api/settings",
         json={
