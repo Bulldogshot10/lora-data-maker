@@ -347,7 +347,7 @@ Start the WebUI from a dataset workspace:
 
 Then open http://127.0.0.1:8787 in the browser. The WebUI can create a new dataset project from the workspace, open existing projects, and switch between them without using the CLI init command.
 
-The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection, validation, staging, tagging, tag cleaning, caption generation, Kohya export, ZIP packaging, gallery preview, manual image removal for cherry-picking, scraper cancellation, and ZIP download.
+The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection, caption backend selection, local VLM model/mmproj paths and chat format, the final caption token budget, validation, staging, tagging, tag cleaning, caption generation, Kohya export, ZIP packaging, gallery preview, manual image removal for cherry-picking, scraper cancellation, and ZIP download.
 
 The one-click Prepare Dataset flow runs:
 
