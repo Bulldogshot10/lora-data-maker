@@ -219,6 +219,9 @@ def test_web_quality_settings_round_trip(tmp_path: Path) -> None:
             "person_threshold": 0.4,
             "min_subject_area": 0.15,
             "min_subject_visibility": 0.4,
+            "text_check": True,
+            "text_confidence": 0.6,
+            "text_min_area_ratio": 0.0008,
         },
     )
     assert response.status_code == 200
@@ -229,6 +232,9 @@ def test_web_quality_settings_round_trip(tmp_path: Path) -> None:
     assert state["quality"]["person_threshold"] == 0.4
     assert state["quality"]["min_subject_area"] == 0.15
     assert state["quality"]["min_subject_visibility"] == 0.4
+    assert state["quality"]["text_check"] is True
+    assert state["quality"]["text_confidence"] == 0.6
+    assert state["quality"]["text_min_area_ratio"] == 0.0008
 
 
 def test_dataset_explorer_lists_and_switches_projects(tmp_path: Path) -> None:
