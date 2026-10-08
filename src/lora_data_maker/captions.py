@@ -247,6 +247,17 @@ def parse_vlm_caption(raw_caption: str) -> str:
     """Parse the strict four-field VLM response into one caption fragment."""
     value = str(raw_caption).replace("\r\n", "\n").replace("\r", "\n").strip()
     lines = [line.strip() for line in value.split("\n") if line.strip()]
+    if not lines:
+        raise VlmCaptionerError("VLM caption is empty")
+
+    structured = any(
+        re.match(r"^(?:pose|clothing|expression|background)\s*:", line, re.IGNORECASE)
+        for line in lines
+    )
+    if not structured:
+        # Keep custom VLM prompts compatible with the older freeform caption format.
+        return clean_vlm_caption(value)
+
     if len(lines) != len(_VLM_FIELDS):
         raise VlmCaptionerError(
             "VLM caption must contain exactly four non-empty fields"
