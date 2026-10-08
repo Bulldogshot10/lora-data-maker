@@ -78,6 +78,24 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert joytag_state["tagger"]["preset"] == "joytag"
 
 
+def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    html = client.get("/").text
+    assert 'data-view="overview"' in html
+    assert 'data-view="collect"' in html
+    assert 'data-view="prepare"' in html
+    assert 'data-view="settings"' in html
+    assert 'id="new-modal"' in html
+    assert 'id="confirm-modal"' in html
+    assert 'aria-live="polite"' in html
+    assert 'id="project_explorer"' in html
+    assert 'id="progress-fill"' in html
+    assert 'id="preview-modal"' in html
+    assert "onclick=" not in html
+
+
 def test_new_project_switches_active_project(tmp_path: Path) -> None:
     root = make_project(tmp_path)
     client = TestClient(create_app(root))
