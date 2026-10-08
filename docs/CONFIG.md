@@ -183,9 +183,9 @@ model_path points to the local VLM GGUF and mmproj_path points to its multimodal
 chat_format supports mtmd, qwen2.5-vl, gemma4, and qwen3.5. qwen3.5 uses llama-cpp-python's MTMD path and the chat template embedded in the Qwen3.5 GGUF.
 The VLM receives only the processed image and the configured prompt. Its prompt requests exactly four short fields: pose, clothing, expression, and background with lighting. Hair color, eye color, face, age, and gender are intentionally excluded from the VLM output.
 VLM mode does not invoke WD14 or JoyTag and does not merge booru tags into the caption. The four VLM fields become the ordered caption body after the resolved trigger: trigger → pose → clothing → expression → background.
-VLM mode does not use the SD1.x CLIP tokenizer, does not download tokenizer files, and does not apply caption.max_tokens. Each VLM field is limited to five words by the strict parser, which keeps the output compact without assuming a particular CLIP tokenizer implementation. VLM inference or formatting failures mark the image as failed instead of silently falling back to a tag caption.
+VLM mode does not use a Stable Diffusion text tokenizer, does not download tokenizer files, and does not apply caption.max_tokens. Each VLM field is limited to five words by the strict parser. VLM inference or formatting failures mark the image as failed instead of silently falling back to a tag caption.
 
-Install the optional VLM runtime and tokenizer with:
+Install the optional VLM runtime with:
 
 ~~~bash
 python -m pip install ".[caption-vlm]"
