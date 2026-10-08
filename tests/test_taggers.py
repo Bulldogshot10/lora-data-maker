@@ -529,3 +529,10 @@ def test_command_tag_records_resolved_backend_for_explicit_preset(tmp_path, monk
     project = DatasetProject.open(ProjectPaths.from_root(root))
     assert project.manifest.source["last_tag_backend"] == "joytag"
     assert project.manifest.source["last_tag_preset"] == "joytag"
+
+def test_build_tagger_rejects_disabled_state():
+    from lora_data_maker.taggers.manager import build_tagger
+    import pytest
+
+    with pytest.raises(TaggerError, match="tagger is disabled"):
+        build_tagger({"backend": "off", "preset": "off"})
