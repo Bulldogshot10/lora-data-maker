@@ -34,7 +34,7 @@ class Captioner(Protocol):
 
 
 class VlmCaptionerError(LoraDataMakerError):
-    """Raised when the local VLM captioner cannot initialize or infer."""
+    """Raised when a VLM captioner cannot initialize or infer."""
 
 
 @dataclass(frozen=True)
