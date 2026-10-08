@@ -151,7 +151,7 @@ def test_default_vlm_prompt_has_compact_word_limit():
     assert "return exactly one compact natural-language caption" in DEFAULT_VLM_PROMPT
 
 
-def test_build_vlm_caption_injects_trigger_once():
+def test_build_vlm_caption_removes_repeated_trigger_mentions():
     config = CaptionConfig(
         backend="vlm",
         vlm=VlmConfig(
@@ -160,12 +160,12 @@ def test_build_vlm_caption_injects_trigger_once():
         ),
     )
     assert build_vlm_caption(
-        "julia, a woman in a black dress, sitting outdoors.",
+        "Julia, a portrait of Julia with Julia visible in the frame.",
         subject="Julia",
         trigger="ignored",
-        tags=["julia", "black_dress", "outdoors"],
+        tags=["julia", "portrait"],
         config=config,
-    ) == "julia, a woman in a black dress, sitting outdoors., black dress, outdoors"
+    ) == "julia, a portrait of with visible in the frame., portrait"
 
 
 def test_caption_config_rejects_vlm_without_paths():
