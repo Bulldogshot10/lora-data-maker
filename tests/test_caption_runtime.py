@@ -26,6 +26,39 @@ def test_caption_config_resolves_relative_vlm_paths(tmp_path):
 
 
 
+def test_caption_config_defaults_gemini_api_settings():
+    settings = caption_config_from_dict(
+        {
+            "backend": "vlm",
+            "vlm": {
+                "runtime": "gemini",
+                "api_key_env": "",
+                "api_model": "",
+                "api_base_url": "",
+            },
+        }
+    )
+    assert settings.vlm.api_key_env == "GEMINI_API_KEY"
+    assert settings.vlm.api_model == "gemini-2.5-flash-lite"
+    assert settings.vlm.api_base_url == "https://generativelanguage.googleapis.com/v1beta"
+
+
+def test_caption_config_defaults_openai_compatible_api_key_and_base_url():
+    settings = caption_config_from_dict(
+        {
+            "backend": "vlm",
+            "vlm": {
+                "runtime": "openai_compatible",
+                "api_key_env": "",
+                "api_model": "vision-model",
+                "api_base_url": "",
+            },
+        }
+    )
+    assert settings.vlm.api_key_env == "OPENAI_API_KEY"
+    assert settings.vlm.api_base_url == "https://api.openai.com/v1"
+
+
 def test_caption_config_accepts_onnx_runtime_without_mmproj(tmp_path):
     model_dir = tmp_path / "models" / "SmolVLM2-500M-Video-Instruct"
     model_dir.mkdir(parents=True)
