@@ -78,10 +78,11 @@ def _extract_openai_text(data: dict[str, Any]) -> str:
 
 API_VLM_PROMPT = (
     "caption this image for a stable diffusion character lora dataset. "
-    "return exactly these 4 fields, one per line. "
-    "fields must be in this order: pose, clothing, expression, background. "
+    "return exactly these 5 fields, one per line. "
+    "fields must be in this order: pose, angle camera, clothing, expression, background. "
     "use short phrases only, with a maximum of 5 words per field. "
-    "pose: describe body pose and include a camera view term when visible. "
+    "pose: describe body pose. "
+    "angle camera: describe the visible camera angle or view. "
     "clothing: describe visible clothing. "
     "expression: describe visible expression. "
     "background: describe the visible background and include lighting. "
