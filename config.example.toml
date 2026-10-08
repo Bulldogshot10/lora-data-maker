@@ -71,9 +71,23 @@ remove = [
 ]
 
 [caption]
+backend = "deterministic"
 separator = ", "
 subject_position = "first"
 trigger_from_subject = true
+
+[caption.vlm]
+model_path = ""
+mmproj_path = ""
+chat_format = "mtmd"
+max_tokens = 128
+temperature = 0.1
+top_p = 0.95
+top_k = 40
+n_ctx = 2048
+n_threads = 4
+n_gpu_layers = 0
+seed = 42
 
 [export]
 repeats = 1
