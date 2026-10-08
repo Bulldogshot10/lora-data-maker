@@ -19,7 +19,6 @@ from .pack import pack_dataset
 from .paths import ProjectPaths, find_project_root, manifest_path
 from .reconcile import reconcile_raw
 from .processing import (
-from .processing.text import PPOCRTextDetector
     ProcessConfig,
     YOLOXNanoPersonDetector,
     YuNetFaceDetector,
@@ -27,6 +26,7 @@ from .processing.text import PPOCRTextDetector
     process_manifest,
     validate_image,
 )
+from .processing.text import PPOCRTextDetector
 from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
 from .taggers import (
     TAGGER_PRESETS,
