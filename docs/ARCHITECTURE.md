@@ -130,7 +130,7 @@ Image processing is implemented as a Pillow-only core stage that reads validated
 
 Face detection is optional. The processor consumes a small `FaceDetector` protocol and can perform padded square face crops when a detector is supplied. The base pipeline works without any face detector dependency.
 
-The quality gate is also optional. When enabled during the clean stage, it uses a pinned YOLOX-Nano ONNX model through ONNX Runtime to count people and estimate subject visibility, then combines those measurements with Pillow-based sharpness, contrast, and exposure heuristics. Raw images remain untouched and every rejection reason is persisted in the manifest.
+The quality gate runs during the clean stage. When person_check is enabled it uses a pinned YOLOX-Nano ONNX model through ONNX Runtime to count people and estimate subject visibility. The gate can also run a pinned PP-OCRv3 ONNX text detector through OpenCV to reject images containing visible text. These measurements are combined with Pillow-based sharpness, contrast, and exposure heuristics. Raw images remain untouched and every rejection reason is persisted in the manifest.
 
 ## Scraper boundary
 
@@ -163,7 +163,7 @@ The following are out of scope for v1:
 
 ### Optional
 
-- OpenCV for image/face processing backends
+- OpenCV for image/face/text processing backends
 - ONNX Runtime and NumPy for taggers and the optional person-quality gate
 - gallery-dl for optional external download backends
 - pytest for development
