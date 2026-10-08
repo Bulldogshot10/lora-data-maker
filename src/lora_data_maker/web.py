@@ -362,7 +362,7 @@ function renderProgress(progress,status){
   if(status==="done") fill.classList.add("done");
   if(status==="failed") fill.classList.add("bad");
   if(status==="running" && total<=0) fill.classList.add("indeterminate");
-  fill.style.width=total>0 ? percent+"%" : "35%";
+  fill.style.width=total>0 ? percent+"%" : (status==="running" ? "35%" : "0%");
 }
 function renderGallery(images){
   if(!images.length){
