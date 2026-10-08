@@ -19,8 +19,10 @@ quality filter
 process / crop / resize
   ├──→ tag → tag filtering → structured metadata
   │
-  └──→ caption backend → cleanup → subject / trigger injection → .txt
-                   (deterministic or local VLM)
+  └──→ caption backend → cleanup ───────────────┐
+       (deterministic or local VLM)              │
+                                                 ↓
+                         VLM text + cleaned tags → trigger → .txt
   ↓
 export
   ↓
@@ -100,7 +102,7 @@ Tagger output is treated as visual metadata. General tags, character tags, confi
 
 Caption generation consumes records after tag cleaning. The tagger and VLM captioner both read the same processed image independently; tagger output is never passed into the VLM prompt.
 
-With `caption.backend = "deterministic"`, caption text is built from normalized, deduplicated tags. With `caption.backend = "vlm"`, the local llama-cpp-python runtime generates a raw caption from the processed image and configured prompt, then the caption stage normalizes the text and injects the resolved trigger. VLM inference failures fall back to the deterministic tag caption for that image.
+With `caption.backend = "deterministic"`, the final caption is built from normalized, deduplicated tags. With `caption.backend = "vlm"`, the local llama-cpp-python runtime generates raw caption text from the processed image and configured prompt. The caption stage then cleans the VLM text, merges it with the cleaned tagger tags, injects the resolved trigger exactly once, and applies the shared `caption.max_tokens` final budget (1–77, default 77). The VLM prompt limits its own natural-language description to 25 words. VLM inference failures fall back to the deterministic tag caption for that image.
 
 Captions are written as UTF-8 `.txt` files under `work/captions/`, one file per image record. The resolved trigger is derived from `subject` when `caption.trigger_from_subject = true`; otherwise the manifest trigger is used. Trigger injection is idempotent. Caption backend/model/fallback metadata is retained in the manifest for audit and resume.
 
