@@ -105,7 +105,7 @@ def test_webui_javascript_syntax_when_node_is_available(tmp_path: Path) -> None:
     if not node:
         return
 
-    html = client_html = TestClient(create_app(make_project(tmp_path))).get("/").text
+    html = TestClient(create_app(make_project(tmp_path))).get("/").text
     scripts = re.findall(r"<script>(.*?)</script>", html, flags=re.DOTALL)
     assert scripts
 
