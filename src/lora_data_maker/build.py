@@ -146,7 +146,15 @@ def run_build(
             "caption.backend must be 'deterministic' or 'vlm'"
         )
 
-    if caption_backend == "vlm":
+    tagger_config = config.get("tagger", {})
+    if not isinstance(tagger_config, dict):
+        raise ValueError("config section [tagger] must be a table")
+    tagger_disabled = (
+        str(tagger_config.get("preset", "sweetspot")).strip().lower() == "off"
+        or str(tagger_config.get("backend", "wd14")).strip().lower() == "off"
+    )
+
+    if caption_backend == "vlm" or tagger_disabled:
         selected = tuple(
             stage for stage in selected
             if stage not in {"tag", "clean-tags"}
