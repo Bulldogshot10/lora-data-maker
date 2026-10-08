@@ -192,6 +192,8 @@ Install the optional runtime with:
 python -m pip install ".[caption-vlm]"
 ~~~
 
+The WebUI exposes the caption backend, VLM chat format, model GGUF path, mmproj GGUF path, and final 1–77 token budget under Settings. Paths entered there are stored in the project config; relative paths are resolved from the dataset root when the caption stage starts.
+
 ## export
 
 ~~~toml
