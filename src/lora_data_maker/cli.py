@@ -469,7 +469,7 @@ def command_clean(args: argparse.Namespace) -> int:
                 f"config field dedup.{key} must be a boolean"
             )
 
-    person_check = bool(quality_config.get("person_check", True))
+    person_check = bool(quality_config.get("person_check", False))
     person_detector = None
     has_quality_candidates = any(
         image.status == "validated"
@@ -650,7 +650,7 @@ def command_tag(args: argparse.Namespace) -> int:
             "last_tag_tagged": summary.tagged,
             "last_tag_failed": summary.failed,
             "last_tag_skipped": summary.skipped,
-            "last_tag_backend": str(tagger_config.get("backend", "wd14")),
+            "last_tag_backend": "joytag" if resolved_preset.kind == "joytag" else "wd14",
             "last_tag_preset": resolved_preset.name,
             "last_tag_model": resolved_preset.repo_id,
             "last_tag_revision": resolved_preset.revision,
