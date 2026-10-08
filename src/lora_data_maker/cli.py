@@ -751,7 +751,7 @@ def command_caption(args: argparse.Namespace) -> int:
     if not isinstance(caption_config, dict):
         raise LoraDataMakerError("config section [caption] must be a table")
 
-    settings = caption_config_from_dict(caption_config)
+    settings = caption_config_from_dict(caption_config, root=root)
 
     summary = caption_manifest(
         project.manifest,
