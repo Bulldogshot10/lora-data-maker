@@ -60,7 +60,11 @@ class CaptionConfig:
             )
 
 
-def caption_config_from_dict(data: dict[str, object]) -> CaptionConfig:
+def caption_config_from_dict(
+    data: dict[str, object],
+    *,
+    root: Path | str | None = None,
+) -> CaptionConfig:
     """Parse a project [caption] table into a validated runtime config."""
     separator = data.get("separator", ", ")
     subject_position = data.get("subject_position", "first")
@@ -106,9 +110,18 @@ def caption_config_from_dict(data: dict[str, object]) -> CaptionConfig:
             )
         return float(value)
 
+    model_path = string_field("model_path", "")
+    mmproj_path = string_field("mmproj_path", "")
+    if root is not None:
+        root_path = Path(root).expanduser().resolve()
+        if model_path and not Path(model_path).expanduser().is_absolute():
+            model_path = str((root_path / model_path).resolve())
+        if mmproj_path and not Path(mmproj_path).expanduser().is_absolute():
+            mmproj_path = str((root_path / mmproj_path).resolve())
+
     vlm = VlmConfig(
-        model_path=string_field("model_path", ""),
-        mmproj_path=string_field("mmproj_path", ""),
+        model_path=model_path,
+        mmproj_path=mmproj_path,
         chat_format=string_field("chat_format", "mtmd"),
         prompt=string_field(
             "prompt",
@@ -126,7 +139,7 @@ def caption_config_from_dict(data: dict[str, object]) -> CaptionConfig:
         temperature=float_field("temperature", 0.1),
         top_p=float_field("top_p", 0.95),
         top_k=int_field("top_k", 40),
-        n_ctx=int_field("n_ctx", 2048),
+        n_ctx=int_field("n_ctx", 4096),
         n_threads=int_field("n_threads", 4),
         n_gpu_layers=int_field("n_gpu_layers", 0),
         seed=int_field("seed", 42),
@@ -239,10 +252,12 @@ def build_vlm_caption(
 
     if resolved_trigger:
         pattern = re.compile(
-            rf"^{re.escape(resolved_trigger)}(?:\s*[,.;:]\s*|\s+)",
+            rf"\b{re.escape(resolved_trigger)}\b",
             re.IGNORECASE,
         )
-        value = pattern.sub("", value, count=1).strip()
+        value = pattern.sub("", value).strip()
+        value = re.sub(r"\s*([,.;:])\s*", r"\1 ", value)
+        value = re.sub(r"\s+", " ", value).strip(" ,.;:")
 
     if not resolved_trigger:
         return value
@@ -389,6 +404,14 @@ def caption_manifest(
                 image.metadata["caption_vlm_chat_format"] = (
                     settings.vlm.chat_format
                 )
+            else:
+                for key in (
+                    "caption_vlm_error",
+                    "caption_fallback_backend",
+                    "caption_vlm_model",
+                    "caption_vlm_chat_format",
+                ):
+                    image.metadata.pop(key, None)
 
             image.set_status("captioned")
     finally:
