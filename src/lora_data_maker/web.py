@@ -708,13 +708,16 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 "max_scrolls": int(cfg.get("scraper", {}).get("max_scrolls", 30)),
             },
             "quality": {
-                "person_check": bool(cfg.get("quality", {}).get("person_check", True)),
+                "person_check": bool(cfg.get("quality", {}).get("person_check", False)),
                 "person_threshold": float(cfg.get("quality", {}).get("person_threshold", 0.35)),
                 "max_persons": int(cfg.get("quality", {}).get("max_persons", 1)),
                 "min_subject_area": float(cfg.get("quality", {}).get("min_subject_area", 0.12)),
                 "min_subject_visibility": float(cfg.get("quality", {}).get("min_subject_visibility", 0.35)),
             },
             "counts": p.counts(),
+            "workspace": workspace_root.as_posix(),
+            "project_count": len(list_projects()),
+            "projects": list_projects(),
             "images": [{"id": x.image_id, "path": x.processed_path or x.path, "status": x.status} for x in sorted(p.manifest.images.values(), key=lambda x: x.path) if x.status != "rejected"],
             "archive": Path(str(p.manifest.source.get("last_pack_archive", ""))).name if p.manifest.source.get("last_pack_archive") else None,
         }
@@ -948,7 +951,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 from .images import iter_image_files
                 valid = rejected = skipped = 0
                 for image_path in iter_image_files(ps.raw):
-                    rel = manifest_path(project_root, image_path)
+                    rel = manifest_path(root_path, image_path)
                     record = existing.get(rel) or register_image(p.manifest, path=rel, status="discovered")
                     if record.status not in {"discovered", "downloaded"}:
                         skipped += 1; continue
@@ -970,7 +973,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     )
                 s = clean_manifest(
                     p.manifest,
-                    root=project_root,
+                    root=root_path,
                     exact=bool(c.get("exact", True)),
                     perceptual=bool(c.get("perceptual", True)),
                     perceptual_distance=int(c.get("perceptual_distance", 6)),
@@ -993,7 +996,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 if face_crop:
                     face_detector = YuNetFaceDetector(cache_dir=ps.cache / "face")
                 settings = ProcessConfig(target_width=int(pc.get("target_width", 512)), target_height=int(pc.get("target_height", 512)), resize_mode=str(pc.get("resize_mode", "cover")), jpeg_quality=int(pc.get("jpeg_quality", 95)), face_crop=face_crop, face_padding=face_padding)
-                done, failed, skipped = process_manifest(p.manifest, root=project_root, output_dir=ps.work, config=settings, face_detector=face_detector)
+                done, failed, skipped = process_manifest(p.manifest, root=root_path, output_dir=ps.work, config=settings, face_detector=face_detector)
                 p.save()
                 return "staged " + str(done) + ", failed " + str(failed) + ", skipped " + str(skipped)
             if stage == "tag":
@@ -1011,7 +1014,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     cache_root=cache_root,
                     preset=selected.name,
                 )
-                s = tag_manifest(p.manifest, root=project_root, tagger=tagger)
+                s = tag_manifest(p.manifest, root=root_path, tagger=tagger)
                 p.save()
                 return "tagged " + str(s.tagged) + ", skipped " + str(s.skipped)
             if stage == "clean-tags":
@@ -1022,12 +1025,12 @@ def create_app(root: Path | str = ".") -> FastAPI:
             if stage == "caption":
                 cc = cfg.get("caption", {})
                 settings = CaptionConfig(separator=str(cc.get("separator", ", ")), subject_position=str(cc.get("subject_position", "first")), trigger_from_subject=bool(cc.get("trigger_from_subject", True)))
-                s = caption_manifest(p.manifest, root=project_root, output_dir=ps.work / "captions", config=settings)
+                s = caption_manifest(p.manifest, root=root_path, output_dir=ps.work / "captions", config=settings)
                 p.save()
                 return "captioned " + str(s.captioned)
             if stage == "export":
                 ec = cfg.get("export", {})
-                s = export_manifest(p.manifest, root=project_root, output_dir=ps.output, repeats=int(ec.get("repeats", 1)), folder_name=str(ec.get("folder_name", "") or "") or None)
+                s = export_manifest(p.manifest, root=root_path, output_dir=ps.output, repeats=int(ec.get("repeats", 1)), folder_name=str(ec.get("folder_name", "") or "") or None)
                 p.manifest.source["last_export_dir"] = manifest_path(root_path, s.output_dir); p.save()
                 if s.failed: raise RuntimeError("export failed for " + str(s.failed) + " images")
                 return "exported " + str(s.exported)
@@ -1035,7 +1038,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 last = p.manifest.source.get("last_export_dir")
                 if not isinstance(last, str) or not last: raise RuntimeError("export the dataset first")
                 archive = ps.output / (safe_component(p.manifest.project_name) + ".zip")
-                s = pack_dataset(root=project_root, dataset_dir=root_path / last, archive_path=archive, manifest_path=p.manifest_path)
+                s = pack_dataset(root=root_path, dataset_dir=root_path / last, archive_path=archive, manifest_path=p.manifest_path)
                 p.manifest.source.update({"last_pack_archive": manifest_path(root_path, archive), "last_pack_sha256": s.sha256}); p.save()
                 return "ZIP ready: " + archive.name
             if stage == "prepare":
@@ -1068,10 +1071,29 @@ def create_app(root: Path | str = ".") -> FastAPI:
             try:
                 job_project = project(Path(job_root_value))
                 if job_project.manifest.source.get("last_pack_archive"):
-                    data["download"] = "/api/download"
+                    data["download"] = f"/api/jobs/{job_id}/download"
             except (OSError, ValueError, KeyError, TypeError, FileNotFoundError):
                 pass
         return data
+
+    @app.get("/api/jobs/{job_id}/download")
+    def job_download(job_id: str):
+        data = jobs.get(job_id)
+        job_root_value = data.get("_project_root")
+        if not job_root_value:
+            raise HTTPException(404, "job project not available")
+        job_root = Path(job_root_value).expanduser().resolve()
+        rel = project(job_root).manifest.source.get("last_pack_archive")
+        if not isinstance(rel, str) or not rel:
+            raise HTTPException(404, "no ZIP available for this job")
+        target = (job_root / rel).resolve()
+        try:
+            target.relative_to(job_root)
+        except ValueError as exc:
+            raise HTTPException(400, "invalid archive path") from exc
+        if not target.is_file():
+            raise HTTPException(404, "ZIP not found")
+        return FileResponse(target, filename=target.name, media_type="application/zip")
 
     @app.get("/api/download")
     def download():
