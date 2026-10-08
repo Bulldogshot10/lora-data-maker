@@ -250,6 +250,101 @@ def build_vlm_caption(
     )
 
 
+def estimate_caption_tokens(text: str) -> int:
+    """Estimate SD1.5 caption token usage without adding a tokenizer dependency."""
+    value = str(text).strip()
+    if not value:
+        return 0
+
+    token_count = 2  # BOS + EOS used by the SD1.x CLIP text encoder.
+    for piece in re.findall(r"[A-Za-z0-9_]+|[^A-Za-z0-9_\s]", value):
+        if piece.isalnum() or "_" in piece:
+            token_count += max(1, (len(piece) + 3) // 4)
+        else:
+            token_count += 1
+    return token_count
+
+
+def truncate_caption(text: str, max_tokens: int) -> str:
+    """Trim a caption to the configured conservative token estimate."""
+    if max_tokens < 1:
+        raise ValueError("caption max tokens must be greater than zero")
+
+    value = re.sub(r"\s+", " ", str(text)).strip(" ,.;:")
+    if not value or estimate_caption_tokens(value) <= max_tokens:
+        return value
+
+    parts = [part.strip(" ,.;:") for part in re.split(r"[,;.]\s*", value)]
+    parts = [part for part in parts if part]
+    selected: list[str] = []
+
+    for part in parts:
+        candidate = ", ".join((*selected, part))
+        if estimate_caption_tokens(candidate) <= max_tokens:
+            selected.append(part)
+            continue
+        break
+
+    if selected:
+        result = ", ".join(selected).strip(" ,.;:")
+        if result:
+            return result
+
+    words = re.findall(r"\S+", value)
+    selected_words: list[str] = []
+    for word in words:
+        candidate = " ".join((*selected_words, word))
+        if estimate_caption_tokens(candidate) <= max_tokens:
+            selected_words.append(word)
+        else:
+            break
+    return " ".join(selected_words).strip(" ,.;:")
+
+
+def combine_caption_sources(
+    *,
+    vlm_caption: str,
+    tags: Iterable[str],
+    subject: str,
+    trigger: str,
+    config: CaptionConfig,
+) -> str:
+    """Merge cleaned VLM prose and tagger tags into one bounded caption."""
+    resolved_trigger = resolve_trigger(
+        subject=subject,
+        trigger=trigger,
+        trigger_from_subject=config.trigger_from_subject,
+    )
+
+    value = clean_vlm_caption(vlm_caption)
+    if resolved_trigger and value:
+        pattern = re.compile(
+            rf"(?<![A-Za-z0-9_]){re.escape(resolved_trigger)}(?![A-Za-z0-9_])",
+            re.IGNORECASE,
+        )
+        value = pattern.sub("", value)
+        value = re.sub(r"\s*([,.;:])\s*", r"\1 ", value)
+        value = re.sub(r"\s+", " ", value).strip(" ,.;:")
+
+    normalized_tags: list[str] = []
+    seen: set[str] = set()
+    for raw_tag in tags:
+        tag = normalize_tag(raw_tag)
+        if not tag or tag in seen or tag == resolved_trigger:
+            continue
+        seen.add(tag)
+        normalized_tags.append(tag)
+
+    parts: list[str] = []
+    if resolved_trigger:
+        parts.append(resolved_trigger)
+    if value:
+        parts.append(value)
+    parts.extend(normalized_tags)
+
+    return truncate_caption(config.separator.join(parts), config.max_tokens)
+
+
 def write_caption(path: Path | str, caption: str) -> Path:
     """Atomically write a UTF-8 caption file with a single trailing newline."""
     target = Path(path).expanduser().resolve()
