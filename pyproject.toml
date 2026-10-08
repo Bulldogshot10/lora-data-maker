@@ -50,6 +50,9 @@ face = [
   "numpy>=1.26,<3",
   "opencv-python-headless>=4.10,<5",
 ]
+caption-vlm = [
+  "llama-cpp-python>=0.3.36,<0.4",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
