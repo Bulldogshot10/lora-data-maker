@@ -8,6 +8,10 @@ class ScraperError(Exception):
     """Raised for expected scraper failures."""
 
 
+class ScraperCancelledError(ScraperError):
+    """Raised when an active scraper job is cancelled by the caller."""
+
+
 @dataclass(frozen=True)
 class ImageResult:
     image_url: str
