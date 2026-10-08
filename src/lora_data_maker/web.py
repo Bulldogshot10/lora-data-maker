@@ -12,7 +12,7 @@ from typing import Annotated, Any
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 
-from .captions import CaptionConfig, caption_manifest
+from .captions import caption_config_from_dict, caption_manifest
 from .config import load_config, write_default_config
 from .dataset import DatasetProject
 from .export import export_manifest, safe_component
@@ -2371,10 +2371,24 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 return "cleaned tags for " + str(s.cleaned)
             if stage == "caption":
                 cc = cfg.get("caption", {})
-                settings = CaptionConfig(separator=str(cc.get("separator", ", ")), subject_position=str(cc.get("subject_position", "first")), trigger_from_subject=bool(cc.get("trigger_from_subject", True)))
-                s = caption_manifest(p.manifest, root=root_path, output_dir=ps.work / "captions", config=settings)
+                if not isinstance(cc, dict):
+                    raise RuntimeError("config section [caption] must be a table")
+                settings = caption_config_from_dict(cc)
+                s = caption_manifest(
+                    p.manifest,
+                    root=root_path,
+                    output_dir=ps.work / "captions",
+                    config=settings,
+                )
                 p.save()
-                return "captioned " + str(s.captioned)
+                return (
+                    "captioned "
+                    + str(s.captioned)
+                    + ", fallback "
+                    + str(s.fallback)
+                    + " via "
+                    + settings.backend
+                )
             if stage == "export":
                 ec = cfg.get("export", {})
                 s = export_manifest(p.manifest, root=root_path, output_dir=ps.output, repeats=int(ec.get("repeats", 1)), folder_name=str(ec.get("folder_name", "") or "") or None)
