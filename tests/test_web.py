@@ -155,6 +155,50 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert joytag_state["tagger"]["preset"] == "joytag"
 
 
+def test_webui_tag_stage_is_skipped_in_vlm_mode(tmp_path: Path, monkeypatch) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    response = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "trigger": "person",
+            "preset": "joytag",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+            "caption_backend": "vlm",
+            "caption_chat_format": "mtmd",
+            "caption_model_path": "models/model.gguf",
+            "caption_mmproj_path": "models/mmproj.gguf",
+            "caption_max_tokens": 77,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert response.status_code == 200
+
+    def fail_if_built(*args, **kwargs):
+        raise AssertionError("tagger must not be built in VLM mode")
+
+    monkeypatch.setattr("lora_data_maker.web.build_tagger", fail_if_built)
+
+    started = client.post("/api/run/tag")
+    assert started.status_code == 200
+    job_id = started.json()["job_id"]
+
+    for _ in range(100):
+        job = client.get(f"/api/jobs/{job_id}").json()
+        if job.get("status") != "running":
+            break
+        time.sleep(0.01)
+
+    assert job["status"] == "done"
+
+
 def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: Path) -> None:
     root = make_project(tmp_path)
     client = TestClient(create_app(root))
