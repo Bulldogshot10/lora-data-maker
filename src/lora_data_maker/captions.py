@@ -156,6 +156,18 @@ def caption_config_from_dict(
         if vlm_runtime == "gemini"
         else "https://api.openai.com/v1"
     )
+    api_key_env = string_field("api_key_env", default_api_key_env).strip()
+    api_model = string_field("api_model", default_api_model).strip()
+    api_base_url = string_field("api_base_url", default_api_base_url).strip()
+    api_timeout = float_field("api_timeout", 120.0)
+
+    if vlm_runtime in {"gemini", "openai_compatible"}:
+        if not api_key_env:
+            api_key_env = default_api_key_env
+        if vlm_runtime == "gemini" and not api_model:
+            api_model = default_api_model
+        if not api_base_url:
+            api_base_url = default_api_base_url
 
     vlm = VlmConfig(
         model_path=model_path,
@@ -171,10 +183,10 @@ def caption_config_from_dict(
         n_threads=int_field("n_threads", 4),
         n_gpu_layers=int_field("n_gpu_layers", 0),
         seed=int_field("seed", 42),
-        api_key_env=string_field("api_key_env", default_api_key_env),
-        api_model=string_field("api_model", default_api_model),
-        api_base_url=string_field("api_base_url", default_api_base_url),
-        api_timeout=float_field("api_timeout", 120.0),
+        api_key_env=api_key_env,
+        api_model=api_model,
+        api_base_url=api_base_url,
+        api_timeout=api_timeout,
     )
 
     return CaptionConfig(
