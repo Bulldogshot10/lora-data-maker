@@ -656,7 +656,7 @@ def command_tag(args: argparse.Namespace) -> int:
     selected_preset = getattr(args, "preset", None) or str(
         tagger_config.get("preset", "sweetspot")
     )
-    if selected_preset.strip().lower() == TAGGER_OFF or str(tagging_config.get("backend", "wd14")).strip().lower() == TAGGER_OFF:
+    if selected_preset.strip().lower() == TAGGER_OFF or str(tagger_config.get("backend", "wd14")).strip().lower() == TAGGER_OFF:
         print("tagging disabled")
         return 0
     resolved_preset = resolve_tagger_preset(selected_preset)
