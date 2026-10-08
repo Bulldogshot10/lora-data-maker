@@ -144,10 +144,7 @@ def test_api_vlm_caption_injects_trigger_and_keeps_constraints(monkeypatch, tmp_
                             "parts": [
                                 {
                                     "text": (
-                                        "pose: standing straight-on\n"
-                                        "clothing: white spandex top\n"
-                                        "expression: neutral\n"
-                                        "background: indoor soft lighting"
+                                        "standing straight-on, wearing a white spandex top, neutral expression, indoors with soft lighting"
                                     )
                                 }
                             ]
