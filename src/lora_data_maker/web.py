@@ -2122,7 +2122,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 )
                 p.save()
 
-                if manager.cancelled:
+                if getattr(manager, "cancelled", False):
                     raise JobCancelledError(
                         f"scrape cancelled: downloaded {len(downloads)}/{count}"
                     )
