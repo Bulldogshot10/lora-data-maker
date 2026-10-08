@@ -81,7 +81,7 @@ def test_gemini_caption_uses_fixed_prompt_and_inline_image(monkeypatch, tmp_path
     assert kwargs["headers"]["x-goog-api-key"] == "secret"
     payload = kwargs["json"]
     assert payload["contents"][0]["parts"][0]["text"] == DEFAULT_VLM_PROMPT
-    assert payload["generationConfig"]["maxOutputTokens"] == 64
+    assert payload["generationConfig"]["maxOutputTokens"] == 128
     assert payload["contents"][0]["parts"][1]["inline_data"]["mime_type"] == "image/jpeg"
 
 
