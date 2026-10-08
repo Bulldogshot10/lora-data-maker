@@ -118,16 +118,28 @@ def caption_config_from_dict(
             )
         return float(value)
 
+    vlm_runtime = string_field("runtime", "llama_cpp").strip().lower()
     model_path = string_field("model_path", "")
     mmproj_path = string_field("mmproj_path", "")
     if root is not None:
         root_path = Path(root).expanduser().resolve()
-        if model_path and not Path(model_path).expanduser().is_absolute():
+        model_candidate = Path(model_path).expanduser() if model_path else None
+        is_hf_repo_id = (
+            vlm_runtime == "onnx"
+            and bool(
+                re.fullmatch(
+                    r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+",
+                    model_path.strip(),
+                )
+            )
+            and model_candidate is not None
+            and not (root_path / model_candidate).is_dir()
+        )
+        if model_path and not Path(model_path).expanduser().is_absolute() and not is_hf_repo_id:
             model_path = str((root_path / model_path).resolve())
         if mmproj_path and not Path(mmproj_path).expanduser().is_absolute():
             mmproj_path = str((root_path / mmproj_path).resolve())
 
-    vlm_runtime = string_field("runtime", "llama_cpp").strip().lower()
     vlm_chat_format = string_field("chat_format", "mtmd").strip().lower()
     if vlm_runtime == "onnx":
         vlm_chat_format = "smolvlm"
