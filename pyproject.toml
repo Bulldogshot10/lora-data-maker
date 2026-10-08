@@ -60,3 +60,8 @@ where = ["src"]
 
 [tool.setuptools.package-data]
 lora_data_maker = ["static/*"]
+
+[tool.pytest.ini_options]
+markers = [
+  "real_caption_runtime: tests requiring the optional caption-vlm runtime stack",
+]
