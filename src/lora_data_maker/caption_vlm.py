@@ -9,14 +9,17 @@ from typing import Any, Protocol
 from .exceptions import LoraDataMakerError
 
 DEFAULT_VLM_PROMPT = (
-    "describe this image for a stable diffusion character lora training caption. "
-    "describe only what is visibly present. focus on the main subject's appearance, "
-    "hair, face, clothing, pose, expression, body orientation, framing, background, "
-    "environment, and lighting when clearly visible. be factual, concise, and specific. "
-    "prioritize concrete visual details over generic descriptions. do not guess hidden "
-    "or ambiguous details. do not mention image quality, the image itself, ai, or your task. "
-    "do not use markdown or bullet points. return exactly one compact natural-language "
-    "caption of no more than 25 words."
+    "describe this photo using exactly these 4 fields, one per line. "
+    "use short phrases only, with a maximum of 5 words per field. "
+    "pose: "
+    "clothing: "
+    "expression: "
+    "background: include lighting. "
+    "do not mention hair color, eye color, face, age, or gender. "
+    "no extra text. be factual, concise, and specific. "
+    "prioritize concrete visual details over generic descriptions. "
+    "do not guess hidden or ambiguous details. "
+    "do not mention image quality, the image itself, ai, or your task."
 )
 
 
