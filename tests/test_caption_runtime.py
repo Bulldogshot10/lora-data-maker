@@ -24,6 +24,91 @@ def test_caption_config_resolves_relative_vlm_paths(tmp_path):
     )
 
 
+
+
+def test_caption_config_accepts_onnx_runtime_without_mmproj(tmp_path):
+    settings = caption_config_from_dict(
+        {
+            "backend": "vlm",
+            "vlm": {
+                "runtime": "onnx",
+                "model_path": "models/SmolVLM2-500M-Video-Instruct",
+            },
+        },
+        root=tmp_path,
+    )
+    assert settings.vlm.runtime == "onnx"
+    assert settings.vlm.model_path == str(
+        (tmp_path / "models" / "SmolVLM2-500M-Video-Instruct").resolve()
+    )
+    assert settings.vlm.mmproj_path == ""
+
+
+def test_caption_manifest_routes_onnx_vlm_runtime(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    manifest = ProjectManifest(
+        project_name="julia-set",
+        subject="julia",
+        trigger="julia",
+    )
+    image = ImageRecord(
+        path="raw/0.jpg",
+        status="processed",
+        tags=[],
+        processed_path="work/processed/0.jpg",
+    )
+    manifest.add_image(image)
+    processed = root / image.processed_path
+    processed.parent.mkdir(parents=True, exist_ok=True)
+    processed.write_bytes(b"processed-image")
+
+    state = {"init": 0, "caption": 0, "close": 0}
+
+    class FakeRuntime:
+        def __init__(self, config):
+            state["init"] += 1
+            assert config.runtime == "onnx"
+            assert config.mmproj_path == ""
+            assert config.model_path == str((root / "model").resolve())
+
+        def caption(self, image_path):
+            state["caption"] += 1
+            assert Path(image_path).is_file()
+            return (
+                "pose: standing\n"
+                "clothing: white top\n"
+                "expression: neutral\n"
+                "background: indoors"
+            )
+
+        def close(self):
+            state["close"] += 1
+
+    import lora_data_maker.caption_onnx as caption_onnx
+
+    monkeypatch.setattr(caption_onnx, "SmolVlmOnnxCaptioner", FakeRuntime)
+    config = caption_config_from_dict(
+        {
+            "backend": "vlm",
+            "vlm": {
+                "runtime": "onnx",
+                "model_path": "model",
+            },
+        },
+        root=root,
+    )
+    summary = caption_manifest(
+        manifest,
+        root=root,
+        output_dir=root / "work" / "captions",
+        config=config,
+    )
+
+    assert summary.captioned == 1
+    assert summary.failed == 0
+    assert state == {"init": 1, "caption": 1, "close": 1}
+
+
 def test_caption_config_accepts_qwen35_chat_format(tmp_path):
     settings = caption_config_from_dict(
         {
