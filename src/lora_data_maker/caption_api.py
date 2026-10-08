@@ -90,9 +90,6 @@ API_VLM_PROMPT = (
     "no extra text, explanation, bullets, markdown, or quotes."
 )
 
-# Internal API guardrail, not an exposed generation setting.
-API_MAX_OUTPUT_TOKENS = 128
-
 
 class _ApiVlmCaptioner:
     def __init__(self, config: VlmConfig) -> None:
@@ -189,9 +186,6 @@ class GeminiVlmCaptioner(_ApiVlmCaptioner):
                     ],
                 }
             ],
-            "generationConfig": {
-                "maxOutputTokens": API_MAX_OUTPUT_TOKENS,
-            },
         }
         url = f"{self._base_url}/models/{self._model}:generateContent"
 
@@ -273,7 +267,6 @@ class OpenAICompatibleVlmCaptioner(_ApiVlmCaptioner):
                     ],
                 }
             ],
-            "max_tokens": API_MAX_OUTPUT_TOKENS,
         }
 
         data = self._post(
