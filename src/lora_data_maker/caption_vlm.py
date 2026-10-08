@@ -96,6 +96,22 @@ def _data_uri(path: Path) -> str:
     return f"data:{mime_type};base64,{encoded}"
 
 
+def _strip_qwen35_thinking(text: str) -> str:
+    """Return only visible assistant content from a Qwen3.5 completion."""
+    value = str(text).strip()
+    if "</think>" in value:
+        value = value.split("</think>", 1)[1]
+    return value.strip()
+
+
+def _qwen35_retry_prompt(prompt: str) -> str:
+    """Append Qwen's soft non-thinking switch without duplicating it."""
+    value = str(prompt).rstrip()
+    if value.endswith("/no_think"):
+        return value
+    return value + "\n/no_think"
+
+
 class _Qwen35NoThinkingChatHandler:
     """Force Qwen3.5 into non-thinking mode through MTMD's template kwargs."""
 
@@ -225,6 +241,7 @@ class LlamaCppVlmCaptioner:
         path = Path(image_path).expanduser().resolve()
         image_url = _data_uri(path)
 
+        prompt = self.config.prompt
         messages = [
             {
                 "role": "user",
@@ -235,33 +252,78 @@ class LlamaCppVlmCaptioner:
                     },
                     {
                         "type": "text",
-                        "text": self.config.prompt,
+                        "text": prompt,
                     },
                 ],
             }
         ]
 
+        def generate(request_messages: list[dict[str, Any]], **overrides: Any) -> dict[str, Any]:
+            params: dict[str, Any] = {
+                "messages": request_messages,
+                "max_tokens": self.config.max_tokens,
+                "temperature": self.config.temperature,
+                "top_p": self.config.top_p,
+                "top_k": self.config.top_k,
+                "seed": self.config.seed,
+                "stream": False,
+            }
+            params.update(overrides)
+            return self._llm.create_chat_completion(**params)
+
         try:
-            response = self._llm.create_chat_completion(
-                messages=messages,
-                max_tokens=self.config.max_tokens,
-                temperature=self.config.temperature,
-                top_p=self.config.top_p,
-                top_k=self.config.top_k,
-                seed=self.config.seed,
-                stream=False,
-            )
+            response = generate(messages)
         except Exception as exc:
             raise VlmCaptionerError(
                 f"VLM inference failed for {path.name}: {exc}"
             ) from exc
 
         try:
-            content = response["choices"][0]["message"]["content"]
+            raw_content = response["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise VlmCaptionerError(
                 f"VLM returned an invalid chat completion for {path.name}"
             ) from exc
+
+        content = (
+            _strip_qwen35_thinking(raw_content)
+            if self.config.chat_format == "qwen3.5"
+            else raw_content
+        )
+
+        if (
+            self.config.chat_format == "qwen3.5"
+            and (not isinstance(content, str) or not content.strip())
+        ):
+            retry_messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": image_url},
+                        },
+                        {
+                            "type": "text",
+                            "text": _qwen35_retry_prompt(prompt),
+                        },
+                    ],
+                }
+            ]
+            try:
+                response = generate(
+                    retry_messages,
+                    max_tokens=max(self.config.max_tokens, 256),
+                    temperature=0.7,
+                    top_p=0.8,
+                    top_k=20,
+                )
+                raw_content = response["choices"][0]["message"]["content"]
+                content = _strip_qwen35_thinking(raw_content)
+            except Exception as exc:
+                raise VlmCaptionerError(
+                    f"Qwen3.5 retry failed for {path.name}: {exc}"
+                ) from exc
 
         if not isinstance(content, str) or not content.strip():
             raise VlmCaptionerError(
