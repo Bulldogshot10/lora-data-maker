@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import mimetypes
 import os
+import time
 from pathlib import Path
 from typing import Any
 
@@ -119,28 +120,42 @@ class _ApiVlmCaptioner:
 
     def _post(self, url: str, *, headers: dict[str, str], payload: dict[str, Any]) -> Any:
         assert self._session is not None
-        try:
-            response = self._session.post(
-                url,
-                headers=headers,
-                json=payload,
-                timeout=self.config.api_timeout,
-            )
-        except Exception as exc:
-            raise VlmCaptionerError(f"VLM API request failed: {exc}") from exc
+        retryable_statuses = {429, 500, 502, 503, 504}
 
-        if not getattr(response, "ok", False):
-            detail = _response_error(response)
-            raise VlmCaptionerError(
-                f"VLM API returned HTTP {response.status_code}: {detail}"
-            )
+        for attempt in range(3):
+            try:
+                response = self._session.post(
+                    url,
+                    headers=headers,
+                    json=payload,
+                    timeout=self.config.api_timeout,
+                )
+            except Exception as exc:
+                raise VlmCaptionerError(f"VLM API request failed: {exc}") from exc
 
-        try:
-            return response.json()
-        except Exception as exc:
-            raise VlmCaptionerError(
-                "VLM API returned invalid JSON"
-            ) from exc
+            if getattr(response, "ok", False):
+                try:
+                    return response.json()
+                except Exception as exc:
+                    raise VlmCaptionerError(
+                        "VLM API returned invalid JSON"
+                    ) from exc
+
+            if response.status_code not in retryable_statuses or attempt == 2:
+                detail = _response_error(response)
+                raise VlmCaptionerError(
+                    f"VLM API returned HTTP {response.status_code}: {detail}"
+                )
+
+            retry_after = ""
+            headers_obj = getattr(response, "headers", None)
+            if headers_obj is not None:
+                retry_after = str(headers_obj.get("Retry-After", "")).strip()
+            try:
+                delay = min(float(retry_after), 10.0) if retry_after else 1.0 * (attempt + 1)
+            except (TypeError, ValueError):
+                delay = 1.0 * (attempt + 1)
+            time.sleep(max(0.0, delay))
 
     def close(self) -> None:
         session = self._session
@@ -161,7 +176,7 @@ class GeminiVlmCaptioner(_ApiVlmCaptioner):
             raise VlmCaptionerError(
                 "caption.vlm.api_model is required for the Gemini runtime"
             )
-        self._model = config.api_model.strip()
+        self._model = config.api_model.strip().removeprefix("models/")
         self._base_url = (
             config.api_base_url.strip()
             or "https://generativelanguage.googleapis.com/v1beta"
