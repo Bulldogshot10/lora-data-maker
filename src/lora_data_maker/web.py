@@ -1061,9 +1061,10 @@ function updateBusyUI(){
 }
 function applySettings(s,force=false){
   if(appState.settingsDirty&&!force)return;
-  $("name").value=s.project.name;
-  $("subject").value=s.project.subject;
-  $("trigger").value=s.project.trigger;
+  const project=s.project||{name:"",subject:"",trigger:""};
+  $("name").value=project.name||"";
+  $("subject").value=project.subject||"";
+  $("trigger").value=project.trigger||"";
   $("preset").value=s.tagger.preset;
   $("mode").value=s.processing.mode;
   $("width").value=s.processing.width;
@@ -1186,10 +1187,16 @@ function renderGallery(images){
 }
 function updateProjectHeader(s){
   const project=s.project||{};
-  $("topbar-project").textContent=project.name||"dataset";
-  $("hero-name").textContent=project.name||"dataset";
-  $("hero-description").textContent=(project.subject||"")+" · trigger: "+(project.trigger||"");
-  $("collect-project").textContent=project.name||"dataset";
+  const hasProject=!!s.project;
+  $("topbar-project").textContent=project.name||"no dataset selected";
+  $("hero-name").textContent=project.name||"create your first dataset";
+  $("hero-description").textContent=hasProject
+    ? (project.subject||"")+" · trigger: "+(project.trigger||"")
+    : "use + new dataset in the sidebar to get started.";
+  $("collect-project").textContent=project.name||"no dataset";
+  $("status-context").textContent=hasProject
+    ? s.project_count+" dataset"+(s.project_count===1?"":"s")+" in workspace"
+    : "no active dataset";
 }
 function setView(view,push=true){
   const allowed=new Set(["overview","collect","prepare","settings"]);
@@ -1234,6 +1241,10 @@ async function refresh(forceSettings=false){
   }
 }
 async function saveSettings(){
+  if(!appState.activeProjectPath){
+    toast("create or open a dataset first.","bad");
+    return false;
+  }
   if(isBusyOnActiveProject()){
     toast("this dataset is busy. wait for the current job to finish.","bad");
     return false;
@@ -1352,6 +1363,10 @@ async function deleteImage(id,path){
   }
 }
 async function runStage(stage){
+  if(!appState.activeProjectPath){
+    toast("create or open a dataset first.","bad");
+    return;
+  }
   if(isBusyOnActiveProject()){
     toast("this dataset is already running a job.","bad");
     return;
@@ -1372,7 +1387,7 @@ async function runStage(stage){
   }
 }
 function markDirty(){
-  if(isBusyOnActiveProject())return;
+  if(!appState.activeProjectPath||isBusyOnActiveProject())return;
   appState.settingsDirty=true;
   updateDirtyUI();
 }
@@ -1484,6 +1499,10 @@ function finishConfirm(value){
   if(resolve)resolve(value);
 }
 async function upload(){
+  if(!appState.activeProjectPath){
+    toast("create or open a dataset first.","bad");
+    return;
+  }
   if(isBusyOnActiveProject()){
     toast("this dataset is busy. wait for the current job to finish.","bad");
     return;
@@ -1720,17 +1739,28 @@ class JobStore:
 def create_app(root: Path | str = ".") -> FastAPI:
     app = FastAPI(title="LoRA Data Maker WebUI")
     static_root = Path(__file__).resolve().parent / "static"
-    project_root = Path(root).expanduser().resolve()
-    workspace_root = project_root.parent
+    configured_root = Path(root).expanduser().resolve()
+    if (configured_root / "config.toml").is_file() and (configured_root / "manifest.json").is_file():
+        project_root: Path | None = configured_root
+        workspace_root = configured_root.parent
+    else:
+        project_root = None
+        workspace_root = configured_root
     jobs = JobStore()
     project_root_lock = threading.Lock()
 
-    def active_root() -> Path:
+    def active_root() -> Path | None:
         with project_root_lock:
             return project_root
 
+    def require_active_root() -> Path:
+        current = active_root()
+        if current is None:
+            raise HTTPException(409, "create or open a dataset first")
+        return current
+
     def paths(root_path: Path | None = None) -> ProjectPaths:
-        selected_root = root_path or active_root()
+        selected_root = root_path if root_path is not None else require_active_root()
         config = load_config(selected_root / "config.toml")
         return ProjectPaths.from_root(selected_root, config.get("paths", {}))
 
@@ -1757,7 +1787,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
                         "trigger": candidate_project.manifest.trigger,
                         "image_count": len(candidate_project.manifest.images),
                         "path": candidate.as_posix(),
-                        "active": candidate.resolve() == active.resolve(),
+                        "active": active is not None and candidate.resolve() == active.resolve(),
                     }
                 )
             except (OSError, ValueError, KeyError, TypeError):
@@ -1825,15 +1855,70 @@ def create_app(root: Path | str = ".") -> FastAPI:
     @app.get("/api/state")
     def state():
         current_root = active_root()
+        project_list = list_projects()
+        if current_root is None:
+            return {
+                "project": None,
+                "processing": {
+                    "mode": "cover",
+                    "width": 512,
+                    "height": 512,
+                    "quality": 95,
+                    "face_crop": False,
+                    "face_padding": 1.75,
+                },
+                "tagger": {"backend": "wd14", "preset": "sweetspot"},
+                "scraper": {
+                    "backend": "duckduckgo",
+                    "query": "",
+                    "count": 300,
+                    "max_scrolls": 30,
+                },
+                "quality": {
+                    "person_check": False,
+                    "person_threshold": 0.35,
+                    "max_persons": 1,
+                    "min_subject_area": 0.12,
+                    "min_subject_visibility": 0.35,
+                },
+                "counts": {
+                    "discovered": 0,
+                    "validated": 0,
+                    "processed": 0,
+                    "tagged": 0,
+                    "captioned": 0,
+                    "exported": 0,
+                },
+                "workspace": workspace_root.as_posix(),
+                "project_count": len(project_list),
+                "projects": project_list,
+                "images": [],
+                "archive": None,
+            }
+
         p = project(current_root)
         cfg = load_config(current_root / "config.toml")
         processing = cfg.get("processing", {})
         tagger = cfg.get("tagger", {})
-        project_list = list_projects()
         return {
-            "project": {"name": p.manifest.project_name, "subject": p.manifest.subject, "trigger": p.manifest.trigger, "path": current_root.as_posix()},
-            "processing": {"mode": str(processing.get("resize_mode", "cover")), "width": int(processing.get("target_width", 512)), "height": int(processing.get("target_height", 512)), "quality": int(processing.get("jpeg_quality", 95)), "face_crop": bool(processing.get("face_crop", False)), "face_padding": float(processing.get("face_padding", 1.75))},
-            "tagger": {"backend": str(tagger.get("backend", "wd14")), "preset": str(tagger.get("preset", "sweetspot"))},
+            "project": {
+                "name": p.manifest.project_name,
+                "subject": p.manifest.subject,
+                "trigger": p.manifest.trigger,
+                "path": current_root.as_posix(),
+            },
+            "processing": {
+                "mode": str(processing.get("resize_mode", "cover")),
+                "width": int(processing.get("target_width", 512)),
+                "height": int(processing.get("target_height", 512)),
+                "quality": int(processing.get("jpeg_quality", 95)),
+                "face_crop": bool(processing.get("face_crop", False)),
+                "face_padding": float(processing.get("face_padding", 1.75)),
+            },
+            "tagger": {
+                "backend": str(tagger.get("backend", "wd14")),
+                "preset": str(tagger.get("preset", "sweetspot")),
+            },
             "scraper": {
                 "backend": str(cfg.get("scraper", {}).get("backend", "duckduckgo")),
                 "query": str(cfg.get("scraper", {}).get("query", p.manifest.subject)),
@@ -1899,7 +1984,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
 
     @app.post("/api/settings")
     def settings(payload: dict[str, Any]):
-        current_root = active_root()
+        current_root = require_active_root()
         name, subject = str(payload.get("name", "")).strip(), str(payload.get("subject", "")).strip()
         trigger = str(payload.get("trigger", "")).strip() or subject
         mode, preset = str(payload.get("mode", "cover")).lower(), str(payload.get("preset", "sweetspot"))
@@ -1978,7 +2063,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
 
     @app.delete("/api/images/{image_id}")
     def delete_image(image_id: str):
-        current_root = active_root()
+        current_root = require_active_root()
         if jobs.has_running_project(current_root):
             raise HTTPException(409, "dataset has a running job; wait for it to finish before editing images")
 
@@ -2032,7 +2117,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
 
     @app.post("/api/upload")
     async def upload(files: Annotated[list[UploadFile], File()]):
-        current_root = active_root()
+        current_root = require_active_root()
         p, ps = project(current_root), paths(current_root)
         ps.raw.mkdir(parents=True, exist_ok=True)
         allowed = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
@@ -2273,7 +2358,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
     def run(stage: str):
         allowed = {"scrape", "prepare", "validate", "clean", "process", "tag", "clean-tags", "caption", "export", "pack"}
         if stage not in allowed: raise HTTPException(404, "unknown stage")
-        current_root = active_root()
+        current_root = require_active_root()
         try: job_id = jobs.start(
             "running " + stage + "...",
             make_job(stage, current_root),
@@ -2331,7 +2416,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
 
     @app.get("/api/download")
     def download():
-        current_root = active_root()
+        current_root = require_active_root()
         rel = project(current_root).manifest.source.get("last_pack_archive")
         if not isinstance(rel, str) or not rel: raise HTTPException(404, "no ZIP available")
         target = (current_root / rel).resolve()
@@ -2342,7 +2427,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
 
     @app.get("/media/{relative:path}")
     def media(relative: str):
-        current_root = active_root()
+        current_root = require_active_root()
         target = (current_root / relative).resolve()
         try: target.relative_to(current_root)
         except ValueError: raise HTTPException(403, "invalid media path")
