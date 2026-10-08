@@ -584,6 +584,16 @@ def caption_manifest(
                     image.metadata["caption_tokenizer"] = (
                         "openai/clip-vit-large-patch14"
                     )
+                    if image.caption_path:
+                        stale_caption = (root_path / image.caption_path).resolve()
+                        try:
+                            stale_caption.relative_to(root_path)
+                        except ValueError:
+                            stale_caption = None
+                        if stale_caption is not None and stale_caption.is_file():
+                            stale_caption.unlink()
+                    image.caption_path = None
+                    image.set_status("processed")
                     continue
 
             try:
