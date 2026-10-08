@@ -911,20 +911,41 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
       </section>
       <section class="card card-pad" style="margin-top:14px">
         <div class="card-title">caption</div>
-        <div class="form-grid" style="margin-top:13px">
+        <div class="form-grid three" style="margin-top:13px">
+          <div class="field">
+            <label for="caption_backend">backend</label>
+            <select id="caption_backend">
+              <option value="deterministic">deterministic · tags only</option>
+              <option value="vlm">local VLM · tags + VLM</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="caption_chat_format">VLM chat format</label>
+            <select id="caption_chat_format">
+              <option value="mtmd">mtmd</option>
+              <option value="qwen2.5-vl">qwen2.5-vl</option>
+              <option value="gemma4">gemma4</option>
+            </select>
+          </div>
           <div class="field">
             <label for="caption_max_tokens">max caption tokens</label>
             <div class="range">
               <input id="caption_max_tokens" type="range" min="1" max="77" step="1">
               <span class="range-value" id="caption_tokens_value"></span>
             </div>
-            <div class="field-note">one final caption for SD1.5. VLM text + tagger tags share this 77-token budget.</div>
-          </div>
-          <div class="field">
-            <label>caption mode</label>
-            <div class="check"><span id="caption_mode_value">deterministic</span></div>
           </div>
         </div>
+        <div class="form-grid" style="margin-top:12px">
+          <div class="field">
+            <label for="caption_model_path">VLM model GGUF</label>
+            <input id="caption_model_path" autocomplete="off" placeholder="/path/to/model.gguf">
+          </div>
+          <div class="field">
+            <label for="caption_mmproj_path">VLM mmproj GGUF</label>
+            <input id="caption_mmproj_path" autocomplete="off" placeholder="/path/to/mmproj.gguf">
+          </div>
+        </div>
+        <div class="field-note" style="margin-top:9px">local VLM paths can be absolute or relative to the dataset root. final VLM + tagger + trigger output shares the 1–77 token budget.</div>
       </section>
 
       <section class="card card-pad" style="margin-top:14px">
@@ -1082,7 +1103,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio").forEach(el=>{
     if(el)el.disabled=busy;
   });
 }
@@ -1093,9 +1114,12 @@ function applySettings(s,force=false){
   $("subject").value=project.subject||"";
   $("trigger").value=project.trigger||"";
   $("preset").value=s.tagger.preset;
+  $("caption_backend").value=s.caption.backend||"deterministic";
+  $("caption_chat_format").value=s.caption.chat_format||"mtmd";
+  $("caption_model_path").value=s.caption.model_path||"";
+  $("caption_mmproj_path").value=s.caption.mmproj_path||"";
   $("caption_max_tokens").value=s.caption.max_tokens;
   $("caption_tokens_value").textContent=s.caption.max_tokens;
-  $("caption_mode_value").textContent=s.caption.backend;
   $("mode").value=s.processing.mode;
   $("width").value=s.processing.width;
   $("height").value=s.processing.height;
@@ -1315,6 +1339,10 @@ async function saveSettings(){
         width:width,
         height:height,
         quality:quality,
+        caption_backend:$("caption_backend").value,
+        caption_chat_format:$("caption_chat_format").value,
+        caption_model_path:$("caption_model_path").value.trim(),
+        caption_mmproj_path:$("caption_mmproj_path").value.trim(),
         caption_max_tokens:captionMaxTokens,
         face_crop:$("face_crop").checked,
         face_padding:facePadding,
@@ -1606,7 +1634,7 @@ $("quality").addEventListener("input",()=>{$("qv").textContent=$("quality").valu
 $("caption_max_tokens").addEventListener("input",()=>{$("caption_tokens_value").textContent=$("caption_max_tokens").value});
 [
   "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count",
-  "mode","width","height","quality","caption_max_tokens","face_crop","face_padding","person_check",
+  "mode","width","height","quality","caption_backend","caption_chat_format","caption_model_path","caption_mmproj_path","caption_max_tokens","face_crop","face_padding","person_check",
   "max_persons","person_threshold","min_subject_area","min_subject_visibility",
   "text_check","text_confidence","text_min_area_ratio"
 ].forEach(id=>{
@@ -1970,6 +1998,15 @@ def create_app(root: Path | str = ".") -> FastAPI:
             },
             "caption": {
                 "backend": str(caption.get("backend", "deterministic")),
+                "chat_format": str(caption.get("vlm", {}).get("chat_format", "mtmd"))
+                if isinstance(caption.get("vlm"), dict)
+                else "mtmd",
+                "model_path": str(caption.get("vlm", {}).get("model_path", ""))
+                if isinstance(caption.get("vlm"), dict)
+                else "",
+                "mmproj_path": str(caption.get("vlm", {}).get("mmproj_path", ""))
+                if isinstance(caption.get("vlm"), dict)
+                else "",
                 "max_tokens": int(caption.get("max_tokens", 77)),
             },
             "scraper": {
@@ -2113,9 +2150,54 @@ def create_app(root: Path | str = ".") -> FastAPI:
             ) from exc
         if not 1 <= caption_max_tokens <= 77:
             raise HTTPException(400, "caption max tokens must be between 1 and 77")
+        caption_backend = str(
+            payload.get("caption_backend", current_caption.get("backend", "deterministic"))
+        ).strip().lower()
+        current_vlm = current_caption.get("vlm", {})
+        if not isinstance(current_vlm, dict):
+            current_vlm = {}
+        caption_chat_format = str(
+            payload.get("caption_chat_format", current_vlm.get("chat_format", "mtmd"))
+        ).strip().lower()
+        caption_model_path = str(
+            payload.get("caption_model_path", current_vlm.get("model_path", ""))
+        ).strip()
+        caption_mmproj_path = str(
+            payload.get("caption_mmproj_path", current_vlm.get("mmproj_path", ""))
+        ).strip()
+        if caption_backend not in {"deterministic", "vlm"}:
+            raise HTTPException(400, "caption backend must be deterministic or vlm")
+        if caption_chat_format not in {"mtmd", "qwen2.5-vl", "gemma4"}:
+            raise HTTPException(400, "unsupported VLM chat format")
+        if caption_backend == "vlm" and (not caption_model_path or not caption_mmproj_path):
+            raise HTTPException(400, "VLM model and mmproj paths are required")
+        try:
+            caption_config_from_dict(
+                {
+                    "backend": caption_backend,
+                    "max_tokens": caption_max_tokens,
+                    "vlm": {
+                        "model_path": caption_model_path,
+                        "mmproj_path": caption_mmproj_path,
+                        "chat_format": caption_chat_format,
+                    },
+                },
+                root=current_root,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
         set_config(
             "caption",
-            {"max_tokens": caption_max_tokens},
+            {"backend": caption_backend, "max_tokens": caption_max_tokens},
+            current_root,
+        )
+        set_config(
+            "caption.vlm",
+            {
+                "model_path": caption_model_path,
+                "mmproj_path": caption_mmproj_path,
+                "chat_format": caption_chat_format,
+            },
             current_root,
         )
         set_config(
