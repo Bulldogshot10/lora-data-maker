@@ -132,7 +132,7 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
     assert "top_p" not in payload
 
 
-def test_api_vlm_caption_injects_trigger_without_structured_field_parsing(monkeypatch, tmp_path):
+def test_api_vlm_caption_injects_trigger_from_four_fields(monkeypatch, tmp_path):
     monkeypatch.setattr(requests, "Session", FakeSession)
     FakeSession.payloads.clear()
     FakeSession.responses[:] = [
