@@ -402,54 +402,6 @@ def truncate_caption(
     return " ".join(selected_words).strip(" ,.;:")
 
 
-def combine_caption_sources(
-    *,
-    vlm_caption: str,
-    tags: Iterable[str],
-    subject: str,
-    trigger: str,
-    config: CaptionConfig,
-) -> str:
-    """Merge cleaned VLM prose and tagger tags into one bounded caption."""
-    resolved_trigger = resolve_trigger(
-        subject=subject,
-        trigger=trigger,
-        trigger_from_subject=config.trigger_from_subject,
-    )
-
-    value = clean_vlm_caption(vlm_caption)
-    if resolved_trigger and value:
-        pattern = re.compile(
-            rf"(?<![A-Za-z0-9_]){re.escape(resolved_trigger)}(?![A-Za-z0-9_])",
-            re.IGNORECASE,
-        )
-        value = pattern.sub("", value)
-        value = re.sub(r"\s*([,.;:])\s*", r"\1 ", value)
-        value = re.sub(r"\s+", " ", value).strip(" ,.;:")
-
-    normalized_tags: list[str] = []
-    seen: set[str] = set()
-    for raw_tag in tags:
-        tag = normalize_tag(raw_tag)
-        if not tag or tag in seen or tag == resolved_trigger:
-            continue
-        seen.add(tag)
-        normalized_tags.append(tag)
-
-    parts: list[str] = []
-    if resolved_trigger:
-        parts.append(resolved_trigger)
-    if value:
-        parts.append(value)
-    parts.extend(normalized_tags)
-
-    return truncate_caption(
-        config.separator.join(parts),
-        config.max_tokens,
-        separator=config.separator,
-    )
-
-
 def write_caption(path: Path | str, caption: str) -> Path:
     """Atomically write a UTF-8 caption file with a single trailing newline."""
     target = Path(path).expanduser().resolve()
@@ -541,13 +493,7 @@ def caption_manifest(
             )
 
         for image in candidates:
-            deterministic_caption = build_caption(
-                image.tags,
-                subject=manifest.subject,
-                trigger=manifest.trigger,
-                config=settings,
-            )
-            caption = deterministic_caption
+            caption = ""
             if settings.backend == "vlm":
                 processed_path = (
                     root_path / str(image.processed_path)
@@ -652,6 +598,12 @@ def caption_manifest(
                 image.metadata.pop("caption_vlm_error", None)
                 image.metadata.pop("caption_fallback_backend", None)
             else:
+                caption = build_caption(
+                    image.tags,
+                    subject=manifest.subject,
+                    trigger=manifest.trigger,
+                    config=settings,
+                )
                 image.metadata["caption_estimated_tokens"] = (
                     estimate_caption_tokens(caption)
                 )
