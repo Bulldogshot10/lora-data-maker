@@ -185,7 +185,7 @@ seed = 42
 
 backend = "deterministic" keeps the existing tag-based captioner. Set runtime to "llama_cpp" for local GGUF inference. Set runtime to "gemini" for the Google Gemini REST API. Set runtime to "openai_compatible" for a vision-capable OpenAI-compatible Chat Completions endpoint.
 
-For API runtimes, api_key_env names the environment variable holding the API key. The secret itself is never stored in config.toml. api_model selects the model. api_base_url defaults to https://generativelanguage.googleapis.com/v1beta for Gemini and https://api.openai.com/v1 for OpenAI-compatible mode. The built-in Gemini example uses gemini-2.5-flash-lite. api_timeout controls the HTTP request timeout in seconds.
+For API runtimes, api_key_env names the environment variable holding the API key. The secret itself is never stored in config.toml. api_model selects the model. api_base_url defaults to https://generativelanguage.googleapis.com/v1beta for Gemini and https://api.openai.com/v1 for OpenAI-compatible mode. The built-in Gemini example uses gemini-3.5-flash-lite. api_timeout controls the HTTP request timeout in seconds.
 
 Every VLM runtime uses the same strict caption prompt: exactly four fields in order, pose, clothing, expression, background; maximum five words per field; pose includes a camera view term when visible; background includes lighting; hair color, eye color, face, age, and gender are excluded. The parser rejects malformed responses.
 
