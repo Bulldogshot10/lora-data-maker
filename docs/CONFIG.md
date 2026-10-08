@@ -180,7 +180,7 @@ seed = 42
 
 backend = "deterministic" keeps the existing tag-based captioner. Set backend = "vlm" to caption each processed image with the local llama-cpp-python runtime.
 model_path points to the local VLM GGUF and mmproj_path points to its multimodal projector GGUF. Both must be set together.
-chat_format supports mtmd, qwen2.5-vl, and gemma4.
+chat_format supports mtmd, qwen2.5-vl, gemma4, and qwen3.5. qwen3.5 uses llama-cpp-python's MTMD path and the chat template embedded in the Qwen3.5 GGUF.
 The VLM receives only the processed image and the configured prompt. Its prompt requests exactly four short fields: pose, clothing, expression, and background with lighting. Hair color, eye color, face, age, and gender are intentionally excluded from the VLM output.
 VLM mode does not invoke WD14 or JoyTag and does not merge booru tags into the caption. The four VLM fields become the ordered caption body after the resolved trigger: trigger → pose → clothing → expression → background.
 The final caption uses the exact Hugging Face CLIPTokenizer from openai/clip-vit-large-patch14. Token counting includes the tokenizer's special BOS/EOS tokens, and caption.max_tokens is constrained to the SD1.x 1–77 context window, default 77. The loader checks the local Hugging Face cache/files first. Set LORA_DATA_MAKER_CLIP_TOKENIZER_OFFLINE=1 to forbid network access, or LORA_DATA_MAKER_CLIP_TOKENIZER_PATH to point at a local tokenizer directory.
