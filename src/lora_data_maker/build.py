@@ -147,16 +147,18 @@ def run_build(
         "pack": command_pack,
     }
 
-    scraper_config = config.get("scraper", {})
-    if not isinstance(scraper_config, dict):
-        raise ValueError("config section [scraper] must be a table")
+    backend = "duckduckgo"
+    if "scrape" in selected:
+        scraper_config = config.get("scraper", {})
+        if not isinstance(scraper_config, dict):
+            raise ValueError("config section [scraper] must be a table")
 
-    backend = str(scraper_config.get("backend", "duckduckgo"))
-    if backend not in SCRAPER_BACKENDS:
-        raise ValueError(
-            f"unsupported scraper backend {backend!r}; "
-            "expected one of: " + ", ".join(SCRAPER_BACKENDS)
-        )
+        backend = str(scraper_config.get("backend", "duckduckgo"))
+        if backend not in SCRAPER_BACKENDS:
+            raise ValueError(
+                f"unsupported scraper backend {backend!r}; "
+                "expected one of: " + ", ".join(SCRAPER_BACKENDS)
+            )
 
     project = DatasetProject.open(paths)
     results: list[BuildStageResult] = []
