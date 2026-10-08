@@ -165,9 +165,14 @@ trigger_from_subject = true
 max_tokens = 77
 
 [caption.vlm]
+runtime = "llama_cpp"
 model_path = ""
 mmproj_path = ""
 chat_format = "mtmd"
+api_key_env = ""
+api_model = ""
+api_base_url = ""
+api_timeout = 120.0
 max_tokens = 64
 temperature = 0.1
 top_p = 0.95
@@ -178,21 +183,21 @@ n_gpu_layers = 0
 seed = 42
 ~~~
 
-backend = "deterministic" keeps the existing tag-based captioner. Set backend = "vlm" to caption each processed image with the local llama-cpp-python runtime.
-model_path points to the local VLM GGUF and mmproj_path points to its multimodal projector GGUF. Both must be set together.
-chat_format supports mtmd, qwen2.5-vl, gemma4, and qwen3.5. qwen3.5 uses llama-cpp-python's MTMD path and the chat template embedded in the Qwen3.5 GGUF.
-The VLM receives only the processed image and the configured prompt. Its prompt requests exactly four short fields: pose, clothing, expression, and background with lighting. Hair color, eye color, face, age, and gender are intentionally excluded from the VLM output.
-VLM mode does not invoke WD14 or JoyTag and does not merge booru tags into the caption. The four VLM fields become the ordered caption body after the resolved trigger: trigger → pose → clothing → expression → background.
-VLM mode does not use a Stable Diffusion text tokenizer, does not download tokenizer files, and does not apply caption.max_tokens. Each VLM field is limited to five words by the strict parser. VLM inference or formatting failures mark the image as failed instead of silently falling back to a tag caption.
+backend = "deterministic" keeps the existing tag-based captioner. Set runtime to "llama_cpp" for local GGUF inference. Set runtime to "gemini" for the Google Gemini REST API. Set runtime to "openai_compatible" for a vision-capable OpenAI-compatible Chat Completions endpoint.
 
-Install the optional VLM runtime with:
+For API runtimes, api_key_env names the environment variable holding the API key. The secret itself is never stored in config.toml. api_model selects the model. api_base_url defaults to https://generativelanguage.googleapis.com/v1beta for Gemini and https://api.openai.com/v1 for OpenAI-compatible mode. The built-in Gemini example uses gemini-2.5-flash-lite. api_timeout controls the HTTP request timeout in seconds.
+
+Every VLM runtime uses the same strict caption prompt: exactly four fields in order, pose, clothing, expression, background; maximum five words per field; pose includes a camera view term when visible; background includes lighting; hair color, eye color, face, age, and gender are excluded. The parser rejects malformed responses.
+
+The final VLM caption always injects the resolved dataset trigger first, removes duplicate trigger mentions from generated fields, and produces trigger → pose → clothing → expression → background. WD14/JoyTag tags are not merged into VLM prose, and the deterministic caption.max_tokens budget does not apply to VLM output.
+
+Install the local runtime with:
 
 ~~~bash
 python -m pip install ".[caption-vlm]"
 ~~~
 
-The WebUI exposes the caption backend, VLM chat format, model GGUF path, mmproj GGUF path, and final 1–77 token budget under Settings. Paths entered there are stored in the project config; relative paths are resolved from the dataset root when the caption stage starts.
-
+The API runtimes need no extra Python package beyond the project's existing requests dependency.
 ## export
 
 ~~~toml
