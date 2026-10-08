@@ -174,12 +174,12 @@ def test_parse_vlm_caption_normalizes_four_fields():
 
 
 def test_parse_vlm_caption_rejects_malformed_output():
-    with pytest.raises(VlmCaptionerError, match="exactly four"):
+    with pytest.raises(VlmCaptionerError, match="missing required fields"):
         parse_vlm_caption("pose: standing\nclothing: black shirt")
 
 
 def test_parse_vlm_caption_rejects_unstructured_prose():
-    with pytest.raises(VlmCaptionerError, match="exactly four"):
+    with pytest.raises(VlmCaptionerError, match="does not contain the expected"):
         parse_vlm_caption("a woman standing in a black dress outdoors")
 
 
@@ -276,6 +276,23 @@ def test_caption_config_rejects_llama_vlm_without_paths():
         match="caption.vlm.model_path is required for the llama_cpp runtime",
     ):
         CaptionConfig(backend="vlm")
+
+
+def test_caption_config_allows_inactive_incomplete_api_runtime():
+    settings = caption_config_from_dict(
+        {
+            "backend": "deterministic",
+            "vlm": {
+                "runtime": "openai_compatible",
+                "api_key_env": "",
+                "api_model": "",
+                "api_base_url": "",
+            },
+        }
+    )
+    assert settings.backend == "deterministic"
+    assert settings.vlm.runtime == "openai_compatible"
+    assert settings.vlm.api_model == ""
 
 
 def test_caption_config_from_dict_keeps_deterministic_default():
