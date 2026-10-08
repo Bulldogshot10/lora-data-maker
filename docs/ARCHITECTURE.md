@@ -102,7 +102,11 @@ Tagger output is treated as visual metadata. General tags, character tags, confi
 
 ## Caption boundary
 
-Caption generation consumes tagged records after tag cleaning and writes deterministic UTF-8 `.txt` files under `work/captions/`, one file per image record. Caption text is built from normalized, deduplicated tags using the configured separator. The resolved trigger is derived from `subject` when `caption.trigger_from_subject = true`; otherwise the manifest trigger is used. The trigger is removed from its previous position before being prepended, making re-runs idempotent. Captioned records retain their caption path and caption metadata in the manifest.
+Caption generation consumes records after tag cleaning. The tagger and VLM captioner both read the same processed image independently; tagger output is never passed into the VLM prompt.
+
+With `caption.backend = "deterministic"`, caption text is built from normalized, deduplicated tags. With `caption.backend = "vlm"`, the local llama-cpp-python runtime generates a raw caption from the processed image and configured prompt, then the caption stage normalizes the text and injects the resolved trigger. VLM inference failures fall back to the deterministic tag caption for that image.
+
+Captions are written as UTF-8 `.txt` files under `work/captions/`, one file per image record. The resolved trigger is derived from `subject` when `caption.trigger_from_subject = true`; otherwise the manifest trigger is used. Trigger injection is idempotent. Caption backend/model/fallback metadata is retained in the manifest for audit and resume.
 
 ## Export boundary
 
@@ -150,7 +154,7 @@ The following are out of scope for v1:
 - Gradio UI
 - LoRA training
 - Stable Diffusion inference
-- local LLM captioning
+- networked captioning services
 - GPU-specific inference stacks
 
 ## Dependency tiers
@@ -167,6 +171,7 @@ The following are out of scope for v1:
 - ONNX Runtime and NumPy for taggers and the optional person-quality gate
 - gallery-dl for optional external download backends
 - pytest for development
+- llama-cpp-python for optional local VLM captioning
 
 Optional features must never make the basic CLI import fail. The `tagger` and `quality` extras provide NumPy and ONNX Runtime without adding them to the core dependency set.
 
