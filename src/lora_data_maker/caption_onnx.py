@@ -306,12 +306,14 @@ class SmolVlmOnnxCaptioner:
 
         pixels = np.asarray(pixel_values)
         expected_rank = len(pixel_input.shape)
-        if expected_rank == 4 and pixels.ndim == 5:
+        pixels_were_flattened = expected_rank == 4 and pixels.ndim == 5
+        pixels_were_batched = expected_rank == 5 and pixels.ndim == 4
+        if pixels_were_flattened:
             pixels = pixels.reshape(
                 pixels.shape[0] * pixels.shape[1],
                 *pixels.shape[2:],
             )
-        elif expected_rank == 5 and pixels.ndim == 4:
+        elif pixels_were_batched:
             pixels = pixels[:, None, ...]
 
         feed: dict[str, np.ndarray] = {
@@ -344,13 +346,12 @@ class SmolVlmOnnxCaptioner:
                     )
             else:
                 mask = np.asarray(mask)
-                target_rank = len(attention_input.shape)
-                if target_rank == 3 and mask.ndim == 4:
+                if pixels_were_flattened and mask.ndim == 4:
                     mask = mask.reshape(
                         mask.shape[0] * mask.shape[1],
                         *mask.shape[2:],
                     )
-                elif target_rank == 4 and mask.ndim == 3:
+                elif pixels_were_batched and mask.ndim == 3:
                     mask = mask[:, None, ...]
 
             if attention_input.name == "patch_attention_mask":
