@@ -57,7 +57,7 @@ caption-onnx = [
   "numpy>=1.26,<3",
   "onnxruntime>=1.17,<2",
   "huggingface-hub>=0.30,<1",
-  "transformers>=4.51.1,<5",
+  "transformers>=4.57,<5",
 ]
 
 [tool.setuptools.packages.find]
