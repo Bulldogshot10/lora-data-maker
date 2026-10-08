@@ -288,7 +288,7 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path, monkeypatch):
         (root / image.caption_path).read_text(encoding="utf-8")
         == (
             "julia, standing with arms raised, white halter top, black skirt, "
-            "slight smile, indoors, soft window lighting, 1girl, blue eyes\n"
+            "slight smile, indoors, soft window lighting\n"
         )
     )
 
@@ -433,7 +433,7 @@ def test_vlm_truncation_preserves_custom_separator(monkeypatch):
 def test_vlm_caption_ignores_tagger_tags_and_uses_exact_budget():
     config = CaptionConfig(
         backend="vlm",
-        max_tokens=10,
+        max_tokens=8,
         vlm=VlmConfig(
             model_path="model.gguf",
             mmproj_path="mmproj.gguf",
@@ -450,5 +450,5 @@ def test_vlm_caption_ignores_tagger_tags_and_uses_exact_budget():
         tokenizer=FakeClipTokenizer(),
     )
     assert caption == "julia, standing, black dress, smiling"
-    assert len(FakeClipTokenizer()(caption)["input_ids"]) <= 10
+    assert len(FakeClipTokenizer()(caption)["input_ids"]) <= 8
 
