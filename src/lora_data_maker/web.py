@@ -2038,8 +2038,14 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 "face_padding": float(processing.get("face_padding", 1.75)),
             },
             "tagger": {
-                "backend": str(tagger.get("backend", "wd14")),
-                "preset": str(tagger.get("preset", "sweetspot")),
+                "backend": "off"
+                if str(tagger.get("backend", "wd14")).strip().lower() == "off"
+                or str(tagger.get("preset", "sweetspot")).strip().lower() == "off"
+                else str(tagger.get("backend", "wd14")),
+                "preset": "off"
+                if str(tagger.get("backend", "wd14")).strip().lower() == "off"
+                or str(tagger.get("preset", "sweetspot")).strip().lower() == "off"
+                else str(tagger.get("preset", "sweetspot")),
             },
             "caption": {
                 "backend": str(caption.get("backend", "deterministic")),
@@ -2142,10 +2148,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
         scrape_count = int(
             payload.get("scrape_count", current_scraper.get("count", 300))
         )
-        try:
-            resolved_preset = resolve_tagger_preset(preset)
-        except ValueError as exc:
-            raise HTTPException(400, str(exc)) from exc
+        preset = preset.strip().lower()
         width, height, quality = int(payload.get("width", 512)), int(payload.get("height", 512)), int(payload.get("quality", 95))
         face_crop = bool(payload.get("face_crop", False))
         face_padding = float(payload.get("face_padding", 1.75))
@@ -2213,6 +2216,14 @@ def create_app(root: Path | str = ".") -> FastAPI:
             raise HTTPException(400, "unsupported VLM chat format")
         if caption_backend == "vlm" and (not caption_model_path or not caption_mmproj_path):
             raise HTTPException(400, "VLM model and mmproj paths are required")
+
+        tagger_disabled = preset == "off"
+        resolved_preset = None
+        if not tagger_disabled:
+            try:
+                resolved_preset = resolve_tagger_preset(preset)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
         try:
             caption_config_from_dict(
                 {
@@ -2249,8 +2260,10 @@ def create_app(root: Path | str = ".") -> FastAPI:
         set_config(
             "tagger",
             {
-                "backend": "joytag" if resolved_preset.kind == "joytag" else "wd14",
-                "preset": preset,
+                "backend": "off"
+                if tagger_disabled
+                else ("joytag" if resolved_preset.kind == "joytag" else "wd14"),
+                "preset": "off" if tagger_disabled else preset,
             },
             current_root,
         )
