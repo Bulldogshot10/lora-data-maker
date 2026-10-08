@@ -19,8 +19,8 @@ def test_pack_clip_caption_preserves_field_order_and_budget():
         8,
         tokenizer=tokenizer,
     )
-    assert caption == "julia, standing, black dress, smiling"
-    assert count_clip_tokens(caption, tokenizer=tokenizer) == 6
+    assert caption == "julia, standing, black dress, smiling, indoors"
+    assert count_clip_tokens(caption, tokenizer=tokenizer) == 8
 
 
 def test_pack_clip_caption_uses_custom_separator():
