@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 import re
 import tempfile
@@ -286,41 +287,81 @@ def clean_vlm_caption(text: str) -> str:
 
 _VLM_FIELDS = ("pose", "clothing", "expression", "background")
 _VLM_FIELD_RE = re.compile(
-    r"^(pose|clothing|expression|background)\s*:\s*(.*?)\s*$",
+    r"(?<![A-Za-z0-9_])(pose|clothing|expression|background)\s*:\s*",
     re.IGNORECASE,
 )
 
 
-def parse_vlm_fields(raw_caption: str) -> list[str]:
-    """Parse the strict four-field VLM response into ordered caption fields."""
-    value = str(raw_caption).replace("\r\n", "\n").replace("\r", "\n").strip()
-    lines = [line.strip() for line in value.split("\n") if line.strip()]
-    if not lines:
-        raise VlmCaptionerError("VLM caption is empty")
+def _strip_vlm_wrappers(text: str) -> str:
+    """Remove common model wrappers without touching caption content."""
+    value = str(text).replace("\r\n", "\n").replace("\r", "\n").strip()
+    value = re.sub(r"^\s*\x60\x60\x60(?:json|text|plaintext)?\s*", "", value, flags=re.IGNORECASE)
+    value = re.sub(r"\s*\x60\x60\x60\s*$", "", value)
+    value = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", value)
+    return value.strip()
 
-    if len(lines) != len(_VLM_FIELDS):
-        raise VlmCaptionerError(
-            "VLM caption must contain exactly four non-empty fields"
-        )
 
-    fields: list[str] = []
-    for expected, line in zip(_VLM_FIELDS, lines, strict=True):
-        match = _VLM_FIELD_RE.fullmatch(line)
-        if match is None or match.group(1).lower() != expected:
-            raise VlmCaptionerError(
-                "VLM caption fields must be pose, clothing, expression, background in order"
-            )
-        phrase = clean_vlm_caption(match.group(2))
+def _parse_vlm_json(value: str) -> list[str] | None:
+    """Accept structured JSON as a tolerant API-side fallback."""
+    candidate = value.strip()
+    if not candidate.startswith("{") or not candidate.endswith("}"):
+        return None
+    try:
+        data = json.loads(candidate)
+    except (TypeError, ValueError):
+        return None
+    if not isinstance(data, dict):
+        return None
+
+    fields = []
+    for field_name in _VLM_FIELDS:
+        raw_value = data.get(field_name)
+        if not isinstance(raw_value, str):
+            return None
+        phrase = clean_vlm_caption(raw_value)
         if not phrase:
-            raise VlmCaptionerError(f"VLM field {expected} is empty")
-        if len(re.findall(r"\S+", phrase)) > 5:
-            raise VlmCaptionerError(
-                f"VLM field {expected} exceeds the 5-word limit"
-            )
+            raise VlmCaptionerError(f"VLM field {field_name} is empty")
         fields.append(phrase)
-
     return fields
 
+
+def parse_vlm_fields(raw_caption: str) -> list[str]:
+    """Extract the four caption fields from tolerant, structured VLM output."""
+    value = _strip_vlm_wrappers(raw_caption)
+    if not value:
+        raise VlmCaptionerError("VLM caption is empty")
+
+    json_fields = _parse_vlm_json(value)
+    if json_fields is not None:
+        return json_fields
+
+    matches = list(_VLM_FIELD_RE.finditer(value))
+    if not matches:
+        raise VlmCaptionerError(
+            "VLM caption does not contain the expected pose, clothing, expression, background fields"
+        )
+
+    by_name = {}
+    for index, match in enumerate(matches):
+        name = match.group(1).lower()
+        if name in by_name:
+            continue
+        start = match.end()
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(value)
+        fragment = value[start:end].strip()
+        fragment = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", fragment)
+        fragment = fragment.strip(" ,;|")
+        phrase = clean_vlm_caption(fragment)
+        if phrase:
+            by_name[name] = phrase
+
+    missing = [field_name for field_name in _VLM_FIELDS if not by_name.get(field_name)]
+    if missing:
+        raise VlmCaptionerError(
+            "VLM caption is missing required fields: " + ", ".join(missing)
+        )
+
+    return [by_name[field_name] for field_name in _VLM_FIELDS]
 
 def parse_vlm_caption(raw_caption: str) -> str:
     """Parse the VLM response into one ordered caption fragment."""
