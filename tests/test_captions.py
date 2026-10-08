@@ -149,6 +149,7 @@ She is sitting outdoors."""
 
 
 def test_default_vlm_prompt_uses_four_structured_fields():
+    assert DEFAULT_VLM_PROMPT.count("\n") >= 4
     assert "exactly these 4 fields, one per line" in DEFAULT_VLM_PROMPT
     assert "maximum of 5 words per field" in DEFAULT_VLM_PROMPT
     assert "camera view term" in DEFAULT_VLM_PROMPT
