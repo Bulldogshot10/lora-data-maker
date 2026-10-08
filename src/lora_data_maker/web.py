@@ -12,7 +12,11 @@ from typing import Annotated, Any
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 
-from .captions import caption_config_from_dict, caption_manifest
+from .captions import (
+    caption_config_from_dict,
+    caption_manifest,
+    reset_vlm_captions_for_deterministic,
+)
 from .config import load_config, write_default_config
 from .dataset import DatasetProject
 from .export import export_manifest, safe_component
@@ -2193,6 +2197,14 @@ def create_app(root: Path | str = ".") -> FastAPI:
             )
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
+
+        p = project(current_root)
+        if caption_backend == "deterministic":
+            reset_vlm_captions_for_deterministic(
+                p.manifest,
+                root=current_root,
+            )
+
         set_config(
             "caption",
             {"backend": caption_backend, "max_tokens": caption_max_tokens},
@@ -2230,7 +2242,6 @@ def create_app(root: Path | str = ".") -> FastAPI:
             },
             current_root,
         )
-        p = project(current_root)
         p.manifest.project_name, p.manifest.subject, p.manifest.trigger = name, subject, trigger
         p.save()
         return {"ok": True}
