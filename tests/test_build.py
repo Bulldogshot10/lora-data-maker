@@ -275,3 +275,42 @@ def test_run_build_ignores_invalid_scraper_when_scrape_not_selected(tmp_path, mo
 
     assert summary.success is True
     assert calls == [str(root)]
+
+def test_run_build_skips_tag_stages_when_tagger_is_off(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia-set",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace('backend = "wd14"\npreset = "sweetspot"', 'backend = "off"\npreset = "off"', 1)
+    config_path.write_text(config, encoding="utf-8")
+
+    import lora_data_maker.cli as cli
+    calls = []
+
+    def fake_command(name):
+        def runner(args):
+            calls.append(name)
+            return 0
+        return runner
+
+    for stage in BUILD_STAGES:
+        monkeypatch.setattr(cli, f"command_{stage.replace('-', '_')}", fake_command(stage))
+
+    summary = run_build(path=root, from_stage="validate", to_stage="pack")
+
+    assert summary.success is True
+    assert [item.name for item in summary.stages] == [
+        "validate", "clean", "process", "caption", "export", "pack"
+    ]
+    assert calls == [
+        "validate", "clean", "process", "caption", "export", "pack"
+    ]
