@@ -252,9 +252,12 @@ class SmolVlmOnnxCaptioner:
         self._head_dim = int(text_config.get("head_dim", 64))
         self._image_token_id = int(model_config.get("image_token_id", 49190))
         self._eos_token_id = int(
-            generation_config.get(
+            text_config.get(
                 "eos_token_id",
-                getattr(self._processor.tokenizer, "eos_token_id", 49279),
+                generation_config.get(
+                    "eos_token_id",
+                    getattr(self._processor.tokenizer, "eos_token_id", 49279),
+                ),
             )
             or 49279
         )
@@ -269,17 +272,19 @@ class SmolVlmOnnxCaptioner:
             {
                 "role": "user",
                 "content": [
-                    {"type": "image", "image": image},
+                    {"type": "image"},
                     {"type": "text", "text": self._prompt},
                 ],
             }
         ]
         try:
-            inputs = self._processor.apply_chat_template(
+            prompt = self._processor.apply_chat_template(
                 messages,
                 add_generation_prompt=True,
-                tokenize=True,
-                return_dict=True,
+            )
+            inputs = self._processor(
+                text=prompt,
+                images=[image],
                 return_tensors="np",
             )
         except Exception as exc:
@@ -482,24 +487,12 @@ class SmolVlmOnnxCaptioner:
             )
         return past
 
-    def _position_ids(
-        self,
-        attention_mask: np.ndarray,
-        *,
-        last_only: bool = False,
-    ) -> np.ndarray:
-        mask = np.asarray(attention_mask).astype(np.int64, copy=False)
-        positions = mask.cumsum(axis=-1) - 1
-        positions = np.where(mask == 0, 1, positions)
-        if last_only:
-            positions = positions[:, -1:]
-        return positions
-
     def _decoder_feed(
         self,
         *,
         inputs_embeds: np.ndarray,
         attention_mask: np.ndarray,
+        position_ids: np.ndarray,
         past: dict[str, np.ndarray],
         use_cache: bool,
     ) -> dict[str, np.ndarray]:
@@ -519,11 +512,10 @@ class SmolVlmOnnxCaptioner:
 
         position_meta = self._decoder_inputs.get("position_ids")
         if position_meta is not None:
-            positions = self._position_ids(
-                attention_mask,
-                last_only=use_cache,
+            feed[position_meta.name] = _cast_for_meta(
+                position_ids,
+                position_meta,
             )
-            feed[position_meta.name] = _cast_for_meta(positions, position_meta)
 
         cache_branch_meta = self._decoder_inputs.get("use_cache_branch")
         if cache_branch_meta is not None:
@@ -592,33 +584,38 @@ class SmolVlmOnnxCaptioner:
             else:
                 attention_mask = np.asarray(attention_mask)
 
-            image_features = self._run_vision(inputs)
-            token_embeddings = self._embed_tokens(token_ids)
-            merged_embeddings = self._merge_image_features(
-                token_ids,
-                token_embeddings,
-                image_features,
-            )
-
             batch_size = int(token_ids.shape[0])
             past = self._empty_past(batch_size)
             generated: list[int] = []
+            current_input_ids = token_ids
+            current_attention_mask = np.asarray(attention_mask, dtype=np.int64)
+            current_position_ids = np.cumsum(
+                current_attention_mask,
+                axis=-1,
+                dtype=np.int64,
+            )
+            image_features = None
 
             for step in range(self._max_new_tokens):
-                if step == 0:
-                    step_embeddings = merged_embeddings
-                    step_attention = attention_mask
+                token_embeddings = self._embed_tokens(current_input_ids)
+
+                if image_features is None:
+                    image_features = self._run_vision(inputs)
+                    step_embeddings = self._merge_image_features(
+                        current_input_ids,
+                        token_embeddings,
+                        image_features,
+                    )
                 else:
-                    generated_array = np.asarray([[generated[-1]]], dtype=np.int64)
-                    step_embeddings = self._embed_tokens(generated_array)
-                    step_attention = np.ones(
-                        (batch_size, token_ids.shape[1] + len(generated)),
-                        dtype=np.int64,
+                    step_embeddings = _cast_for_meta(
+                        token_embeddings,
+                        self._decoder_inputs["inputs_embeds"],
                     )
 
                 feed = self._decoder_feed(
                     inputs_embeds=step_embeddings,
-                    attention_mask=step_attention,
+                    attention_mask=current_attention_mask,
+                    position_ids=current_position_ids,
                     past=past,
                     use_cache=step > 0,
                 )
@@ -642,6 +639,13 @@ class SmolVlmOnnxCaptioner:
 
                 if next_token == self._eos_token_id:
                     break
+
+                current_input_ids = np.asarray(
+                    [[next_token]],
+                    dtype=np.int64,
+                )
+                current_attention_mask = np.ones_like(current_input_ids)
+                current_position_ids = current_position_ids[:, -1:] + 1
 
             text = self._decode_tokens(generated)
             if not text:
