@@ -35,8 +35,6 @@ HTML = r"""
 <link rel="icon" href="/favicon.ico" sizes="any">
 <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
-<link rel="apple-touch-icon" href="/apple-touch-icon.png">
-<link rel="manifest" href="/site.webmanifest">
 <title>LoRA Data Maker</title>
 <style>
 :root{
@@ -1823,22 +1821,6 @@ def create_app(root: Path | str = ".") -> FastAPI:
     @app.get("/favicon-32x32.png")
     def favicon_32():
         return FileResponse(static_root / "favicon-32x32.png", media_type="image/png")
-
-    @app.get("/apple-touch-icon.png")
-    def apple_touch_icon():
-        return FileResponse(static_root / "apple-touch-icon.png", media_type="image/png")
-
-    @app.get("/android-chrome-192x192.png")
-    def android_chrome_192():
-        return FileResponse(static_root / "android-chrome-192x192.png", media_type="image/png")
-
-    @app.get("/android-chrome-512x512.png")
-    def android_chrome_512():
-        return FileResponse(static_root / "android-chrome-512x512.png", media_type="image/png")
-
-    @app.get("/site.webmanifest")
-    def site_webmanifest():
-        return FileResponse(static_root / "site.webmanifest", media_type="application/manifest+json")
 
     @app.get("/api/state")
     def state():
