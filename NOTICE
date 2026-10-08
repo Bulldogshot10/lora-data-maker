@@ -21,7 +21,7 @@ its own license terms.
 3. NumPy
    Purpose: numerical arrays used by optional ONNX-backed tagger and quality
    runtimes.
-   License: BSD-style and other bundled component licenses.
+   License: bundled component licenses; see the NumPy distribution.
    Project: https://numpy.org/
 
 4. ONNX Runtime
@@ -31,9 +31,8 @@ its own license terms.
    Project: https://onnxruntime.ai/
 
 5. OpenCV / YuNet
-   Purpose: optional face-crop detector.
-   License: Apache License 2.0 for the OpenCV Zoo model artifact used by this
-   project; see upstream repository for exact terms.
+   Purpose: optional face-crop detector and model runtime.
+   Model artifact license: MIT.
    Project: https://github.com/opencv/opencv_zoo
 
 6. SmilingWolf/wd-vit-tagger-v3
