@@ -2368,6 +2368,51 @@ def create_app(root: Path | str = ".") -> FastAPI:
             "deleted": [manifest_path(current_root, target) for target in targets],
         }
 
+    @app.post("/api/vlm/upload/{kind}")
+    async def upload_vlm(kind: str, file: Annotated[UploadFile, File()]):
+        current_root = require_active_root()
+        if jobs.has_running_project(current_root):
+            raise HTTPException(409, "this dataset is busy. wait for the current job to finish")
+        if kind not in {"model", "mmproj"}:
+            raise HTTPException(404, "unknown VLM file kind")
+
+        filename = Path(file.filename or "").name
+        if Path(filename).suffix.lower() != ".gguf":
+            raise HTTPException(400, "VLM uploads must be .gguf files")
+
+        models_dir = current_root / "models"
+        models_dir.mkdir(parents=True, exist_ok=True)
+        base = safe_component(Path(filename).stem) or kind
+        target = models_dir / f"{base}.gguf"
+        counter = 1
+        while target.exists():
+            target = models_dir / f"{base}_{counter}.gguf"
+            counter += 1
+
+        temp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.part")
+        try:
+            with temp.open("wb") as out:
+                while chunk := await file.read(4 * 1024 * 1024):
+                    out.write(chunk)
+                out.flush()
+                os.fsync(out.fileno())
+            os.replace(temp, target)
+        except OSError as exc:
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise HTTPException(500, f"could not save VLM file: {exc}") from exc
+        finally:
+            await file.close()
+
+        return {
+            "ok": True,
+            "kind": kind,
+            "path": manifest_path(current_root, target),
+            "filename": filename,
+        }
+
     @app.post("/api/upload")
     async def upload(files: Annotated[list[UploadFile], File()]):
         current_root = require_active_root()
@@ -2576,6 +2621,10 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 if caption_backend == "vlm":
                     return "tag skipped: VLM caption backend is VLM-only"
                 tc = cfg.get("tagger", {})
+                if not isinstance(tc, dict):
+                    raise RuntimeError("config section [tagger] must be a table")
+                if str(tc.get("backend", "wd14")).strip().lower() == "off" or str(tc.get("preset", "sweetspot")).strip().lower() == "off":
+                    return "tag skipped: tagger disabled"
                 selected = resolve_tagger_preset(str(tc.get("preset", "sweetspot")))
                 cache_root = (
                     Path.home()
@@ -2600,6 +2649,15 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     else "deterministic"
                 )
                 if caption_backend == "vlm":
+                    return "clean-tags skipped: VLM caption backend is VLM-only"
+                tagger_cfg = cfg.get("tagger", {})
+                if isinstance(tagger_cfg, dict) and (
+                    str(tagger_cfg.get("backend", "wd14")).strip().lower() == "off"
+                    or str(tagger_cfg.get("preset", "sweetspot")).strip().lower() == "off"
+                ):
+                    return "clean-tags skipped: tagger disabled"
+                cc = cfg.get("caption", {})
+                if isinstance(cc, dict) and str(cc.get("backend", "deterministic")).strip().lower() == "vlm":
                     return "clean-tags skipped: VLM caption backend is VLM-only"
                 tc = cfg.get("tag_rules", {})
                 s = clean_tag_manifest(p.manifest, remove_tags=tc.get("remove", []))
