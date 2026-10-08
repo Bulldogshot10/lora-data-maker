@@ -1177,7 +1177,22 @@ function syncCaptionRuntimeUI(){
   $("caption_api_key_set").disabled=!api;
   $("caption_api_key_clear").disabled=!api;
   $("caption_api_model").disabled=!api;
-  $("caption_api_base_url").disabled=!api;
+  $("caption_api_base_url").disabled=!api||gemini;
+
+  const showField=(id,visible)=>{
+    const el=$(id);
+    if(!el)return;
+    const field=el.closest(".field");
+    if(field)field.style.display=visible?"":"none";
+  };
+  showField("caption_chat_format",local);
+  showField("caption_model_path",local);
+  showField("caption_mmproj_path",local);
+  showField("caption_api_key",api);
+  showField("caption_api_model",api);
+  showField("caption_api_base_url",runtime==="openai_compatible");
+  showField("caption_max_tokens",runtime!=="gemini"&&runtime!=="openai_compatible");
+
   if(local){
     $("caption_model_path").placeholder="/path/to/model.gguf";
     $("caption_mmproj_path").placeholder="/path/to/mmproj.gguf";
@@ -1191,11 +1206,11 @@ function syncCaptionRuntimeUI(){
   }else if(gemini){
     $("caption_api_key").placeholder="paste Gemini API key";
     $("caption_api_base_url").value="https://generativelanguage.googleapis.com/v1beta";
-    $("caption_api_base_url").disabled=true;
     $("caption_api_base_url").placeholder="https://generativelanguage.googleapis.com/v1beta";
     $("caption_model_status").textContent="unused by Gemini API";
     $("caption_mmproj_status").textContent="unused by Gemini API";
-    if($("caption_api_key_status").textContent!=="API key not set")$("caption_api_key_status").textContent="Gemini key goes into GEMINI_API_KEY in the WebUI server process";
+    if($("caption_api_key_status").textContent!=="API key not set")
+      $("caption_api_key_status").textContent="Gemini key goes into GEMINI_API_KEY in the WebUI server process";
   }else{
     $("caption_api_key").placeholder="paste OpenAI-compatible API key";
     if(!$("caption_api_base_url").value.trim()
@@ -1204,7 +1219,8 @@ function syncCaptionRuntimeUI(){
     }
     $("caption_model_status").textContent="unused by OpenAI-compatible API";
     $("caption_mmproj_status").textContent="unused by OpenAI-compatible API";
-    if($("caption_api_key_status").textContent!=="API key not set")$("caption_api_key_status").textContent="key goes into OPENAI_API_KEY in the WebUI server process";
+    if($("caption_api_key_status").textContent!=="API key not set")
+      $("caption_api_key_status").textContent="key goes into OPENAI_API_KEY in the WebUI server process";
   }
 }
 async function loadVlmModels(){
