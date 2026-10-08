@@ -53,10 +53,10 @@ class VlmConfig:
     seed: int = 42
 
     def __post_init__(self) -> None:
-        if self.chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5"}:
+        if self.chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5", "smolvlm"}:
             raise ValueError(
                 "caption.vlm.chat_format must be one of "
-                "'mtmd', 'qwen2.5-vl', 'gemma4', or 'qwen3.5'"
+                "'mtmd', 'qwen2.5-vl', 'gemma4', 'qwen3.5', or 'smolvlm'"
             )
 
         has_model = bool(self.model_path.strip())
@@ -130,6 +130,10 @@ def _load_chat_handler(
             "MTMDChatHandler",
         ),
         "qwen3.5": (
+            getattr(llama_chat_format, "MTMDChatHandler", None),
+            "MTMDChatHandler",
+        ),
+        "smolvlm": (
             getattr(llama_chat_format, "MTMDChatHandler", None),
             "MTMDChatHandler",
         ),
