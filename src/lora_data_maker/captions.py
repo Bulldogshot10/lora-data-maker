@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Iterable
 
 from .caption_vlm import (
+    DEFAULT_VLM_PROMPT,
     Captioner,
     LlamaCppVlmCaptioner,
     VlmConfig,
@@ -123,18 +124,7 @@ def caption_config_from_dict(
         model_path=model_path,
         mmproj_path=mmproj_path,
         chat_format=string_field("chat_format", "mtmd"),
-        prompt=string_field(
-            "prompt",
-            (
-                "describe this image for a stable diffusion character lora "
-                "dataset. be factual and concise. describe visible visual "
-                "attributes only. mention subject appearance, clothing, pose, "
-                "expression, framing, environment, and lighting when clearly "
-                "visible. do not invent details. do not mention image quality. "
-                "do not mention that you are an ai. do not use markdown. "
-                "return one concise caption."
-            ),
-        ),
+        prompt=string_field("prompt", DEFAULT_VLM_PROMPT),
         max_tokens=int_field("max_tokens", 128),
         temperature=float_field("temperature", 0.1),
         top_p=float_field("top_p", 0.95),
