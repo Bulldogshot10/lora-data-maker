@@ -34,6 +34,7 @@ def test_process_command_writes_work_and_preserves_raw(tmp_path):
     assert command_validate(Namespace(path=str(root))) == 0
     config = (root / "config.toml").read_text(encoding="utf-8")
     config = config.replace("person_check = true", "person_check = false", 1)
+    config = config.replace("text_check = true", "text_check = false", 1)
     (root / "config.toml").write_text(config, encoding="utf-8")
     config = (root / "config.toml").read_text(encoding="utf-8")
     config = config.replace("person_check = true", "person_check = false", 1)
