@@ -87,6 +87,7 @@ trigger_from_subject = true
 max_tokens = 77
 
 [caption.vlm]
+runtime = "llama_cpp"
 model_path = ""
 mmproj_path = ""
 chat_format = "mtmd"
