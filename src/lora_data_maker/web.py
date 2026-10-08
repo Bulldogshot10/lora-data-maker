@@ -378,9 +378,12 @@ function renderProjects(projects){
     const encoded=encodeURIComponent(p.name);
     const action=p.active
       ? '<button class="secondary" disabled>open</button>'
-      : '<button class="secondary" onclick="selectProject(decodeURIComponent(\\''+encoded+'\\'))">open</button>';
+      : '<button class="secondary" data-project="'+encoded+'">open</button>';
     return '<div class="project-item'+(p.active?' active':'')+'"><div class="project-info"><div class="project-name">'+esc(p.name)+(p.active?' · active':'')+'</div><div class="project-meta">'+esc(p.subject)+' · '+esc(p.image_count)+' images · '+esc(p.path)+'</div></div>'+action+'</div>';
   }).join("");
+  $("project_explorer").querySelectorAll("[data-project]").forEach(button=>{
+    button.addEventListener("click",()=>selectProject(decodeURIComponent(button.dataset.project)));
+  });
 }
 async function refreshProjects(){
   try{
