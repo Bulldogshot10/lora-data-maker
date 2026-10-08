@@ -1,4 +1,5 @@
-from lora_data_maker.clip_tokenizer import ClipTokenizerError, count_clip_tokens, pack_clip_caption
+import pytest
+
 from lora_data_maker.exceptions import LoraDataMakerError
 
 
@@ -37,3 +38,76 @@ def test_pack_clip_caption_uses_custom_separator():
 
 def test_clip_tokenizer_error_is_application_error():
     assert issubclass(ClipTokenizerError, LoraDataMakerError)
+
+
+class FakeRealTokenizer:
+    model_max_length = 77
+    name_or_path = "openai/clip-vit-large-patch14"
+    bos_token_id = 49406
+    eos_token_id = 49407
+
+    def __call__(self, text, **kwargs):
+        return {"input_ids": [self.bos_token_id, 1, self.eos_token_id]}
+
+
+def test_load_clip_tokenizer_prefers_local_hf_cache(monkeypatch):
+    import sys
+    import types
+
+    calls = []
+
+    class FakeCLIPTokenizer:
+        @classmethod
+        def from_pretrained(cls, source, **kwargs):
+            calls.append((source, kwargs))
+            if kwargs.get("local_files_only"):
+                return FakeRealTokenizer()
+            raise AssertionError("remote tokenizer load should not be attempted")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(CLIPTokenizer=FakeCLIPTokenizer),
+    )
+
+    from lora_data_maker import clip_tokenizer
+
+    clip_tokenizer.load_clip_tokenizer.cache_clear()
+    try:
+        tokenizer = clip_tokenizer.load_clip_tokenizer()
+    finally:
+        clip_tokenizer.load_clip_tokenizer.cache_clear()
+
+    assert tokenizer.name_or_path == clip_tokenizer.CLIP_TOKENIZER_ID
+    assert calls == [(clip_tokenizer.CLIP_TOKENIZER_ID, {"local_files_only": True})]
+
+
+def test_load_clip_tokenizer_offline_fails_cleanly_when_cache_is_missing(
+    monkeypatch,
+):
+    import sys
+    import types
+
+    class FakeCLIPTokenizer:
+        @classmethod
+        def from_pretrained(cls, source, **kwargs):
+            raise OSError("not cached")
+
+    monkeypatch.setitem(
+        sys.modules,
+        "transformers",
+        types.SimpleNamespace(CLIPTokenizer=FakeCLIPTokenizer),
+    )
+    monkeypatch.setenv("LORA_DATA_MAKER_CLIP_TOKENIZER_OFFLINE", "1")
+
+    from lora_data_maker import clip_tokenizer
+
+    clip_tokenizer.load_clip_tokenizer.cache_clear()
+    try:
+        with pytest.raises(
+            clip_tokenizer.ClipTokenizerError,
+            match="local Hugging Face cache.*offline mode is enabled",
+        ):
+            clip_tokenizer.load_clip_tokenizer()
+    finally:
+        clip_tokenizer.load_clip_tokenizer.cache_clear()
