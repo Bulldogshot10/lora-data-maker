@@ -416,19 +416,6 @@ def reset_vlm_captions_for_deterministic(
     return reset
 
 
-def clean_api_vlm_caption(text: str) -> str:
-    """Normalize a plain API-generated caption without enforcing local field syntax."""
-    value = str(text).replace("\r\n", "\n").replace("\r", "\n").strip()
-    value = re.sub(r"<think>.*?</think>", "", value, flags=re.IGNORECASE | re.DOTALL)
-    value = re.sub(r"^\s*\x60\x60\x60(?:text|plaintext)?\s*", "", value, flags=re.IGNORECASE)
-    value = re.sub(r"\s*\x60\x60\x60\s*$", "", value)
-    value = re.sub(r"^\s*(?:caption|description|answer)\s*:\s*", "", value, flags=re.IGNORECASE)
-    value = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", value)
-    value = value.strip().strip("\x22\x27")
-    value = re.sub(r"\s+", " ", value)
-    return value.strip(" ,;:")
-
-
 def build_api_vlm_caption(
     raw_caption: str,
     *,
