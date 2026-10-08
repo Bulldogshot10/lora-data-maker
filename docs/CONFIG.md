@@ -158,14 +158,36 @@ Rules are normalized before matching. Underscores become spaces, whitespace is c
 
 ~~~toml
 [caption]
+backend = "deterministic"
 separator = ", "
 subject_position = "first"
 trigger_from_subject = true
+
+[caption.vlm]
+model_path = ""
+mmproj_path = ""
+chat_format = "mtmd"
+max_tokens = 128
+temperature = 0.1
+top_p = 0.95
+top_k = 40
+n_ctx = 2048
+n_threads = 4
+n_gpu_layers = 0
+seed = 42
 ~~~
 
-separator joins caption tags.
-subject_position currently supports first.
-When trigger_from_subject is true, the effective trigger comes from project.subject. Otherwise project.trigger is used.
+backend = "deterministic" keeps the existing tag-based captioner. Set backend = "vlm" to caption each processed image with the local llama-cpp-python runtime.
+model_path points to the local VLM GGUF and mmproj_path points to its multimodal projector GGUF. Both must be set together.
+chat_format supports mtmd, qwen2.5-vl, and gemma4.
+The VLM receives only the processed image and the configured prompt. Tagger output is not passed into the VLM.
+VLM inference failures fall back to the deterministic tag caption for that image and are recorded in manifest metadata.
+
+Install the optional runtime with:
+
+~~~bash
+python -m pip install ".[caption-vlm]"
+~~~
 
 ## export
 
