@@ -107,7 +107,7 @@ pkg install python git
 
 git clone https://github.com/Bulldogshot10/lora-data-maker.git
 cd lora-data-maker
-python -m pip install .
+python -m pip install ".[quality]"
 ~~~
 
 For Chromium/Selenium scraping support:
@@ -304,7 +304,9 @@ The WebUI supports image upload, project identity/trigger settings, resize setti
 
 The one-click Prepare Dataset flow runs:
 
-    validate -> stage -> tag -> clean tags -> caption -> export -> ZIP
+    validate -> clean / dedup -> stage -> tag -> clean tags -> caption -> export -> ZIP
+
+The clean stage includes the default PP-OCRv3 text gate. Install the quality extra before using the full pipeline: python -m pip install ".[quality]".
 
 The image quality/dedup cleaning stage remains an explicit optional button because a manually curated/cherry-picked image set may intentionally skip that stage.
 
