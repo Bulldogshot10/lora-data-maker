@@ -124,7 +124,7 @@ Write caption files from cleaned image records.
 lora-data-maker caption [--path PATH]
 ~~~
 
-The default caption.backend = "deterministic" builds captions from cleaned tags. With caption.backend = "vlm", the stage reads each processed image directly and sends it to the local llama-cpp-python VLM runtime. The VLM returns four short fields (pose, clothing, expression, background), which become the ordered caption body after the canonical trigger. WD14 and JoyTag are skipped completely. The final caption is packed with the exact openai/clip-vit-large-patch14 CLIPTokenizer under caption.max_tokens (1–77) before writing work/captions/. VLM inference errors are recorded as failed images and never fall back to booru tags.
+The default caption.backend = "deterministic" builds captions from cleaned tags. With caption.backend = "vlm", the stage reads each processed image directly and sends it to the local llama-cpp-python VLM runtime. The VLM returns four short fields (pose, clothing, expression, background), which become the ordered caption body after the canonical trigger. WD14 and JoyTag are skipped completely. The four validated VLM fields are written directly after the canonical trigger; caption.max_tokens is not applied in VLM mode. VLM inference or formatting errors are recorded as failed images and never fall back to booru tags.
 
 ## build
 
