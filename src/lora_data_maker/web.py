@@ -1214,33 +1214,48 @@ async function loadVlmModels(){
   const selected=select.dataset.selectedModel||select.value||"";
   select.disabled=true;
   select.innerHTML='<option value="">loading models…</option>';
+  const fallbackModels=runtime==="gemini"
+    ?[
+      {id:"gemini-3.5-flash-lite",label:"Gemini 3.5 Flash-Lite"},
+      {id:"gemini-3.8-flash",label:"Gemini 3.8 Flash"},
+      {id:"gemini-2.5-flash-lite",label:"Gemini 2.5 Flash-Lite (legacy)"}
+    ]
+    :[];
+  const renderModels=(models)=>{
+    select.innerHTML="";
+    if(!models.length){
+      select.innerHTML='<option value="">no models available</option>';
+      return;
+    }
+    for(const model of models){
+      const option=document.createElement("option");
+      option.value=String(model.id||model.name||"");
+      option.textContent=String(model.label||model.id||model.name||"");
+      select.appendChild(option);
+    }
+    if(selected&&models.some(m=>String(m.id||m.name||"")===selected)){
+      select.value=selected;
+    }
+    select.dataset.selectedModel=select.value;
+  };
   try{
     const base=runtime==="openai_compatible"?$("caption_api_base_url").value.trim():"";
     const qs=new URLSearchParams({runtime:runtime});
     if(base)qs.set("base_url",base);
     const d=await api("/api/vlm/models?"+qs.toString());
     const models=Array.isArray(d.models)?d.models:[];
-    select.innerHTML="";
-    if(!models.length){
-      select.innerHTML='<option value="">no models available</option>';
-    }else{
-      for(const model of models){
-        const option=document.createElement("option");
-        option.value=String(model.id||model.name||"");
-        option.textContent=String(model.label||model.id||model.name||"");
-        select.appendChild(option);
-      }
-      if(selected&&models.some(m=>String(m.id||m.name||"")===selected)){
-        select.value=selected;
-      }
-    }
-    select.dataset.selectedModel=select.value;
+    renderModels(models.length?models:fallbackModels);
     $("caption_api_key_status").textContent=d.key_set
       ? "API key loaded in the WebUI server environment"
       : "API key not set";
   }catch(e){
-    select.innerHTML='<option value="">could not load models</option>';
-    $("caption_api_key_status").textContent=e.message;
+    if(fallbackModels.length){
+      renderModels(fallbackModels);
+      $("caption_api_key_status").textContent="model API lookup failed, showing known Gemini models. set your API key before running.";
+    }else{
+      select.innerHTML='<option value="">could not load models</option>';
+      $("caption_api_key_status").textContent=e.message;
+    }
   }finally{
     syncCaptionRuntimeUI();
     select.disabled=false;
