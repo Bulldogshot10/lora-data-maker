@@ -558,8 +558,21 @@ def caption_manifest(
                     failed_count += 1
                     image.metadata["caption_stage"] = "failed"
                     image.metadata["caption_vlm_error"] = (
-                        "processed image path is missing"
+                        "processed image was not found"
                     )
+                    if image.caption_path:
+                        stale_caption = (root_path / image.caption_path).resolve()
+                        try:
+                            stale_caption.relative_to(root_path)
+                        except ValueError:
+                            stale_caption = None
+                        if stale_caption is not None and stale_caption.is_file():
+                            try:
+                                stale_caption.unlink()
+                            except OSError:
+                                pass
+                    image.caption_path = None
+                    image.set_status("processed")
                     continue
 
                 try:
