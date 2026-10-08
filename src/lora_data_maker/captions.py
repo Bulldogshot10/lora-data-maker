@@ -299,7 +299,7 @@ def clean_vlm_caption(text: str) -> str:
 
 _VLM_FIELDS = ("pose", "angle camera", "clothing", "expression", "background")
 _VLM_FIELD_RE = re.compile(
-    r"(?<![A-Za-z0-9_])(pose|angle[ _-]+camera|clothing|expression|background)\s*:\s*",
+    r"(?<![A-Za-z0-9_])(pose|angle[ _-]+camera|camera[ _-]+angle|clothing|expression|background)\s*:\s*",
     re.IGNORECASE,
 )
 
@@ -343,7 +343,7 @@ def _parse_vlm_json(value: str) -> list[str] | None:
 
 
 def parse_vlm_fields(raw_caption: str) -> list[str]:
-    """Extract the four caption fields from tolerant, structured VLM output."""
+    """Extract the five caption fields from tolerant, structured VLM output."""
     value = _strip_vlm_wrappers(raw_caption)
     if not value:
         raise VlmCaptionerError("VLM caption is empty")
@@ -355,7 +355,7 @@ def parse_vlm_fields(raw_caption: str) -> list[str]:
     matches = list(_VLM_FIELD_RE.finditer(value))
     if not matches:
         raise VlmCaptionerError(
-            "VLM caption does not contain the expected pose, clothing, expression, background fields"
+            "VLM caption does not contain the expected pose, angle camera, clothing, expression, background fields"
         )
 
     by_name = {}
@@ -435,7 +435,7 @@ def build_api_vlm_caption(
     trigger: str,
     config: CaptionConfig,
 ) -> str:
-    """Parse a four-field API VLM caption and inject the dataset trigger."""
+    """Parse a five-field API VLM caption and inject the dataset trigger."""
     fields = parse_vlm_fields(raw_caption)
     resolved_trigger = resolve_trigger(
         subject=subject,
