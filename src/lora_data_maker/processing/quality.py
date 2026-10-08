@@ -36,6 +36,8 @@ class QualityResult:
     person_confidence: float | None = None
     subject_area_ratio: float | None = None
     subject_visibility: float | None = None
+    text_count: int | None = None
+    text_confidence: float | None = None
     contrast_score: float = 0.0
     exposure_score: float = 0.0
     reasons: tuple[str, ...] = ()
@@ -90,6 +92,9 @@ def evaluate_quality(
     max_persons: int = 1,
     min_subject_area: float = 0.12,
     min_subject_visibility: float = 0.35,
+    text_detector = None,
+    text_confidence_threshold: float = 0.5,
+    text_min_area_ratio: float = 0.0004,
 ) -> QualityResult:
     if min_width < 1 or min_height < 1:
         raise ValueError("minimum dimensions must be greater than zero")
@@ -103,6 +108,10 @@ def evaluate_quality(
         raise ValueError("min_subject_area must be between 0 and 1")
     if not 0 <= min_subject_visibility <= 1:
         raise ValueError("min_subject_visibility must be between 0 and 1")
+    if not 0 < text_confidence_threshold <= 1:
+        raise ValueError("text_confidence_threshold must be between 0 and 1")
+    if not 0 <= text_min_area_ratio <= 1:
+        raise ValueError("text_min_area_ratio must be between 0 and 1")
 
     with Image.open(Path(path).expanduser().resolve()) as image:
         image.load()
@@ -112,8 +121,11 @@ def evaluate_quality(
         exposure_score = image_exposure_score(image)
 
         detected = None
+        text_detected = None
         if person_detector is not None:
             detected = tuple(person_detector.detect(image))
+        if text_detector is not None:
+            text_detected = tuple(text_detector.detect(image))
 
     aspect_ratio = max(width / height, height / width)
     reasons: list[str] = []
@@ -135,6 +147,17 @@ def evaluate_quality(
     person_confidence: float | None = None
     subject_area_ratio: float | None = None
     subject_visibility: float | None = None
+    text_count: int | None = None
+    text_confidence: float | None = None
+
+    if text_detected is not None:
+        text_count = len(text_detected)
+        if text_count > 0:
+            text_confidence = max(float(item.confidence) for item in text_detected)
+            reasons.append(
+                "text detected: "
+                f"{text_count} region(s), max confidence {text_confidence:.3f}"
+            )
 
     if detected is not None:
         person_count = len(detected)
@@ -199,6 +222,8 @@ def evaluate_quality(
         person_confidence=person_confidence,
         subject_area_ratio=subject_area_ratio,
         subject_visibility=subject_visibility,
+        text_count=text_count,
+        text_confidence=text_confidence,
         contrast_score=contrast_score,
         exposure_score=exposure_score,
         reasons=tuple(reasons),
