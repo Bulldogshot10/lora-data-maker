@@ -96,38 +96,6 @@ def _data_uri(path: Path) -> str:
     return f"data:{mime_type};base64,{encoded}"
 
 
-def _strip_qwen35_thinking(text: str) -> str:
-    """Return only visible assistant content from a Qwen3.5 completion."""
-    if not isinstance(text, str):
-        return ""
-    value = text.strip()
-    if "</think>" in value:
-        value = value.split("</think>", 1)[1]
-    return value.strip()
-
-
-def _qwen35_retry_prompt(prompt: str) -> str:
-    """Append Qwen's soft non-thinking switch without duplicating it."""
-    value = str(prompt).rstrip()
-    if value.endswith("/no_think"):
-        return value
-    return value + "\n/no_think"
-
-
-class _Qwen35NoThinkingChatHandler:
-    """Force Qwen3.5 into non-thinking mode through MTMD's template kwargs."""
-
-    def __init__(self, handler: Any) -> None:
-        self._handler = handler
-
-    def __call__(self, **kwargs: Any) -> Any:
-        kwargs["enable_thinking"] = False
-        return self._handler(**kwargs)
-
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._handler, name)
-
-
 def _load_chat_handler(
     *,
     chat_format: str,
@@ -178,12 +146,6 @@ def _load_chat_handler(
         }
         if chat_format in {"mtmd", "gemma4"}:
             kwargs["use_gpu"] = use_gpu
-        handler = handler_class(**kwargs)
-        if chat_format == "qwen3.5":
-            # llama-cpp-python 0.3.36 does not expose chat-template kwargs on
-            # Llama.create_chat_completion(), but MTMDChatHandler forwards
-            # arbitrary kwargs to the model's Jinja chat template.
-            return _Qwen35NoThinkingChatHandler(handler)
         return handler
     except Exception as exc:
         raise VlmCaptionerError(
@@ -281,58 +243,33 @@ class LlamaCppVlmCaptioner:
             ) from exc
 
         try:
-            raw_content = response["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
+            choice = response["choices"][0]
+            message = choice["message"]
+            raw_content = message.get("content")
+            finish_reason = choice.get("finish_reason")
+            usage = response.get("usage")
+            completion_tokens = (
+                usage.get("completion_tokens")
+                if isinstance(usage, dict)
+                else None
+            )
+        except (KeyError, IndexError, TypeError, AttributeError) as exc:
             raise VlmCaptionerError(
                 f"VLM returned an invalid chat completion for {path.name}"
             ) from exc
 
-        content = (
-            _strip_qwen35_thinking(raw_content)
-            if self.config.chat_format == "qwen3.5"
-            else raw_content
-        )
-
-        if (
-            self.config.chat_format == "qwen3.5"
-            and (not isinstance(content, str) or not content.strip())
-        ):
-            retry_messages = [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image_url},
-                        },
-                        {
-                            "type": "text",
-                            "text": _qwen35_retry_prompt(prompt),
-                        },
-                    ],
-                }
-            ]
-            try:
-                response = generate(
-                    retry_messages,
-                    max_tokens=max(self.config.max_tokens, 256),
-                    temperature=0.7,
-                    top_p=0.8,
-                    top_k=20,
-                )
-                raw_content = response["choices"][0]["message"]["content"]
-                content = _strip_qwen35_thinking(raw_content)
-            except Exception as exc:
-                raise VlmCaptionerError(
-                    f"Qwen3.5 retry failed for {path.name}: {exc}"
-                ) from exc
-
-        if not isinstance(content, str) or not content.strip():
+        if not isinstance(raw_content, str) or not raw_content.strip():
+            raw_preview = repr(raw_content)
+            if len(raw_preview) > 300:
+                raw_preview = raw_preview[:297] + "..."
             raise VlmCaptionerError(
-                f"VLM returned an empty caption for {path.name}"
+                f"VLM returned an empty caption for {path.name}; "
+                f"finish_reason={finish_reason!r}; "
+                f"completion_tokens={completion_tokens!r}; "
+                f"raw_content={raw_preview}"
             )
 
-        return content
+        return raw_content
 
     def close(self) -> None:
         llm = getattr(self, "_llm", None)
