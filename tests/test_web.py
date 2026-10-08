@@ -139,6 +139,46 @@ def test_webui_javascript_syntax_when_node_is_available(tmp_path: Path) -> None:
 
 
 
+def test_web_can_start_from_empty_workspace_and_create_dataset(tmp_path: Path) -> None:
+    workspace = tmp_path / "datasets"
+    workspace.mkdir()
+    client = TestClient(create_app(workspace))
+
+    state = client.get("/api/state")
+    assert state.status_code == 200
+    assert state.json()["project"] is None
+    assert state.json()["workspace"] == workspace.as_posix()
+    assert state.json()["project_count"] == 0
+    assert client.post("/api/run/validate").status_code == 409
+
+    page = client.get("/")
+    assert page.status_code == 200
+    assert "create your first dataset" in page.text
+    assert 'id="new-dataset"' in page.text
+
+    created = client.post(
+        "/api/project/new",
+        json={
+            "name": "julia",
+            "subject": "julia",
+            "trigger": "juliax",
+        },
+    )
+    assert created.status_code == 200
+    assert created.json()["name"] == "julia"
+    assert (workspace / "julia" / "config.toml").is_file()
+    assert (workspace / "julia" / "manifest.json").is_file()
+
+    state = client.get("/api/state")
+    assert state.status_code == 200
+    data = state.json()
+    assert data["project"]["name"] == "julia"
+    assert data["project"]["subject"] == "julia"
+    assert data["project"]["trigger"] == "juliax"
+    assert data["project_count"] == 1
+    assert data["projects"][0]["active"] is True
+
+
 def test_new_project_switches_active_project(tmp_path: Path) -> None:
     root = make_project(tmp_path)
     client = TestClient(create_app(root))
