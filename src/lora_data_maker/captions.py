@@ -674,14 +674,24 @@ def caption_manifest(
             if settings.backend == "vlm":
                 image.metadata.pop("caption_token_budget", None)
                 image.metadata["caption_vlm_model"] = (
-                    str(Path(settings.vlm.model_path).expanduser())
-                    if settings.vlm.model_path
-                    else ""
+                    settings.vlm.api_model
+                    if settings.vlm.runtime in {"gemini", "openai_compatible"}
+                    else (
+                        str(Path(settings.vlm.model_path).expanduser())
+                        if settings.vlm.model_path
+                        else ""
+                    )
                 )
                 image.metadata["caption_vlm_runtime"] = settings.vlm.runtime
                 image.metadata["caption_vlm_chat_format"] = (
                     settings.vlm.chat_format
                 )
+                if settings.vlm.runtime in {"gemini", "openai_compatible"}:
+                    image.metadata["caption_vlm_api_base_url"] = (
+                        settings.vlm.api_base_url
+                    )
+                else:
+                    image.metadata.pop("caption_vlm_api_base_url", None)
                 image.metadata.pop("caption_vlm_error", None)
                 image.metadata.pop("caption_fallback_backend", None)
             else:
