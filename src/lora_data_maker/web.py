@@ -2335,6 +2335,7 @@ def create_app(root: Path | str = ".") -> FastAPI:
             {
                 "model_path": caption_model_path,
                 "mmproj_path": caption_mmproj_path,
+                "runtime": caption_runtime,
                 "chat_format": caption_chat_format,
             },
             current_root,
