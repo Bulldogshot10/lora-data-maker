@@ -44,8 +44,8 @@ def test_text_detector_scales_boxes_and_filters_small_regions():
     class FakeDetector:
         def detect(self, image):
             return (
-                np.array([[10, 20], [110, 20], [110, 30], [10, 30]], dtype=np.float32),
-                np.array([0.9], dtype=np.float32),
+                [np.array([[10, 20], [110, 20], [110, 30], [10, 30]], dtype=np.float32)],
+                [0.9],
             )
 
     detector = PPOCRTextDetector.__new__(PPOCRTextDetector)
