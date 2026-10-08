@@ -11,6 +11,7 @@ from lora_data_maker.captions import (
     caption_manifest,
     clean_vlm_caption,
     estimate_caption_tokens,
+    parse_vlm_caption,
     truncate_caption,
     resolve_trigger,
     write_caption,
@@ -146,9 +147,39 @@ She is sitting outdoors."""
     assert clean_vlm_caption(raw) == "a woman in a black dress. She is sitting outdoors."
 
 
-def test_default_vlm_prompt_has_compact_word_limit():
-    assert "no more than 25 words" in DEFAULT_VLM_PROMPT
-    assert "return exactly one compact natural-language caption" in DEFAULT_VLM_PROMPT
+def test_default_vlm_prompt_uses_four_structured_fields():
+    assert "exactly these 4 fields, one per line" in DEFAULT_VLM_PROMPT
+    assert "maximum of 5 words per field" in DEFAULT_VLM_PROMPT
+    assert "do not mention hair color, eye color, face, age, or gender" in DEFAULT_VLM_PROMPT
+
+
+def test_parse_vlm_caption_normalizes_four_fields():
+    assert parse_vlm_caption(
+        "pose: standing with arms raised\n"
+        "clothing: white halter top, black skirt\n"
+        "expression: slight smile\n"
+        "background: indoors, soft window lighting"
+    ) == (
+        "standing with arms raised, "
+        "white halter top, black skirt, "
+        "slight smile, "
+        "indoors, soft window lighting"
+    )
+
+
+def test_parse_vlm_caption_rejects_malformed_output():
+    with pytest.raises(VlmCaptionerError, match="exactly four"):
+        parse_vlm_caption("pose: standing\nclothing: black shirt")
+
+
+def test_parse_vlm_caption_rejects_more_than_five_words_per_field():
+    with pytest.raises(VlmCaptionerError, match="5-word limit"):
+        parse_vlm_caption(
+            "pose: standing with both arms raised toward camera\n"
+            "clothing: black shirt\n"
+            "expression: slight smile\n"
+            "background: indoors"
+        )
 
 
 def test_build_vlm_caption_removes_repeated_trigger_mentions():
@@ -160,12 +191,15 @@ def test_build_vlm_caption_removes_repeated_trigger_mentions():
         ),
     )
     assert build_vlm_caption(
-        "Julia, a portrait of Julia with Julia visible in the frame.",
+        "pose: portrait pose\n"
+        "clothing: black shirt\n"
+        "expression: smiling\n"
+        "background: indoor room",
         subject="Julia",
         trigger="ignored",
         tags=["julia", "portrait"],
         config=config,
-    ) == "julia, a portrait of with visible in the frame, portrait"
+    ) == "julia, portrait pose, black shirt, smiling, indoor room, portrait"
 
 
 def test_caption_config_rejects_vlm_without_paths():
@@ -209,7 +243,12 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path):
     class FakeCaptioner:
         def caption(self, image_path):
             assert Path(image_path) == processed.resolve()
-            return "The image shows a woman with blue eyes, wearing a black shirt."
+            return (
+                "pose: standing with arms raised\n"
+                "clothing: white halter top, black skirt\n"
+                "expression: slight smile\n"
+                "background: indoors, soft window lighting"
+            )
         def close(self):
             raise AssertionError("caller must not close injected captioner")
 
@@ -236,7 +275,10 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path):
     assert image.metadata["caption_fallback"] is False
     assert (
         (root / image.caption_path).read_text(encoding="utf-8")
-        == "julia, a woman with blue eyes, wearing a black shirt., 1girl, blue eyes\n"
+        == (
+            "julia, standing with arms raised, white halter top, black skirt, "
+            "slight smile, indoors, soft window lighting, 1girl, blue eyes\n"
+        )
     )
 
 
@@ -290,6 +332,43 @@ def test_caption_manifest_falls_back_to_deterministic_on_vlm_error(tmp_path):
         (root / image.caption_path).read_text(encoding="utf-8")
         == "julia, 1girl, blue eyes\n"
     )
+
+
+def test_caption_manifest_rejects_budget_that_cannot_preserve_trigger(tmp_path):
+    root = tmp_path / "project"
+    manifest = ProjectManifest(
+        project_name="julia-set",
+        subject="julia",
+        trigger="julia",
+    )
+    manifest.add_image(
+        ImageRecord(
+            path="raw/001.jpg",
+            status="tagged",
+            tags=["julia", "portrait"],
+        )
+    )
+
+    with pytest.raises(
+        ValueError,
+        match="too small to preserve the resolved trigger",
+    ):
+        caption_manifest(
+            manifest,
+            root=root,
+            output_dir=root / "work" / "captions",
+            config=CaptionConfig(max_tokens=1),
+        )
+
+
+def test_truncate_caption_preserves_custom_separator():
+    caption = truncate_caption(
+        "julia; portrait; black dress; indoors",
+        8,
+        separator="; ",
+    )
+    assert "; " in caption
+    assert estimate_caption_tokens(caption) <= 8
 
 
 def test_caption_token_budget_is_enforced():
