@@ -558,6 +558,14 @@ def caption_manifest(
                     image.set_status("processed")
                     continue
 
+            if settings.backend != "vlm":
+                caption = build_caption(
+                    image.tags,
+                    subject=manifest.subject,
+                    trigger=manifest.trigger,
+                    config=settings,
+                )
+
             try:
                 target = caption_root / f"{image.image_id}.txt"
                 write_caption(target, caption)
@@ -598,12 +606,6 @@ def caption_manifest(
                 image.metadata.pop("caption_vlm_error", None)
                 image.metadata.pop("caption_fallback_backend", None)
             else:
-                caption = build_caption(
-                    image.tags,
-                    subject=manifest.subject,
-                    trigger=manifest.trigger,
-                    config=settings,
-                )
                 image.metadata["caption_estimated_tokens"] = (
                     estimate_caption_tokens(caption)
                 )
