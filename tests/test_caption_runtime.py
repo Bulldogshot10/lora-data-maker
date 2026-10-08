@@ -39,7 +39,7 @@ def test_caption_config_defaults_gemini_api_settings():
         }
     )
     assert settings.vlm.api_key_env == "GEMINI_API_KEY"
-    assert settings.vlm.api_model == "gemini-2.5-flash-lite"
+    assert settings.vlm.api_model == "gemini-3.5-flash-lite"
     assert settings.vlm.api_base_url == "https://generativelanguage.googleapis.com/v1beta"
 
 
