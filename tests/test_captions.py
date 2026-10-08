@@ -153,7 +153,7 @@ def test_default_vlm_prompt_uses_five_structured_fields():
     assert DEFAULT_VLM_PROMPT.count("\n") >= 4
     assert "exactly these 5 fields, one per line" in DEFAULT_VLM_PROMPT
     assert "maximum of 5 words per field" in DEFAULT_VLM_PROMPT
-    assert "camera view term" in DEFAULT_VLM_PROMPT
+    assert "angle camera: describe the visible camera angle or view" in DEFAULT_VLM_PROMPT
     assert "pose: describe body pose" in DEFAULT_VLM_PROMPT
     assert "prefer camera terms: straight-on, from above, from below, high-angle shot, low-angle shot, overhead shot." in DEFAULT_VLM_PROMPT
     assert "do not mention hair color, eye color, face, age, or gender" in DEFAULT_VLM_PROMPT
@@ -183,6 +183,16 @@ def test_parse_vlm_caption_rejects_malformed_output():
 def test_parse_vlm_caption_rejects_unstructured_prose():
     with pytest.raises(VlmCaptionerError, match="does not contain the expected"):
         parse_vlm_caption("a woman standing in a black dress outdoors")
+
+
+def test_parse_vlm_caption_accepts_camera_angle_alias():
+    assert parse_vlm_caption(
+        "pose: standing\n"
+        "camera angle: straight-on\n"
+        "clothing: black shirt\n"
+        "expression: neutral\n"
+        "background: indoors"
+    ) == "standing, straight-on, black shirt, neutral, indoors"
 
 
 def test_parse_vlm_caption_tolerates_reordered_fields():
