@@ -237,13 +237,9 @@ validate
 clean
   ↓
 process
-  ├────────────→ tag → clean-tags ───→ structured tags / manifest
+  ├────────────→ tag → clean-tags ───→ deterministic caption → trigger → .txt
   │
-  └────────────→ caption backend ────→ caption cleanup ──┐
-                                      (deterministic or  │
-                                       local VLM)        │
-                                                        ↓
-                              VLM text + tagger tags → trigger → .txt
+  └────────────→ local VLM → strict fields → exact CLIP budget → trigger → .txt
   ↓
 export
   ↓
@@ -338,7 +334,7 @@ The project includes an optional localhost WebUI. It is designed for local datas
 
 Install the WebUI and tagger extras:
 
-    pip install -e ".[web,tagger,quality]"
+    pip install -e ".[web,tagger,quality,caption-vlm]"
 
 Start the WebUI from a dataset workspace:
 
@@ -347,11 +343,12 @@ Start the WebUI from a dataset workspace:
 
 Then open http://127.0.0.1:8787 in the browser. The WebUI can create a new dataset project from the workspace, open existing projects, and switch between them without using the CLI init command.
 
-The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection, caption backend selection, local VLM model/mmproj paths and chat format, the final caption token budget, validation, staging, tagging, tag cleaning, caption generation, Kohya export, ZIP packaging, gallery preview, manual image removal for cherry-picking, scraper cancellation, and ZIP download.
+The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection for deterministic captions, local VLM model/mmproj paths and chat format, the final caption token budget, validation, staging, caption generation, Kohya export, ZIP packaging, gallery preview, manual image removal for cherry-picking, scraper cancellation, and ZIP download. VLM mode skips WD14/JoyTag and generates captions as trigger → pose → clothing → expression → background.
 
 The one-click Prepare Dataset flow runs:
 
-    validate -> clean / dedup -> stage -> tag -> clean tags -> caption -> export -> ZIP
+    validate -> clean / dedup -> stage -> caption -> export -> ZIP (VLM mode)
+    validate -> clean / dedup -> stage -> tag -> clean tags -> caption -> export -> ZIP (deterministic mode)
 
 The clean stage includes the default PP-OCRv3 text gate. Install the quality extra before using the full pipeline: python -m pip install ".[quality]". The bundled detector is the upstream English PP-OCRv3 model, so non-English text can be less reliable.
 
