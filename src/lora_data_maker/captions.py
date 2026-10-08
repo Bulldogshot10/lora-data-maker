@@ -333,6 +333,8 @@ def _parse_vlm_json(value: str) -> list[str] | None:
     fields = []
     for field_name in _VLM_FIELDS:
         raw_value = data.get(field_name)
+        if field_name == "angle camera" and raw_value is None:
+            raw_value = data.get("camera angle", data.get("angle_camera"))
         if not isinstance(raw_value, str):
             return None
         phrase = clean_vlm_caption(raw_value)
@@ -361,6 +363,8 @@ def parse_vlm_fields(raw_caption: str) -> list[str]:
     by_name = {}
     for index, match in enumerate(matches):
         name = re.sub(r"[ _-]+", " ", match.group(1).lower()).strip()
+        if name == "camera angle":
+            name = "angle camera"
         if name in by_name:
             continue
         start = match.end()
