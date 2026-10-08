@@ -173,3 +173,40 @@ def test_process_command_rejects_string_face_crop_boolean(tmp_path):
 
     with pytest.raises(Exception, match="processing.face_crop"):
         command_process(Namespace(path=str(root)))
+
+
+def test_clean_command_applies_text_quality_gate(tmp_path, monkeypatch):
+    from argparse import Namespace
+    from lora_data_maker.processing.text import TextRegion
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="text-test",
+            subject="text-test",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    source = root / "raw" / "input.png"
+    _make_image(source)
+    assert command_validate(Namespace(path=str(root))) == 0
+
+    class FakeTextDetector:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+        def detect(self, image):
+            return (TextRegion(100, 100, 500, 130, 0.9),)
+
+    monkeypatch.setattr("lora_data_maker.cli.PPOCRTextDetector", FakeTextDetector)
+
+    assert command_clean(Namespace(path=str(root))) == 0
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    record = next(iter(project.manifest.images.values()))
+    assert record.status == "rejected"
+    assert record.metadata["quality_text_count"] == 1
+    assert record.metadata["quality_text_confidence"] == 0.9
+    assert "text detected" in record.rejection_reason
