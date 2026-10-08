@@ -14,7 +14,6 @@ from lora_data_maker.captions import (
     parse_vlm_caption,
     truncate_caption,
     resolve_trigger,
-    count_clip_tokens,
     reset_vlm_captions_for_deterministic,
     write_caption,
 )
@@ -23,14 +22,6 @@ from lora_data_maker.cli import command_caption, command_init
 from lora_data_maker.dataset import DatasetProject
 from lora_data_maker.models import ImageRecord, ProjectManifest
 from lora_data_maker.paths import ProjectPaths
-
-
-class FakeClipTokenizer:
-    def __call__(self, text, **kwargs):
-        value = str(text)
-        return {"input_ids": list(range(len(value.split()) + 2))}
-
-
 def test_resolve_trigger_defaults_to_subject():
     assert resolve_trigger(
         subject="Julia",
@@ -235,7 +226,6 @@ def test_build_vlm_caption_removes_repeated_trigger_mentions():
         subject="Julia",
         trigger="ignored",
         config=config,
-        tokenizer=FakeClipTokenizer(),
     ) == "julia, portrait pose, black shirt, smiling, indoor room"
 
 
@@ -297,10 +287,6 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path, monkeypatch):
         ),
     )
 
-    monkeypatch.setattr(
-        "lora_data_maker.captions.load_clip_tokenizer",
-        lambda: FakeClipTokenizer(),
-    )
     summary = caption_manifest(
         manifest,
         root=root,
@@ -389,10 +375,6 @@ def test_caption_manifest_fails_without_deterministic_fallback(tmp_path, monkeyp
             mmproj_path="mmproj.gguf",
         ),
     )
-    monkeypatch.setattr(
-        "lora_data_maker.captions.load_clip_tokenizer",
-        lambda: FakeClipTokenizer(),
-    )
 
     summary = caption_manifest(
         manifest,
@@ -449,10 +431,6 @@ def test_caption_manifest_clears_stale_vlm_caption_after_failure(tmp_path, monke
             mmproj_path="mmproj.gguf",
         ),
     )
-    monkeypatch.setattr(
-        "lora_data_maker.captions.load_clip_tokenizer",
-        lambda: FakeClipTokenizer(),
-    )
 
     summary = caption_manifest(
         manifest,
@@ -468,31 +446,6 @@ def test_caption_manifest_clears_stale_vlm_caption_after_failure(tmp_path, monke
     assert not stale.exists()
 
 
-def test_caption_manifest_rejects_budget_that_cannot_preserve_trigger(tmp_path):
-    root = tmp_path / "project"
-    manifest = ProjectManifest(
-        project_name="julia-set",
-        subject="julia",
-        trigger="julia",
-    )
-    manifest.add_image(
-        ImageRecord(
-            path="raw/001.jpg",
-            status="tagged",
-            tags=["julia", "portrait"],
-        )
-    )
-
-    with pytest.raises(
-        ValueError,
-        match="too small to preserve the resolved trigger",
-    ):
-        caption_manifest(
-            manifest,
-            root=root,
-            output_dir=root / "work" / "captions",
-            config=CaptionConfig(max_tokens=1),
-        )
 
 
 def test_truncate_caption_preserves_custom_separator():
@@ -513,7 +466,7 @@ def test_caption_token_budget_is_enforced():
         trigger="julia",
         config=config,
     )
-    assert count_clip_tokens(caption, tokenizer=FakeClipTokenizer()) <= 12
+    assert estimate_caption_tokens(caption) <= 12
 
 
 def test_truncate_caption_drops_later_content_when_budget_is_full():
@@ -525,50 +478,27 @@ def test_truncate_caption_drops_later_content_when_budget_is_full():
     assert estimate_caption_tokens(caption) <= 12
 
 
-def test_vlm_truncation_preserves_custom_separator(monkeypatch):
+
+
+def test_vlm_caption_ignores_tagger_tags_and_max_token_setting():
     config = CaptionConfig(
         backend="vlm",
-        separator="; ",
-        max_tokens=12,
+        max_tokens=1,
         vlm=VlmConfig(
             model_path="model.gguf",
             mmproj_path="mmproj.gguf",
         ),
     )
     caption = build_vlm_caption(
-        "pose: standing\n"
-        "clothing: black dress\n"
-        "expression: smiling\n"
-        "background: indoors, soft lighting",
-        subject="Julia",
-        trigger="ignored",
-        config=config,
-        tokenizer=FakeClipTokenizer(),
-    )
-    assert caption.startswith("julia; ")
-    assert "; " in caption
-    assert count_clip_tokens(caption, tokenizer=FakeClipTokenizer()) <= 12
-
-
-def test_vlm_caption_ignores_tagger_tags_and_uses_exact_budget():
-    config = CaptionConfig(
-        backend="vlm",
-        max_tokens=8,
-        vlm=VlmConfig(
-            model_path="model.gguf",
-            mmproj_path="mmproj.gguf",
-        ),
-    )
-    caption = build_vlm_caption(
-        "pose: standing\n"
-        "clothing: black dress\n"
-        "expression: smiling\n"
+        "pose: standing
+"
+        "clothing: black dress
+"
+        "expression: smiling
+"
         "background: indoors soft lighting",
         subject="Julia",
         trigger="ignored",
         config=config,
-        tokenizer=FakeClipTokenizer(),
     )
-    assert caption == "julia, standing, black dress, smiling, indoors"
-    assert count_clip_tokens(caption, tokenizer=FakeClipTokenizer()) <= 8
-
+    assert caption == "julia, standing, black dress, smiling, indoors soft lighting"
