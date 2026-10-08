@@ -53,6 +53,8 @@ JOYTAG = TaggerPreset(
     default_threshold=0.4,
 )
 
+TAGGER_OFF = "off"
+
 TAGGER_PRESETS = {
     SWEETSPOT.name: SWEETSPOT,
     POTATO.name: POTATO,
