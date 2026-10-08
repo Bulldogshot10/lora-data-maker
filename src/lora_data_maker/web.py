@@ -1163,9 +1163,10 @@ function updateBusyUI(){
 }
 function syncCaptionRuntimeUI(){
   const runtime=$("caption_runtime").value;
-  const local=runtime==="llama_cpp";
-  const gemini=runtime==="gemini";
-  const api=gemini||runtime==="openai_compatible";
+  const vlmEnabled=$("caption_backend").value==="vlm";
+  const local=vlmEnabled&&runtime==="llama_cpp";
+  const gemini=vlmEnabled&&runtime==="gemini";
+  const api=vlmEnabled&&(gemini||runtime==="openai_compatible");
   $("caption_chat_format").disabled=!local;
   $("caption_mmproj_path").disabled=!local;
   $("caption_mmproj_upload").disabled=!local;
@@ -1879,6 +1880,7 @@ document.querySelectorAll("[data-run-stage]").forEach(button=>{
 $("choose-images").addEventListener("click",()=>$("files").click());
 $("caption_model_upload").addEventListener("click",()=>$("caption_model_file").click());
 $("caption_mmproj_upload").addEventListener("click",()=>$("caption_mmproj_file").click());
+$("caption_backend").addEventListener("change",()=>{syncCaptionRuntimeUI();markDirty();});
 $("caption_runtime").addEventListener("change",()=>{syncCaptionRuntimeUI();loadVlmModels();markDirty();});
 $("caption_api_model").addEventListener("change",()=>{ $("caption_api_model").dataset.selectedModel=$("caption_api_model").value; markDirty(); });
 $("caption_api_base_url").addEventListener("change",()=>{markDirty();if($("caption_runtime").value==="openai_compatible")loadVlmModels();});
