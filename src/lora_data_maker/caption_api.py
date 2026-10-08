@@ -75,6 +75,22 @@ def _extract_openai_text(data: dict[str, Any]) -> str:
     )
 
 
+API_VLM_PROMPT = (
+    "caption this image for a stable diffusion character lora dataset. "
+    "return exactly one concise caption line in English. "
+    "describe only visible, concrete details. "
+    "include pose, camera or viewpoint when visible, clothing, expression, "
+    "background, and lighting. "
+    "do not mention hair color, eye color, face or facial identity, age, gender, "
+    "subject names, image quality, watermarks, text, metadata, ai, or this task. "
+    "do not explain your answer. do not use labels, bullets, markdown, or quotes. "
+    "do not guess hidden or ambiguous details."
+)
+
+# Internal API guardrail, not an exposed generation setting.
+API_MAX_OUTPUT_TOKENS = 128
+
+
 class _ApiVlmCaptioner:
     def __init__(self, config: VlmConfig) -> None:
         self.config = config
@@ -155,37 +171,24 @@ class GeminiVlmCaptioner(_ApiVlmCaptioner):
         path = Path(image_path).expanduser().resolve()
         mime_type, encoded = _image_payload(path)
 
-        generation_config = {
-            "temperature": self.config.temperature,
-            "topP": self.config.top_p,
-            "topK": self.config.top_k,
-            # Gemini 3 thinking tokens share the maxOutputTokens budget.
-            "maxOutputTokens": max(self.config.max_tokens, 128),
-        }
-        model_lower = self._model.lower()
-        if model_lower.startswith("gemini-2.5"):
-            generation_config["thinkingConfig"] = {"thinkingBudget": 0}
-        elif model_lower.startswith(("gemini-3.5-flash-lite", "gemini-3.6-flash", "gemini-3.1-flash-lite")):
-            generation_config["thinkingConfig"] = {"thinkingLevel": "minimal"}
-        elif model_lower.startswith(("gemini-3.", "gemini-3.5-")):
-            generation_config["thinkingConfig"] = {"thinkingLevel": "low"}
-
         payload = {
             "contents": [
                 {
                     "role": "user",
                     "parts": [
-                        {"text": self.config.prompt},
                         {
                             "inline_data": {
                                 "mime_type": mime_type,
                                 "data": encoded,
                             }
                         },
+                        {"text": API_VLM_PROMPT},
                     ],
                 }
             ],
-            "generationConfig": generation_config,
+            "generationConfig": {
+                "maxOutputTokens": API_MAX_OUTPUT_TOKENS,
+            },
         }
         url = f"{self._base_url}/models/{self._model}:generateContent"
 
@@ -262,14 +265,12 @@ class OpenAICompatibleVlmCaptioner(_ApiVlmCaptioner):
                         },
                         {
                             "type": "text",
-                            "text": self.config.prompt,
+                            "text": API_VLM_PROMPT,
                         },
                     ],
                 }
             ],
-            "max_tokens": self.config.max_tokens,
-            "temperature": self.config.temperature,
-            "top_p": self.config.top_p,
+            "max_tokens": API_MAX_OUTPUT_TOKENS,
         }
 
         data = self._post(
