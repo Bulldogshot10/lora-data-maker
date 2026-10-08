@@ -468,3 +468,23 @@ def test_joytag_invalid_input_shape_becomes_tagger_error(tmp_path):
 
     with pytest.raises(TaggerError, match="unexpected JoyTag ONNX input shape"):
         tagger.tag_image(tmp_path / "missing.jpg")
+
+
+def test_build_tagger_rejects_mismatched_config_backend():
+    from lora_data_maker.taggers.manager import build_tagger
+    import pytest
+
+    with pytest.raises(TaggerError, match="does not match preset"):
+        build_tagger({"backend": "joytag", "preset": "sweetspot"})
+
+
+def test_build_tagger_explicit_preset_overrides_config_backend():
+    from lora_data_maker.taggers.manager import build_tagger
+    from lora_data_maker.taggers.wd14 import WD14Tagger
+
+    tagger = build_tagger(
+        {"backend": "joytag", "preset": "sweetspot"},
+        preset="sweetspot",
+    )
+
+    assert isinstance(tagger, WD14Tagger)
