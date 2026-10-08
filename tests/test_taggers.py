@@ -488,3 +488,44 @@ def test_build_tagger_explicit_preset_overrides_config_backend():
     )
 
     assert isinstance(tagger, WD14Tagger)
+
+
+def test_command_tag_records_resolved_backend_for_explicit_preset(tmp_path, monkeypatch):
+    from argparse import Namespace
+    from lora_data_maker.cli import command_init, command_tag
+    from lora_data_maker.dataset import DatasetProject
+    from lora_data_maker.paths import ProjectPaths
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    class FakeTagger:
+        def tag_images(self, paths):
+            return []
+
+    monkeypatch.setattr(
+        "lora_data_maker.cli.build_tagger",
+        lambda *args, **kwargs: FakeTagger(),
+    )
+    monkeypatch.setattr(
+        "lora_data_maker.cli.tag_manifest",
+        lambda manifest, root, tagger: type(
+            "Summary",
+            (),
+            {"scanned": 0, "tagged": 0, "failed": 0, "skipped": 0},
+        )(),
+    )
+
+    assert command_tag(Namespace(path=str(root), preset="joytag")) == 1
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    assert project.manifest.source["last_tag_backend"] == "joytag"
+    assert project.manifest.source["last_tag_preset"] == "joytag"
