@@ -101,6 +101,42 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     )
     assert invalid_budget.status_code == 400
 
+    unchanged_after_invalid = client.get("/api/state").json()
+    assert unchanged_after_invalid["project"]["subject"] == "new_person"
+    assert unchanged_after_invalid["processing"]["width"] == 768
+    assert unchanged_after_invalid["processing"]["height"] == 512
+    assert unchanged_after_invalid["tagger"]["preset"] == "sweetspot"
+
+    partial_write = client.post(
+        "/api/settings",
+        json={
+            "name": "mutated",
+            "subject": "mutated_subject",
+            "trigger": "mutated_subject",
+            "preset": "joytag",
+            "mode": "stretch",
+            "width": 640,
+            "height": 640,
+            "quality": 80,
+            "caption_max_tokens": "not-a-number",
+            "face_crop": True,
+            "face_padding": 2.0,
+        },
+    )
+    assert partial_write.status_code == 400
+
+    after_rejected_update = client.get("/api/state").json()
+    assert after_rejected_update["project"]["name"] == "test"
+    assert after_rejected_update["project"]["subject"] == "new_person"
+    assert after_rejected_update["project"]["trigger"] == "new_person"
+    assert after_rejected_update["processing"]["mode"] == "cover"
+    assert after_rejected_update["processing"]["width"] == 768
+    assert after_rejected_update["processing"]["height"] == 512
+    assert after_rejected_update["processing"]["quality"] == 92
+    assert after_rejected_update["processing"]["face_crop"] is False
+    assert after_rejected_update["processing"]["face_padding"] == 1.75
+    assert after_rejected_update["tagger"]["preset"] == "sweetspot"
+
     vlm = client.post(
         "/api/settings",
         json={
