@@ -127,11 +127,16 @@ def caption_config_from_dict(
         if mmproj_path and not Path(mmproj_path).expanduser().is_absolute():
             mmproj_path = str((root_path / mmproj_path).resolve())
 
+    vlm_runtime = string_field("runtime", "llama_cpp").strip().lower()
+    vlm_chat_format = string_field("chat_format", "mtmd").strip().lower()
+    if vlm_runtime == "onnx":
+        vlm_chat_format = "smolvlm"
+
     vlm = VlmConfig(
         model_path=model_path,
         mmproj_path=mmproj_path,
-        runtime=string_field("runtime", "llama_cpp"),
-        chat_format=string_field("chat_format", "mtmd"),
+        runtime=vlm_runtime,
+        chat_format=vlm_chat_format,
         prompt=string_field("prompt", DEFAULT_VLM_PROMPT),
         max_tokens=int_field("max_tokens", 128),
         temperature=float_field("temperature", 0.1),
