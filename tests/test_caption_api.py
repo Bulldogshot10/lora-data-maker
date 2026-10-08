@@ -4,7 +4,7 @@ import requests
 from PIL import Image
 
 from lora_data_maker.caption_api import API_MAX_OUTPUT_TOKENS, API_VLM_PROMPT, GeminiVlmCaptioner, OpenAICompatibleVlmCaptioner
-from lora_data_maker.caption_vlm import DEFAULT_VLM_PROMPT, VlmConfig
+from lora_data_maker.caption_vlm import VlmConfig
 from lora_data_maker.captions import CaptionConfig, caption_manifest
 from lora_data_maker.models import ImageRecord, ProjectManifest
 
@@ -44,10 +44,7 @@ def test_gemini_caption_uses_fixed_prompt_and_inline_image(monkeypatch, tmp_path
                             "parts": [
                                 {
                                     "text": (
-                                        "pose: standing straight-on\n"
-                                        "clothing: white top\n"
-                                        "expression: neutral\n"
-                                        "background: indoor soft lighting"
+                                        "standing straight-on, white top, neutral, indoors with soft lighting"
                                     )
                                 }
                             ]
@@ -82,7 +79,7 @@ def test_gemini_caption_uses_fixed_prompt_and_inline_image(monkeypatch, tmp_path
     payload = kwargs["json"]
     assert payload["contents"][0]["parts"][1]["text"] == API_VLM_PROMPT
     assert payload["generationConfig"] == {"maxOutputTokens": API_MAX_OUTPUT_TOKENS}
-    assert payload["contents"][0]["parts"][1]["inline_data"]["mime_type"] == "image/jpeg"
+    assert payload["contents"][0]["parts"][0]["inline_data"]["mime_type"] == "image/jpeg"
 
 
 def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
@@ -95,10 +92,7 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
                     {
                         "message": {
                             "content": (
-                                "pose: sitting straight-on\n"
-                                "clothing: black dress\n"
-                                "expression: smiling\n"
-                                "background: indoors soft lighting"
+                                "sitting straight-on, black dress, smiling, indoors with soft lighting"
                             )
                         }
                     }
@@ -128,7 +122,8 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
     url, kwargs = FakeSession.payloads[-1]
     assert url == "https://example.test/v1/chat/completions"
     assert kwargs["headers"]["Authorization"] == "Bearer secret"
-    content = kwargs["json"]["messages"][0]["content"]
+    payload = kwargs["json"]
+    content = payload["messages"][0]["content"]
     assert content[0]["type"] == "image_url"
     assert content[1]["type"] == "text"
     assert content[1]["text"] == API_VLM_PROMPT
