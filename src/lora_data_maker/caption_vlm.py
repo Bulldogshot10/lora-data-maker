@@ -12,7 +12,7 @@ DEFAULT_VLM_PROMPT = (
     "describe this photo for a stable diffusion character lora training caption.\n"
     "use exactly these 4 fields, one per line.\n"
     "use short phrases only, with a maximum of 5 words per field.\n\n"
-    "pose:\n"
+    "pose: include body pose and camera angle when visible\n"
     "clothing:\n"
     "expression:\n"
     "background: include lighting\n\n"
