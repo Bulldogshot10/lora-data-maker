@@ -66,11 +66,10 @@ class VlmConfig:
 
         has_model = bool(self.model_path.strip())
         has_mmproj = bool(self.mmproj_path.strip())
-        if not has_model:
-            raise ValueError("caption.vlm.model_path must be configured")
-        if self.runtime == "llama_cpp" and not has_mmproj:
+        if self.runtime == "llama_cpp" and has_model != has_mmproj:
             raise ValueError(
-                "caption.vlm.mmproj_path is required for the llama_cpp runtime"
+                "caption.vlm.model_path and caption.vlm.mmproj_path "
+                "must be configured together for the llama_cpp runtime"
             )
 
         if not self.prompt.strip():
