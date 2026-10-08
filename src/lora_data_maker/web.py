@@ -631,7 +631,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
 
     <section class="side-section">
       <div class="side-head">
-        <div class="side-title">datasets</div>
+        <div class="side-title">dataset explorer</div>
         <button type="button" class="icon-button" id="refresh-projects" aria-label="refresh datasets" title="refresh datasets">↻</button>
       </div>
       <input id="project_filter" class="search" autocomplete="off" placeholder="search datasets..." aria-label="search datasets">
