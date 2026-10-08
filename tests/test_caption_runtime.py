@@ -330,10 +330,14 @@ def test_onnx_caption_end_to_end_uses_prefill_and_kv_cache(tmp_path):
         tokenizer = FakeTokenizer()
 
         def apply_chat_template(self, messages, **kwargs):
-            assert isinstance(messages[0]["content"][0]["image"], Image.Image)
+            assert messages[0]["content"][0]["type"] == "image"
             assert kwargs["add_generation_prompt"] is True
-            assert kwargs["tokenize"] is True
-            assert kwargs["return_dict"] is True
+            return "prompt"
+
+        def __call__(self, **kwargs):
+            assert kwargs["text"] == "prompt"
+            assert len(kwargs["images"]) == 1
+            assert isinstance(kwargs["images"][0], Image.Image)
             assert kwargs["return_tensors"] == "np"
             return {
                 "input_ids": np.array([[101, 49190, 49190, 102]], dtype=np.int64),
@@ -433,4 +437,12 @@ def test_onnx_caption_end_to_end_uses_prefill_and_kv_cache(tmp_path):
     assert runtime._decoder.calls[1]["use_cache_branch"].item() is True
     assert runtime._decoder.calls[0]["inputs_embeds"].shape == (1, 4, 4)
     assert runtime._decoder.calls[1]["inputs_embeds"].shape == (1, 1, 4)
-    assert runtime._decoder.calls[1]["attention_mask"].shape == (1, 5)
+    assert runtime._decoder.calls[1]["attention_mask"].shape == (1, 1)
+    np.testing.assert_array_equal(
+        runtime._decoder.calls[0]["position_ids"],
+        np.array([[1, 2, 3, 4]], dtype=np.int64),
+    )
+    np.testing.assert_array_equal(
+        runtime._decoder.calls[1]["position_ids"],
+        np.array([[5]], dtype=np.int64),
+    )
