@@ -272,6 +272,54 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert off_state["tagger"]["preset"] == "off"
 
 
+def test_webui_api_runtime_switch_uses_matching_api_key_env(tmp_path: Path, monkeypatch) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-secret")
+
+    common = {
+        "name": "test",
+        "subject": "person",
+        "trigger": "person",
+        "preset": "off",
+        "mode": "cover",
+        "width": 512,
+        "height": 512,
+        "quality": 95,
+        "caption_backend": "vlm",
+        "caption_max_tokens": 77,
+        "face_crop": False,
+        "face_padding": 1.75,
+    }
+
+    gemini = client.post(
+        "/api/settings",
+        json={
+            **common,
+            "caption_runtime": "gemini",
+            "caption_api_model": "gemini-3.5-flash-lite",
+        },
+    )
+    assert gemini.status_code == 200
+    config = (root / "config.toml").read_text(encoding="utf-8")
+    assert 'api_key_env = "GEMINI_API_KEY"' in config
+
+    openai = client.post(
+        "/api/settings",
+        json={
+            **common,
+            "caption_runtime": "openai_compatible",
+            "caption_api_model": "vision-model",
+            "caption_api_base_url": "https://example.test/v1",
+        },
+    )
+    assert openai.status_code == 200
+    config = (root / "config.toml").read_text(encoding="utf-8")
+    assert 'api_key_env = "OPENAI_API_KEY"' in config
+
+
 def test_webui_vlm_file_uploads_store_relative_paths(tmp_path: Path) -> None:
     root = make_project(tmp_path)
     client = TestClient(create_app(root))
