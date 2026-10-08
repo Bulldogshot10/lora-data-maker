@@ -46,6 +46,12 @@ class CaptionConfig:
             raise ValueError(
                 "caption.backend must be 'deterministic' or 'vlm'"
             )
+        if self.backend == "vlm":
+            if not self.vlm.model_path.strip() or not self.vlm.mmproj_path.strip():
+                raise ValueError(
+                    "caption.vlm.model_path and caption.vlm.mmproj_path "
+                    "are required for VLM captions"
+                )
         if not isinstance(self.separator, str):
             raise ValueError("caption.separator must be a string")
         if not isinstance(self.trigger_from_subject, bool):
