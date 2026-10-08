@@ -1,4 +1,8 @@
 from pathlib import Path
+import re
+import shutil
+import subprocess
+import tempfile
 import threading
 import time
 
@@ -94,6 +98,34 @@ def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: P
     assert 'id="progress-fill"' in html
     assert 'id="preview-modal"' in html
     assert "onclick=" not in html
+
+
+def test_webui_javascript_syntax_when_node_is_available(tmp_path: Path) -> None:
+    node = shutil.which("node")
+    if not node:
+        return
+
+    html = client_html = TestClient(create_app(make_project(tmp_path))).get("/").text
+    scripts = re.findall(r"<script>(.*?)</script>", html, flags=re.DOTALL)
+    assert scripts
+
+    for index, script in enumerate(scripts):
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            suffix=".js",
+            prefix=f"webui_{index}_",
+        ) as handle:
+            handle.write(script)
+            handle.flush()
+            checked = subprocess.run(
+                [node, "--check", handle.name],
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        assert checked.returncode == 0, checked.stderr
+
 
 
 def test_new_project_switches_active_project(tmp_path: Path) -> None:
