@@ -136,3 +136,37 @@ jobs:
 
       - name: Run face detector smoke tests
         run: pytest -q tests/test_face_detector.py -k real_model_smoke
+
+
+  textocr-smoke:
+    name: PP-OCR text detector smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install quality runtime
+        run: python -m pip install ".[quality,dev]"
+
+      - name: Download pinned PP-OCR model
+        run: |
+          curl -L --fail --retry 3 -o text_detection_en_ppocrv3_2023may.onnx \
+            "https://huggingface.co/opencv/text_detection_ppocr/resolve/eb8f1ab7550dc8d895a1c950f6a7e9ba52df0d27/text_detection_en_ppocrv3_2023may.onnx"
+          echo "03f550c6b406fda8bf54bd8327815f6c7e2edd98cea02348c93d879254366587  text_detection_en_ppocrv3_2023may.onnx" | sha256sum -c -
+
+      - name: Download OCR fixture image
+        run: |
+          curl -L --fail --retry 3 -o gsoc.jpg \
+            "https://huggingface.co/opencv/text_detection_ppocr/resolve/eb8f1ab7550dc8d895a1c950f6a7e9ba52df0d27/example_outputs/gsoc.jpg"
+          echo "c6c852b20c3b187d3eefc7e0d4e89a89ec96637dfc544f8169bcfe4981ce8143  gsoc.jpg" | sha256sum -c -
+
+      - name: Run real PP-OCR smoke test
+        env:
+          LORA_DATA_MAKER_TEXTOCR_MODEL: ${{ github.workspace }}/text_detection_en_ppocrv3_2023may.onnx
+          LORA_DATA_MAKER_TEXTOCR_IMAGE: ${{ github.workspace }}/gsoc.jpg
+        run: pytest -q tests/test_text_detector.py -k ppocr_real_model_smoke
