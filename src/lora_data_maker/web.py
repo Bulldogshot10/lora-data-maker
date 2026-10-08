@@ -1612,6 +1612,31 @@ async function upload(){
     toast(e.message,"bad");
   }
 }
+async function uploadVlmFile(kind,inputId,pathId,statusId){
+  if(!appState.activeProjectPath){toast("create or open a dataset first.","bad");return;}
+  if(isBusyOnActiveProject()){toast("this dataset is busy. wait for the current job to finish.","bad");return;}
+  const input=$(inputId);
+  const file=input.files[0];
+  if(!file){toast("choose a GGUF file first.","bad");return;}
+  if(!file.name.toLowerCase().endsWith(".gguf")){toast("only .gguf files are accepted.","bad");input.value="";return;}
+  const form=new FormData();
+  form.append("file",file);
+  try{
+    setStatus("uploading "+file.name+"...","running");
+    const d=await api("/api/vlm/upload/"+encodeURIComponent(kind),{method:"POST",body:form});
+    $(pathId).value=d.path;
+    $(statusId).textContent="uploaded: "+d.path;
+    input.value="";
+    markDirty();
+    updateBusyUI();
+    setStatus("uploaded "+file.name,"ok");
+    toast("uploaded "+file.name,"ok");
+  }catch(e){
+    setStatus(e.message,"bad");
+    toast(e.message,"bad");
+    input.value="";
+  }
+}
 function updateFileSummary(){
   const n=$("files").files.length;
   $("file-summary").textContent=n?n+" file"+(n===1?"":"s")+" selected":"no files selected";
@@ -1644,6 +1669,10 @@ document.querySelectorAll("[data-run-stage]").forEach(button=>{
   button.addEventListener("click",()=>runStage(button.dataset.runStage));
 });
 $("choose-images").addEventListener("click",()=>$("files").click());
+$("caption_model_upload").addEventListener("click",()=>$("caption_model_file").click());
+$("caption_mmproj_upload").addEventListener("click",()=>$("caption_mmproj_file").click());
+$("caption_model_file").addEventListener("change",()=>uploadVlmFile("model","caption_model_file","caption_model_path","caption_model_status"));
+$("caption_mmproj_file").addEventListener("change",()=>uploadVlmFile("mmproj","caption_mmproj_file","caption_mmproj_path","caption_mmproj_status"));
 $("upload-button").addEventListener("click",upload);
 $("files").addEventListener("change",updateFileSummary);
 $("quality").addEventListener("input",()=>{$("qv").textContent=$("quality").value});
