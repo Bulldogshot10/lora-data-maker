@@ -2560,6 +2560,12 @@ def create_app(root: Path | str = ".") -> FastAPI:
         caption_api_key_env = str(
             payload.get("caption_api_key_env", current_vlm.get("api_key_env", ""))
         ).strip()
+        if not caption_api_key_env and caption_runtime in {"gemini", "openai_compatible"}:
+            caption_api_key_env = (
+                "GEMINI_API_KEY"
+                if caption_runtime == "gemini"
+                else "OPENAI_API_KEY"
+            )
         caption_api_model = str(
             payload.get("caption_api_model", current_vlm.get("api_model", ""))
         ).strip()
