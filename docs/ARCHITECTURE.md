@@ -69,7 +69,7 @@ The manifest is versioned, JSON-serializable, atomically replaced on save, and c
 - subject
 - trigger
 - source metadata
-- configuration snapshot
+- configuration snapshot (captured when the project is initialized)
 - per-image records
 - per-image status
 - rejection reason where applicable
