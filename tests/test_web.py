@@ -269,7 +269,7 @@ def test_running_job_stays_bound_to_original_project_after_switch(
         def __init__(self, **kwargs):
             assert Path(kwargs["output_dir"]).resolve() == (root / "raw").resolve()
 
-        def run(self, query, *, count, known_urls=(), progress=None):
+        def run(self, query, *, count, known_urls=(), progress=None, cancel_event=None):
             assert query == "julia"
             assert count == 1
             started.set()
@@ -348,3 +348,57 @@ def test_dataset_explorer_refuses_active_project_delete(tmp_path: Path) -> None:
     assert response.status_code == 409
     assert "active project" in response.json()["detail"]
     assert root.exists()
+
+
+def test_web_delete_image_removes_record_and_artifacts(tmp_path: Path) -> None:
+    from lora_data_maker.manifest import register_image
+
+    root = make_project(tmp_path)
+    paths = ProjectPaths.from_root(root)
+
+    raw = paths.raw / "000001.jpg"
+    processed = paths.work / "processed" / "000001.jpg"
+    caption = paths.work / "captions" / "000001.txt"
+    exported = paths.output / "1_person" / "image.jpg"
+    exported_caption = paths.output / "1_person" / "image.txt"
+
+    for target, content in (
+        (raw, b"raw"),
+        (processed, b"processed"),
+        (caption, b"caption"),
+        (exported, b"exported"),
+        (exported_caption, b"exported caption"),
+    ):
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(content)
+
+    project = DatasetProject.open(paths)
+    record = register_image(
+        project.manifest,
+        path="raw/000001.jpg",
+        status="exported",
+    )
+    record.processed_path = "work/processed/000001.jpg"
+    record.caption_path = "work/captions/000001.txt"
+    record.metadata["export_image_path"] = "output/1_person/image.jpg"
+    record.metadata["export_caption_path"] = "output/1_person/image.txt"
+    project.save()
+
+    client = TestClient(create_app(root))
+    response = client.delete(f"/api/images/{record.image_id}")
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert record.image_id not in DatasetProject.open(paths).manifest.images
+    assert not raw.exists()
+    assert not processed.exists()
+    assert not caption.exists()
+    assert not exported.exists()
+    assert not exported_caption.exists()
+
+
+def test_webui_shell_exposes_curation_controls(tmp_path: Path) -> None:
+    html = TestClient(create_app(make_project(tmp_path))).get("/").text
+    assert 'data-job-cancel=' in html
+    assert 'data-image-delete=' in html
+    assert '/api/images/' in html
