@@ -1105,7 +1105,8 @@ const appState={
   pollTimer:null,
   confirmResolve:null,
   toastSeq:0,
-  projects:[]
+  projects:[],
+  apiKeysSet:{gemini:false,openai_compatible:false}
 };
 
 async function api(url,opt={}){
@@ -1260,6 +1261,14 @@ async function loadVlmModels(){
     if(selected)select.value=selected;
     select.dataset.selectedModel=select.value;
   };
+  if(!appState.apiKeysSet[runtime]){
+    renderModels(fallbackModels);
+    const env=runtime==="gemini"?"GEMINI_API_KEY":"OPENAI_API_KEY";
+    $("caption_api_key_status").textContent=env+" is not set; enter your API key and click Set.";
+    syncCaptionRuntimeUI();
+    select.disabled=false;
+    return;
+  }
   try{
     const base=runtime==="openai_compatible"?$("caption_api_base_url").value.trim():"";
     const qs=new URLSearchParams({runtime:runtime});
@@ -1285,6 +1294,12 @@ async function loadVlmModels(){
 }
 function applySettings(s,force=false){
   if(appState.settingsDirty&&!force)return;
+  const captionState=s.caption||{};
+  const keyState=captionState.api_keys_set||{};
+  appState.apiKeysSet={
+    gemini:!!(keyState.gemini??(captionState.runtime==="gemini"&&captionState.api_key_set)),
+    openai_compatible:!!(keyState.openai_compatible??(captionState.runtime==="openai_compatible"&&captionState.api_key_set))
+  };
   const project=s.project||{name:"",subject:"",trigger:""};
   $("name").value=project.name||"";
   $("subject").value=project.subject||"";
@@ -1574,6 +1589,7 @@ async function setVlmApiKey(){
       body:JSON.stringify({runtime:runtime,api_key:key})
     });
     $("caption_api_key").value="";
+    appState.apiKeysSet[runtime]=!!d.key_set;
     $("caption_api_key_status").textContent="API key loaded into "+d.env+" in the WebUI server process";
     await loadVlmModels();
     toast("API key loaded","ok");
@@ -1592,6 +1608,7 @@ async function clearVlmApiKey(){
       body:JSON.stringify({runtime:runtime,api_key:""})
     });
     $("caption_api_key").value="";
+    appState.apiKeysSet[runtime]=false;
     $("caption_api_key_status").textContent="API key cleared from "+d.env;
     $("caption_api_model").innerHTML='<option value="">select model…</option>';
     toast("API key cleared","ok");
@@ -2213,6 +2230,10 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     "api_model": "",
                     "api_base_url": "",
                     "api_key_set": False,
+                    "api_keys_set": {
+                        "gemini": bool(os.environ.get("GEMINI_API_KEY", "").strip()),
+                        "openai_compatible": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
+                    },
                     "max_tokens": 77,
                 },
                 "scraper": {
@@ -2312,6 +2333,10 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     in {"gemini", "openai_compatible"}
                     else False
                 ),
+                "api_keys_set": {
+                    "gemini": bool(os.environ.get("GEMINI_API_KEY", "").strip()),
+                    "openai_compatible": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
+                },
                 "max_tokens": int(caption.get("max_tokens", 77)),
             },
             "scraper": {
