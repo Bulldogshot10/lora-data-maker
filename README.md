@@ -126,9 +126,9 @@ n_gpu_layers = 0
 seed = 42
 ~~~
 
-Supported chat formats are `mtmd`, `qwen2.5-vl`, and `gemma4`. The VLM receives only the processed image and the configured caption prompt. Cleaned tagger output is kept as structured metadata and is never fed into the VLM.
+Supported chat formats are `mtmd`, `qwen2.5-vl`, and `gemma4`. The VLM receives only the processed image and the configured caption prompt. The prompt requests exactly four short fields: pose, clothing, expression, and background with lighting. Hair color, eye color, face, age, and gender are excluded from the VLM output. Cleaned tagger output is kept as structured metadata and is never fed into the VLM.
 
-VLM output is cleaned before the canonical trigger is injected. The cleaned VLM description and cleaned tagger tags are then merged into one final .txt caption, sharing the configured max_tokens budget (1–77, default 77). When one image fails VLM inference, that image falls back to the existing deterministic tag caption and the fallback is recorded in the manifest.
+The four VLM fields are parsed, their labels are removed, and the resulting phrases are merged with cleaned tagger tags into one final .txt caption. The canonical trigger is injected exactly once. VLM + tagger + trigger all share one final max_tokens budget of 1–77, default 77, with a budget that cannot preserve the trigger rejected. When one image fails VLM inference or returns malformed fields, that image falls back to the deterministic tag caption and the fallback is recorded in the manifest.
 
 Tagger models are cached under:
 
