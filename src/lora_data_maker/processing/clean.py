@@ -94,6 +94,9 @@ def clean_manifest(
             image.metadata["quality_person_confidence"] = result.person_confidence
             image.metadata["quality_subject_area_ratio"] = result.subject_area_ratio
             image.metadata["quality_subject_visibility"] = result.subject_visibility
+        if result.text_count is not None:
+            image.metadata["quality_text_count"] = result.text_count
+            image.metadata["quality_text_confidence"] = result.text_confidence
 
         if result.valid:
             continue
