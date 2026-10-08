@@ -1,13 +1,19 @@
 from argparse import Namespace
 from pathlib import Path
 
+import pytest
+
 from lora_data_maker.captions import (
     CaptionConfig,
     build_caption,
+    build_vlm_caption,
+    caption_config_from_dict,
     caption_manifest,
+    clean_vlm_caption,
     resolve_trigger,
     write_caption,
 )
+from lora_data_maker.caption_vlm import VlmCaptionerError, VlmConfig
 from lora_data_maker.cli import command_caption, command_init
 from lora_data_maker.dataset import DatasetProject
 from lora_data_maker.models import ImageRecord, ProjectManifest
@@ -129,3 +135,149 @@ def test_caption_command_persists_manifest(tmp_path):
         "julia, 1girl, blue eyes\n"
     )
     assert refreshed.manifest.source["last_caption_trigger"] == "julia"
+
+
+def test_clean_vlm_caption_removes_common_prose_and_markdown():
+    raw = """Caption: The image shows a woman in a black dress.
+She is sitting outdoors."""
+    assert clean_vlm_caption(raw) == "a woman in a black dress. She is sitting outdoors."
+
+
+def test_build_vlm_caption_injects_trigger_once():
+    config = CaptionConfig(
+        backend="vlm",
+        vlm=VlmConfig(
+            model_path="model.gguf",
+            mmproj_path="mmproj.gguf",
+        ),
+    )
+    assert build_vlm_caption(
+        "julia, a woman in a black dress, sitting outdoors.",
+        subject="Julia",
+        trigger="ignored",
+        config=config,
+    ) == "julia, a woman in a black dress, sitting outdoors."
+
+
+def test_caption_config_rejects_vlm_without_paths():
+    with pytest.raises(
+        ValueError,
+        match="model_path and caption.vlm.mmproj_path are required",
+    ):
+        CaptionConfig(backend="vlm")
+
+
+def test_caption_config_from_dict_keeps_deterministic_default():
+    settings = caption_config_from_dict(
+        {
+            "separator": ", ",
+            "subject_position": "first",
+            "trigger_from_subject": True,
+        }
+    )
+    assert settings.backend == "deterministic"
+    assert settings.vlm.model_path == ""
+
+
+def test_caption_manifest_uses_injected_vlm_captioner(tmp_path):
+    root = tmp_path / "project"
+    manifest = ProjectManifest(
+        project_name="julia-set",
+        subject="julia",
+        trigger="julia-trigger",
+    )
+    image = ImageRecord(
+        path="raw/001.jpg",
+        status="tagged",
+        tags=["1girl", "julia", "blue_eyes"],
+        processed_path="work/processed/001.jpg",
+    )
+    manifest.add_image(image)
+    processed = root / image.processed_path
+    processed.parent.mkdir(parents=True, exist_ok=True)
+    processed.write_bytes(b"processed-image")
+
+    class FakeCaptioner:
+        def caption(self, image_path):
+            assert Path(image_path) == processed.resolve()
+            return "The image shows a woman with blue eyes, wearing a black shirt."
+        def close(self):
+            raise AssertionError("caller must not close injected captioner")
+
+    config = CaptionConfig(
+        backend="vlm",
+        vlm=VlmConfig(
+            model_path="model.gguf",
+            mmproj_path="mmproj.gguf",
+        ),
+    )
+
+    summary = caption_manifest(
+        manifest,
+        root=root,
+        output_dir=root / "work" / "captions",
+        config=config,
+        captioner=FakeCaptioner(),
+    )
+
+    assert summary.scanned == 1
+    assert summary.captioned == 1
+    assert summary.fallback == 0
+    assert image.metadata["caption_backend"] == "vlm"
+    assert image.metadata["caption_fallback"] is False
+    assert (
+        (root / image.caption_path).read_text(encoding="utf-8")
+        == "julia, a woman with blue eyes, wearing a black shirt.\n"
+    )
+
+
+def test_caption_manifest_falls_back_to_deterministic_on_vlm_error(tmp_path):
+    root = tmp_path / "project"
+    manifest = ProjectManifest(
+        project_name="julia-set",
+        subject="julia",
+        trigger="julia-trigger",
+    )
+    image = ImageRecord(
+        path="raw/001.jpg",
+        status="tagged",
+        tags=["1girl", "julia", "blue_eyes"],
+        processed_path="work/processed/001.jpg",
+    )
+    manifest.add_image(image)
+    processed = root / image.processed_path
+    processed.parent.mkdir(parents=True, exist_ok=True)
+    processed.write_bytes(b"processed-image")
+
+    class FailingCaptioner:
+        def caption(self, image_path):
+            raise VlmCaptionerError("boom")
+        def close(self):
+            pass
+
+    config = CaptionConfig(
+        backend="vlm",
+        vlm=VlmConfig(
+            model_path="model.gguf",
+            mmproj_path="mmproj.gguf",
+        ),
+    )
+
+    summary = caption_manifest(
+        manifest,
+        root=root,
+        output_dir=root / "work" / "captions",
+        config=config,
+        captioner=FailingCaptioner(),
+    )
+
+    assert summary.scanned == 1
+    assert summary.captioned == 1
+    assert summary.fallback == 1
+    assert image.metadata["caption_fallback"] is True
+    assert image.metadata["caption_fallback_backend"] == "deterministic"
+    assert "boom" in image.metadata["caption_vlm_error"]
+    assert (
+        (root / image.caption_path).read_text(encoding="utf-8")
+        == "julia, 1girl, blue eyes\n"
+    )
