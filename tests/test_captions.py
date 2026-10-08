@@ -15,6 +15,7 @@ from lora_data_maker.captions import (
     truncate_caption,
     resolve_trigger,
     count_clip_tokens,
+    reset_vlm_captions_for_deterministic,
     write_caption,
 )
 from lora_data_maker.caption_vlm import DEFAULT_VLM_PROMPT, VlmCaptionerError, VlmConfig
@@ -266,7 +267,7 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path, monkeypatch):
     )
     image = ImageRecord(
         path="raw/001.jpg",
-        status="processed",
+        status="tagged",
         tags=["1girl", "julia", "blue_eyes"],
         processed_path="work/processed/001.jpg",
     )
@@ -319,6 +320,41 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path, monkeypatch):
             "slight smile, indoors, soft window lighting\n"
         )
     )
+
+
+def test_reset_vlm_captions_for_deterministic_requeues_records(tmp_path):
+    root = tmp_path / "project"
+    manifest = ProjectManifest(
+        project_name="julia-set",
+        subject="julia",
+        trigger="julia",
+    )
+    image = ImageRecord(
+        path="raw/001.jpg",
+        status="captioned",
+        processed_path="work/processed/001.jpg",
+        caption_path="work/captions/001.txt",
+        metadata={
+            "caption_backend": "vlm",
+            "caption_stage": "captioned",
+        },
+    )
+    manifest.add_image(image)
+
+    stale = root / image.caption_path
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("julia, stale vlm caption\n", encoding="utf-8")
+
+    reset = reset_vlm_captions_for_deterministic(
+        manifest,
+        root=root,
+    )
+
+    assert reset == 1
+    assert image.status == "processed"
+    assert image.caption_path is None
+    assert image.metadata["caption_previous_backend"] == "vlm"
+    assert not stale.exists()
 
 
 def test_caption_manifest_fails_without_deterministic_fallback(tmp_path, monkeypatch):
