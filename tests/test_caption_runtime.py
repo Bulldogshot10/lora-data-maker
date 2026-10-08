@@ -4,6 +4,12 @@ from lora_data_maker.captions import caption_config_from_dict, caption_manifest
 from lora_data_maker.models import ImageRecord, ProjectManifest
 
 
+class FakeClipTokenizer:
+    def __call__(self, text, **kwargs):
+        value = str(text)
+        return {"input_ids": list(range(len(value.split()) + 2))}
+
+
 def test_caption_config_resolves_relative_vlm_paths(tmp_path):
     settings = caption_config_from_dict(
         {
@@ -33,7 +39,7 @@ def test_caption_manifest_loads_owned_vlm_runtime_once(tmp_path, monkeypatch):
     for index in range(2):
         image = ImageRecord(
             path=f"raw/{index}.jpg",
-            status="tagged",
+            status="processed",
             tags=["1girl", "blue_eyes"],
             processed_path=f"work/processed/{index}.jpg",
         )
@@ -52,7 +58,12 @@ def test_caption_manifest_loads_owned_vlm_runtime_once(tmp_path, monkeypatch):
         def caption(self, image_path):
             state["caption"] += 1
             assert Path(image_path).is_file()
-            return "a woman with blue eyes."
+            return (
+                "pose: standing with arms raised\n"
+                "clothing: white top\n"
+                "expression: neutral\n"
+                "background: indoors"
+            )
 
         def close(self):
             state["close"] += 1
@@ -60,6 +71,10 @@ def test_caption_manifest_loads_owned_vlm_runtime_once(tmp_path, monkeypatch):
     monkeypatch.setattr(
         "lora_data_maker.captions.LlamaCppVlmCaptioner",
         FakeRuntime,
+    )
+    monkeypatch.setattr(
+        "lora_data_maker.captions.load_clip_tokenizer",
+        lambda: FakeClipTokenizer(),
     )
 
     config = caption_config_from_dict(
