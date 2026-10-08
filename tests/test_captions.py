@@ -23,6 +23,12 @@ from lora_data_maker.models import ImageRecord, ProjectManifest
 from lora_data_maker.paths import ProjectPaths
 
 
+class FakeClipTokenizer:
+    def __call__(self, text, **kwargs):
+        value = str(text)
+        return {"input_ids": list(range(len(value.split()) + 2))}
+
+
 def test_resolve_trigger_defaults_to_subject():
     assert resolve_trigger(
         subject="Julia",
@@ -198,9 +204,9 @@ def test_build_vlm_caption_removes_repeated_trigger_mentions():
         "background: indoor room",
         subject="Julia",
         trigger="ignored",
-        tags=["julia", "portrait"],
         config=config,
-    ) == "julia, portrait pose, black shirt, smiling, indoor room, portrait"
+        tokenizer=FakeClipTokenizer(),
+    ) == "julia, portrait pose, black shirt, smiling, indoor room"
 
 
 def test_caption_config_rejects_vlm_without_paths():
@@ -223,7 +229,7 @@ def test_caption_config_from_dict_keeps_deterministic_default():
     assert settings.vlm.model_path == ""
 
 
-def test_caption_manifest_uses_injected_vlm_captioner(tmp_path):
+def test_caption_manifest_uses_injected_vlm_captioner(tmp_path, monkeypatch):
     root = tmp_path / "project"
     manifest = ProjectManifest(
         project_name="julia-set",
@@ -232,7 +238,7 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path):
     )
     image = ImageRecord(
         path="raw/001.jpg",
-        status="tagged",
+        status="processed",
         tags=["1girl", "julia", "blue_eyes"],
         processed_path="work/processed/001.jpg",
     )
@@ -261,6 +267,10 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path):
         ),
     )
 
+    monkeypatch.setattr(
+        "lora_data_maker.captions.load_clip_tokenizer",
+        lambda: FakeClipTokenizer(),
+    )
     summary = caption_manifest(
         manifest,
         root=root,
@@ -283,7 +293,7 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path):
     )
 
 
-def test_caption_manifest_falls_back_to_deterministic_on_vlm_error(tmp_path):
+def test_caption_manifest_fails_without_deterministic_fallback(tmp_path, monkeypatch):
     root = tmp_path / "project"
     manifest = ProjectManifest(
         project_name="julia-set",
@@ -292,7 +302,7 @@ def test_caption_manifest_falls_back_to_deterministic_on_vlm_error(tmp_path):
     )
     image = ImageRecord(
         path="raw/001.jpg",
-        status="tagged",
+        status="processed",
         tags=["1girl", "julia", "blue_eyes"],
         processed_path="work/processed/001.jpg",
     )
@@ -314,6 +324,10 @@ def test_caption_manifest_falls_back_to_deterministic_on_vlm_error(tmp_path):
             mmproj_path="mmproj.gguf",
         ),
     )
+    monkeypatch.setattr(
+        "lora_data_maker.captions.load_clip_tokenizer",
+        lambda: FakeClipTokenizer(),
+    )
 
     summary = caption_manifest(
         manifest,
@@ -324,15 +338,14 @@ def test_caption_manifest_falls_back_to_deterministic_on_vlm_error(tmp_path):
     )
 
     assert summary.scanned == 1
-    assert summary.captioned == 1
-    assert summary.fallback == 1
-    assert image.metadata["caption_fallback"] is True
-    assert image.metadata["caption_fallback_backend"] == "deterministic"
+    assert summary.captioned == 0
+    assert summary.failed == 1
+    assert summary.fallback == 0
+    assert image.status == "processed"
+    assert image.caption_path is None
+    assert image.metadata["caption_stage"] == "failed"
     assert "boom" in image.metadata["caption_vlm_error"]
-    assert (
-        (root / image.caption_path).read_text(encoding="utf-8")
-        == "julia, 1girl, blue eyes\n"
-    )
+    assert not (root / "work" / "captions" / f"{image.image_id}.txt").exists()
 
 
 def test_caption_manifest_rejects_budget_that_cannot_preserve_trigger(tmp_path):
@@ -392,7 +405,7 @@ def test_truncate_caption_drops_later_content_when_budget_is_full():
     assert estimate_caption_tokens(caption) <= 12
 
 
-def test_vlm_truncation_preserves_custom_separator():
+def test_vlm_truncation_preserves_custom_separator(monkeypatch):
     config = CaptionConfig(
         backend="vlm",
         separator="; ",
@@ -409,36 +422,33 @@ def test_vlm_truncation_preserves_custom_separator():
         "background: indoors, soft lighting",
         subject="Julia",
         trigger="ignored",
-        tags=["portrait", "indoors", "smile"],
         config=config,
+        tokenizer=FakeClipTokenizer(),
     )
     assert caption.startswith("julia; ")
     assert "; " in caption
     assert estimate_caption_tokens(caption) <= 12
 
 
-def test_vlm_and_tags_share_one_caption_budget():
+def test_vlm_caption_ignores_tagger_tags_and_uses_exact_budget():
     config = CaptionConfig(
         backend="vlm",
-        max_tokens=20,
+        max_tokens=10,
         vlm=VlmConfig(
             model_path="model.gguf",
             mmproj_path="mmproj.gguf",
         ),
     )
     caption = build_vlm_caption(
-        "a woman with long blonde hair and blue eyes, wearing a black dress, indoors.",
+        "pose: standing\n"
+        "clothing: black dress\n"
+        "expression: smiling\n"
+        "background: indoors soft lighting",
         subject="Julia",
         trigger="ignored",
-        tags=[
-            "julia",
-            "long_blonde_hair",
-            "blue_eyes",
-            "black_dress",
-            "portrait",
-            "indoors",
-        ],
         config=config,
+        tokenizer=FakeClipTokenizer(),
     )
-    assert estimate_caption_tokens(caption) <= 20
-    assert caption.startswith("julia")
+    assert caption == "julia, standing, black dress, smiling"
+    assert len(FakeClipTokenizer()(caption)["input_ids"]) <= 10
+
