@@ -150,7 +150,7 @@ def caption_config_from_dict(
         runtime=vlm_runtime,
         chat_format=vlm_chat_format,
         prompt=string_field("prompt", DEFAULT_VLM_PROMPT),
-        max_tokens=int_field("max_tokens", 128),
+        max_tokens=int_field("max_tokens", 64),
         temperature=float_field("temperature", 0.1),
         top_p=float_field("top_p", 0.95),
         top_k=int_field("top_k", 40),
