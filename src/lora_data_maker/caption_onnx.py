@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -43,13 +44,65 @@ def _pick_input(inputs: dict[str, Any], *names: str) -> Any | None:
 class SmolVlmOnnxCaptioner:
     """SmolVLM2 caption runtime using the official ONNX components and ONNX Runtime."""
 
-    def __init__(self, config: VlmConfig) -> None:
-        if not config.model_path.strip():
-            raise VlmCaptionerError("VLM ONNX model directory is required")
+    _DEFAULT_REPO_ID = "HuggingFaceTB/SmolVLM2-500M-Video-Instruct"
+    _ONNX_FILES = (
+        "onnx/decoder_model_merged_q4f16.onnx",
+        "onnx/embed_tokens_q4f16.onnx",
+        "onnx/vision_encoder_q4f16.onnx",
+    )
+    _PROCESSOR_PATTERNS = (
+        "config.json",
+        "generation_config.json",
+        "preprocessor_config.json",
+        "processor_config.json",
+        "chat_template.json",
+        "added_tokens.json",
+        "special_tokens_map.json",
+        "tokenizer.json",
+        "tokenizer_config.json",
+        "merges.txt",
+        "vocab.json",
+    )
 
-        root = Path(config.model_path).expanduser().resolve()
-        if not root.is_dir():
-            raise VlmCaptionerError(f"VLM ONNX model directory not found: {root}")
+    @classmethod
+    def _resolve_model_root(cls, model_path: str) -> Path:
+        candidate = Path(model_path).expanduser()
+        if candidate.is_dir():
+            return candidate.resolve()
+
+        repo_id = model_path.strip() or cls._DEFAULT_REPO_ID
+        if re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", repo_id):
+            try:
+                from huggingface_hub import snapshot_download
+            except ImportError as exc:
+                raise VlmCaptionerError(
+                    "ONNX VLM auto-download requires huggingface-hub; "
+                    "install lora-data-maker[caption-onnx]"
+                ) from exc
+
+            try:
+                return Path(
+                    snapshot_download(
+                        repo_id=repo_id,
+                        allow_patterns=[
+                            *cls._PROCESSOR_PATTERNS,
+                            *cls._ONNX_FILES,
+                        ],
+                    )
+                ).resolve()
+            except Exception as exc:
+                raise VlmCaptionerError(
+                    f"could not download SmolVLM2 model {repo_id!r}: {exc}"
+                ) from exc
+
+        raise VlmCaptionerError(
+            f"VLM ONNX model directory not found: {candidate.resolve()}; "
+            "use a local directory or a Hugging Face repo ID such as "
+            f"{cls._DEFAULT_REPO_ID}"
+        )
+
+    def __init__(self, config: VlmConfig) -> None:
+        root = self._resolve_model_root(config.model_path)
 
         onnx_dir = root / "onnx"
         decoder_path = onnx_dir / "decoder_model_merged_q4f16.onnx"
@@ -284,4 +337,3 @@ class SmolVlmOnnxCaptioner:
                 f"could not open image {path}: {exc}"
             ) from exc
 
-        self._prompt = self.config_prompt
