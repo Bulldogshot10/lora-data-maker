@@ -121,41 +121,13 @@ n_gpu_layers = 0
 seed = 42
 ~~~
 
-For Google Gemini, set the API key in the shell and choose the Gemini runtime:
+In the WebUI, choose the Gemini or OpenAI-compatible runtime, paste the API key into the password field, and press **set**. The server stores the key only in its own process environment as `GEMINI_API_KEY` or `OPENAI_API_KEY`; the secret is never written to `config.toml`. After the key is set, the WebUI automatically discovers available models and fills the model selector.
 
-~~~bash
-export GEMINI_API_KEY="..."
-~~~
+Gemini model discovery calls the provider's model-list endpoint and keeps models that advertise `generateContent` support. The WebUI therefore does not require a model-name textbox. For OpenAI-compatible runtimes, the WebUI reads the standard `/models` response from the configured base URL and exposes the returned model IDs in the selector. OpenAI-compatible endpoints use `/chat/completions` for image-to-text captioning. citeturn293663search0turn405087search4
 
-~~~toml
-[caption.vlm]
-runtime = "gemini"
-api_key_env = "GEMINI_API_KEY"
-api_model = "gemini-2.5-flash-lite"
-api_base_url = "https://generativelanguage.googleapis.com/v1beta"
-max_tokens = 64
-temperature = 0.1
-top_p = 0.95
-~~~
+For an OpenAI-compatible custom provider, only the API base URL may need to be changed in Settings. The model is always selected from the discovered dropdown.
 
-For any OpenAI-compatible vision endpoint:
-
-~~~bash
-export OPENAI_API_KEY="..."
-~~~
-
-~~~toml
-[caption.vlm]
-runtime = "openai_compatible"
-api_key_env = "OPENAI_API_KEY"
-api_model = "your-vision-model"
-api_base_url = "https://api.openai.com/v1"
-max_tokens = 64
-temperature = 0.1
-top_p = 0.95
-~~~
-
-API keys are read from environment variables and are never written into the project config. Gemini uses the REST `generateContent` endpoint with inline image bytes; OpenAI-compatible mode uses `/chat/completions` with an image data URI.
+The selected model is stored in the dataset config so the next caption job uses the same model. The API key itself is process-only, so it must be set again after the WebUI server process is restarted.
 
 Every VLM runtime receives the same fixed caption constraint. The model must return exactly four fields in order: `pose`, `clothing`, `expression`, and `background`. Each field is limited to five words. Pose includes one camera-view term when visible, background includes lighting, and hair color, eye color, face, age, and gender are excluded. The parser rejects malformed output.
 
