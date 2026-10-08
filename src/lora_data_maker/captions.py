@@ -36,6 +36,7 @@ class CaptionConfig:
     subject_position: str = "first"
     trigger_from_subject: bool = True
     backend: str = "deterministic"
+    max_tokens: int = 77
     vlm: VlmConfig = field(default_factory=VlmConfig)
 
     def __post_init__(self) -> None:
@@ -47,6 +48,8 @@ class CaptionConfig:
             raise ValueError(
                 "caption.backend must be 'deterministic' or 'vlm'"
             )
+        if not 1 <= self.max_tokens <= 77:
+            raise ValueError("caption.max_tokens must be between 1 and 77")
         if self.backend == "vlm":
             if not self.vlm.model_path.strip() or not self.vlm.mmproj_path.strip():
                 raise ValueError(
@@ -71,6 +74,9 @@ def caption_config_from_dict(
     subject_position = data.get("subject_position", "first")
     trigger_from_subject = data.get("trigger_from_subject", True)
     backend = str(data.get("backend", "deterministic")).strip().lower()
+    max_tokens = data.get("max_tokens", 77)
+    if isinstance(max_tokens, bool) or not isinstance(max_tokens, int):
+        raise ValueError("config field caption.max_tokens must be an integer")
 
     if not isinstance(separator, str):
         raise ValueError("config field caption.separator must be a string")
@@ -140,6 +146,7 @@ def caption_config_from_dict(
         subject_position=subject_position,
         trigger_from_subject=trigger_from_subject,
         backend=backend,
+        max_tokens=max_tokens,
         vlm=vlm,
     )
 
@@ -230,30 +237,17 @@ def build_vlm_caption(
     *,
     subject: str,
     trigger: str,
+    tags: Iterable[str],
     config: CaptionConfig,
 ) -> str:
-    """Clean VLM text and inject the canonical trigger exactly once."""
-    value = clean_vlm_caption(raw_caption)
-    resolved_trigger = resolve_trigger(
+    """Clean and combine VLM + tagger output into one bounded caption."""
+    return combine_caption_sources(
+        vlm_caption=raw_caption,
+        tags=tags,
         subject=subject,
         trigger=trigger,
-        trigger_from_subject=config.trigger_from_subject,
+        config=config,
     )
-
-    if resolved_trigger:
-        pattern = re.compile(
-            rf"\b{re.escape(resolved_trigger)}\b",
-            re.IGNORECASE,
-        )
-        value = pattern.sub("", value).strip()
-        value = re.sub(r"\s*([,.;:])\s*", r"\1 ", value)
-        value = re.sub(r"\s+", " ", value).strip(" ,.;:")
-
-    if not resolved_trigger:
-        return value
-    if not value:
-        return resolved_trigger
-    return config.separator.join((resolved_trigger, value))
 
 
 def write_caption(path: Path | str, caption: str) -> Path:
@@ -317,11 +311,14 @@ def caption_manifest(
     hard_failures = 0
     try:
         for image in candidates:
-            deterministic_caption = build_caption(
-                image.tags,
-                subject=manifest.subject,
-                trigger=manifest.trigger,
-                config=settings,
+            deterministic_caption = truncate_caption(
+                build_caption(
+                    image.tags,
+                    subject=manifest.subject,
+                    trigger=manifest.trigger,
+                    config=settings,
+                ),
+                settings.max_tokens,
             )
             caption = deterministic_caption
             used_fallback = False
@@ -345,6 +342,7 @@ def caption_manifest(
                             raw_caption,
                             subject=manifest.subject,
                             trigger=manifest.trigger,
+                            tags=image.tags,
                             config=settings,
                         )
                         if not caption:
@@ -377,6 +375,8 @@ def caption_manifest(
                 settings.trigger_from_subject
             )
             image.metadata["caption_tag_count"] = len(image.tags)
+            image.metadata["caption_token_budget"] = settings.max_tokens
+            image.metadata["caption_estimated_tokens"] = estimate_caption_tokens(caption)
             image.metadata["caption_fallback"] = used_fallback
             if used_fallback:
                 fallback_count += 1
