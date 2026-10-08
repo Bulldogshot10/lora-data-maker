@@ -2100,11 +2100,22 @@ def create_app(root: Path | str = ".") -> FastAPI:
         current_caption = current_config.get("caption", {})
         if not isinstance(current_caption, dict):
             current_caption = {}
-        if not 1 <= int(payload.get("caption_max_tokens", current_caption.get("max_tokens", 77))) <= 77:
+        raw_caption_max_tokens = payload.get(
+            "caption_max_tokens",
+            current_caption.get("max_tokens", 77),
+        )
+        try:
+            caption_max_tokens = int(raw_caption_max_tokens)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(
+                400,
+                "caption max tokens must be an integer between 1 and 77",
+            ) from exc
+        if not 1 <= caption_max_tokens <= 77:
             raise HTTPException(400, "caption max tokens must be between 1 and 77")
         set_config(
             "caption",
-            {"max_tokens": int(payload.get("caption_max_tokens", current_caption.get("max_tokens", 77)))},
+            {"max_tokens": caption_max_tokens},
             current_root,
         )
         set_config(
