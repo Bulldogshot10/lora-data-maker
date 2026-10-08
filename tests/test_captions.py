@@ -241,6 +241,14 @@ def test_parse_vlm_caption_accepts_json_structured_output():
     ) == "standing, straight-on, white top, neutral, indoors, soft lighting"
 
 
+def test_parse_vlm_caption_accepts_json_camera_angle_alias():
+    assert parse_vlm_caption(
+        '{"pose":"standing", "camera angle":"straight-on", '
+        '"clothing":"black shirt", "expression":"neutral", '
+        '"background":"indoors"}'
+    ) == "standing, straight-on, black shirt, neutral, indoors"
+
+
 def test_parse_vlm_caption_accepts_longer_fields_without_failing():
     assert parse_vlm_caption(
         "pose: standing with both arms raised\n"
