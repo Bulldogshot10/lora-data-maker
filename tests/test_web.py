@@ -202,7 +202,10 @@ def test_webui_backend_switch_invalidates_vlm_captions(tmp_path: Path) -> None:
 
     deterministic = client.post(
         "/api/settings",
-        json=base,
+        json={
+            **base,
+            "caption_backend": "deterministic",
+        },
     )
     assert deterministic.status_code == 200
 
