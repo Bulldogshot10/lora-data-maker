@@ -97,6 +97,70 @@ def test_run_build_runs_stages_in_order_and_records_summary(tmp_path, monkeypatc
     )
 
 
+def test_run_build_skips_tag_stages_for_vlm_backend(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia-set",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace(
+        '[caption]\nbackend = "deterministic"',
+        '[caption]\nbackend = "vlm"',
+        1,
+    )
+    config_path.write_text(config, encoding="utf-8")
+
+    import lora_data_maker.cli as cli
+
+    calls = []
+
+    def fake_command(name):
+        def runner(args):
+            calls.append(name)
+            return 0
+
+        return runner
+
+    for stage in BUILD_STAGES:
+        monkeypatch.setattr(
+            cli,
+            f"command_{stage.replace('-', '_')}",
+            fake_command(stage),
+        )
+
+    summary = run_build(
+        path=root,
+        from_stage="validate",
+        to_stage="pack",
+    )
+
+    assert summary.success is True
+    assert [item.name for item in summary.stages] == [
+        "validate",
+        "clean",
+        "process",
+        "caption",
+        "export",
+        "pack",
+    ]
+    assert calls == [
+        "validate",
+        "clean",
+        "process",
+        "caption",
+        "export",
+        "pack",
+    ]
+
+
 def test_run_build_stops_on_failure_and_records_failed_stage(tmp_path, monkeypatch):
     root = tmp_path / "project"
     command_init(
