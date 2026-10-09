@@ -1930,13 +1930,13 @@ async function saveImageToPhone(button){
     const response=await fetch(src);
     if(!response.ok)throw Error("could not load image ("+response.status+")");
     const blob=await response.blob();
-    const filename=path.split(/[\\/]/).pop()||"image";
+    const filename=path.split("/").pop()||"image";
     if(typeof File==="function"&&window.isSecureContext&&navigator.share&&navigator.canShare){
       const file=new File([blob],filename,{type:blob.type||"application/octet-stream"});
       if(navigator.canShare({files:[file]})){
         try{
           await navigator.share({files:[file],title:filename});
-          toast("share completed. the image is saved wherever you selected.","ok");
+          toast("share completed. check the app you selected for the image.","ok");
           return;
         }catch(shareError){
           if(shareError&&shareError.name==="AbortError")return;
