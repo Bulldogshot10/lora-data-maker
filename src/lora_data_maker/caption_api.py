@@ -87,18 +87,18 @@ API_VLM_PROMPT = (
     "do not mention image quality, watermarks, text, metadata, ai, or this task. "
     "do not guess hidden or ambiguous details. "
     "replace every placeholder with a real short phrase; never output the angle-bracket placeholders. "
-    "required template, with exactly these labels and line breaks:\\n"
-    "pose: <body pose>\\n"
-    "angle camera: <camera angle or view>\\n"
-    "clothing: <visible clothing>\\n"
-    "expression: <visible expression>\\n"
-    "background: <background and lighting>\\n"
+    "required template, with exactly these labels and line breaks:\n"
+    "pose: <body pose>\n"
+    "angle camera: <camera angle or view>\n"
+    "clothing: <visible clothing>\n"
+    "expression: <visible expression>\n"
+    "background: <background and lighting>\n"
     "return only those five lines, no introduction, explanation, bullets, markdown, or quotes."
 )
 
 
 _CAPTION_FIELD_LABEL_RE = re.compile(
-    r"""(?im)(?<![A-Za-z0-9_])["']?(pose|angle[ _-]+camera|camera[ _-]+angle|clothing|expression|background)["']?\\s*:"""
+    r"""(?im)(?<![A-Za-z0-9_])["']?(pose|angle[ _-]+camera|camera[ _-]+angle|clothing|expression|background)["']?\s*:"""
 )
 
 
@@ -117,12 +117,12 @@ def _format_retry_prompt(previous: str) -> str:
         "Your previous response did not follow the required format. "
         "Inspect the image again and rewrite the answer using exactly these five labeled lines, "
         "in this order. Each value must be a short phrase of at most 5 words. "
-        "Do not return a paragraph or JSON. Return only the lines below, replacing the placeholders:\\n"
-        "pose: <body pose>\\n"
-        "angle camera: <camera angle or view>\\n"
-        "clothing: <visible clothing>\\n"
-        "expression: <visible expression>\\n"
-        "background: <background and lighting>\\n"
+        "Do not return a paragraph or JSON. Return only the lines below, replacing the placeholders:\n"
+        "pose: <body pose>\n"
+        "angle camera: <camera angle or view>\n"
+        "clothing: <visible clothing>\n"
+        "expression: <visible expression>\n"
+        "background: <background and lighting>\n"
         "Previous response to reformat: " + str(previous).strip()[:2000]
     )
 
