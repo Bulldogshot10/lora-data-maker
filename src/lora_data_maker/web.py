@@ -983,7 +983,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
           <div class="field">
             <label for="caption_api_key">API key</label>
             <div style="display:flex;gap:8px"><input id="caption_api_key" type="password" autocomplete="off" placeholder="enter once; blank keeps saved key"><button type="button" class="action-secondary" id="caption_api_key_set">save / reuse</button><button type="button" class="action-secondary" id="caption_api_key_clear">clear</button></div>
-            <div class="field-note" id="caption_api_key_status">API keys are stored in a private local credential file, shared across dataset folders and WebUI restarts.</div>
+            <div class="field-note" id="caption_api_key_status">API keys are saved locally with owner-only file permissions (plaintext, not encrypted), shared across dataset folders and WebUI restarts.</div>
           </div>
           <div class="field">
             <label for="caption_api_model">API model</label>
