@@ -127,7 +127,7 @@ Gemini model discovery calls the provider's model-list endpoint and keeps models
 
 For an OpenAI-compatible custom provider, only the API base URL may need to be changed in Settings. The model is always selected from the discovered dropdown. Providers that do not expose a compatible /models endpoint may need model configuration outside the current WebUI discovery flow.
 
-The selected model is stored in the dataset config so the next caption job uses the same model. The API key itself is process-only, so it must be set again after the WebUI server process is restarted.
+The selected model is stored in the dataset config so the next caption job uses the same model. API keys entered in the WebUI are saved per provider in a per-user credential file outside dataset folders (`~/.config/lora-data-maker/api-keys.json`, or under `$XDG_CONFIG_HOME` when set). The file and its containing directory are restricted to the current OS user; the keys are plaintext at rest, not encrypted. Keys are never written into a dataset `config.toml`, are restored when the WebUI server starts, and stay available when switching dataset projects. Use **clear** to remove the selected provider key.
 
 Every VLM runtime receives the same fixed caption constraint. The model must return exactly four fields in order: `pose`, `clothing`, `expression`, and `background`. Each field is limited to five words. Pose includes one camera-view term when visible, background includes lighting, and hair color, eye color, face, age, and gender are excluded. The parser rejects malformed output.
 
