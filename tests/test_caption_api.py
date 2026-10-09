@@ -133,30 +133,13 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
 
 
 
-def test_openai_compatible_retries_unstructured_caption(monkeypatch, tmp_path):
+def test_openai_compatible_returns_unstructured_caption_without_retry(monkeypatch, tmp_path):
     monkeypatch.setattr(requests, "Session", FakeSession)
     FakeSession.payloads.clear()
     FakeSession.responses[:] = [
         FakeResponse(
             {"choices": [{"message": {"content": "A woman standing in a black dress indoors."}}]}
-        ),
-        FakeResponse(
-            {
-                "choices": [
-                    {
-                        "message": {
-                            "content": (
-                                "pose: standing\n"
-                                "angle camera: straight-on\n"
-                                "clothing: black dress\n"
-                                "expression: neutral\n"
-                                "background: indoors, soft lighting"
-                            )
-                        }
-                    }
-                ]
-            }
-        ),
+        )
     ]
     monkeypatch.setenv("TEST_OPENAI_KEY", "secret")
 
@@ -176,13 +159,10 @@ def test_openai_compatible_retries_unstructured_caption(monkeypatch, tmp_path):
     finally:
         runtime.close()
 
-    assert raw.startswith("pose: standing")
-    assert len(FakeSession.payloads) == 2
-    first_prompt = FakeSession.payloads[0][1]["json"]["messages"][0]["content"][1]["text"]
-    retry_prompt = FakeSession.payloads[1][1]["json"]["messages"][0]["content"][1]["text"]
-    assert "required template" in first_prompt
-    assert "Previous response to reformat" in retry_prompt
-    assert "A woman standing in a black dress indoors." in retry_prompt
+    assert raw == "A woman standing in a black dress indoors."
+    assert len(FakeSession.payloads) == 1
+    prompt = FakeSession.payloads[0][1]["json"]["messages"][0]["content"][1]["text"]
+    assert "required template" in prompt
 
 
 def test_gemini_caption_normalizes_models_prefix(monkeypatch, tmp_path):
