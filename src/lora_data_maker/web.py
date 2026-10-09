@@ -1318,11 +1318,6 @@ async function loadVlmModels(){
     }else{
       $("caption_api_key_status").textContent="model discovery failed; saved key is kept. "+e.message;
     }
-  }finally{
-    if(stillCurrent()){
-      syncCaptionRuntimeUI();
-      select.disabled=false;
-    }
   }
 }
 function applySettings(s,force=false){
