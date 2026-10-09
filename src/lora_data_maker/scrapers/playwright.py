@@ -263,7 +263,7 @@ class PlaywrightImagesScraper(Scraper):
 
     def _build_url(self, query: str) -> str:
         if self.provider == "bing":
-            return f"{self.BING_URL}?{urlencode({'q': query, 'form': 'HDRSC2'})}"
+            return f"{self.BING_URL}?{urlencode({'q': query, 'form': 'HDRSC2', 'adlt': 'off'})}"
         return (
             f"{self.GOOGLE_URL}?"
             f"{urlencode({'q': query, 'tbm': 'isch', 'hl': 'en'})}"
