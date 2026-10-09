@@ -493,11 +493,17 @@ input:focus,select:focus{border-color:#5b507d;box-shadow:0 0 0 3px rgba(167,149,
 .tile-meta{padding:6px 2px 0}
 .tile-path{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:9px}
 .tile-status{margin-top:1px;color:var(--muted-2);font-size:8px;text-transform:uppercase;letter-spacing:.05em}
-.tile-actions{margin-top:6px;display:flex}
-.tile-delete{
-  width:100%;min-height:29px;padding:0 8px;
-  color:var(--bad);background:transparent;border:1px solid #4d2c33;
+.tile-actions{margin-top:6px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:5px}
+.tile-save,.tile-delete{
+  min-width:0;min-height:29px;padding:0 5px;
   border-radius:9px;font-size:9px;font-weight:790;
+}
+.tile-save{
+  color:#0b0b10;background:var(--accent);border:1px solid var(--accent);
+}
+.tile-save:hover{background:var(--accent-2)}
+.tile-delete{
+  color:var(--bad);background:transparent;border:1px solid #4d2c33;
 }
 .tile-delete:hover{background:var(--bad-soft);border-color:#70414a}
 .empty{
@@ -670,8 +676,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
     <nav class="nav" aria-label="primary">
       <button type="button" data-view="overview"><span class="nav-key">01</span><span>overview</span></button>
       <button type="button" data-view="collect"><span class="nav-key">02</span><span>collect</span></button>
-      <button type="button" data-view="prepare"><span class="nav-key">03</span><span>prepare</span></button>
-      <button type="button" data-view="settings"><span class="nav-key">04</span><span>settings</span></button>
+      <button type="button" data-view="settings"><span class="nav-key">03</span><span>settings</span></button>
     </nav>
 
     <section class="side-section">
@@ -768,6 +773,57 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
         </section>
       </div>
 
+      <section class="card card-pad" id="prepare-pipeline" style="margin-top:14px">
+        <div class="section-head">
+          <div>
+            <h2>prepare dataset</h2>
+            <p>run the full pipeline or execute one stage at a time when you need control.</p>
+          </div>
+          <span class="helper">one job at a time · project-bound execution</span>
+        </div>
+        <div class="pipeline">
+          <button type="button" class="step primary" data-run-stage="prepare">
+            <span class="step-number">all stages</span>
+            <span class="step-name">prepare dataset</span>
+            <span class="step-hint">run the stages enabled by your caption and tagger settings</span>
+          </button>
+          <button type="button" class="step" data-run-stage="validate">
+            <span class="step-number">01 · input</span><span class="step-name">validate</span><span class="step-hint">scan and validate raw images</span>
+          </button>
+          <button type="button" class="step" data-run-stage="clean">
+            <span class="step-number">02 · quality</span><span class="step-name">clean / dedup</span><span class="step-hint">remove duplicates, text, and low-quality images</span>
+          </button>
+          <button type="button" class="step" data-run-stage="process">
+            <span class="step-number">03 · image</span><span class="step-name">stage / resize</span><span class="step-hint">make training-ready images</span>
+          </button>
+          <button type="button" class="step" data-run-stage="tag">
+            <span class="step-number">04 · metadata</span><span class="step-name">tag</span><span class="step-hint">deterministic mode only</span>
+          </button>
+          <button type="button" class="step" data-run-stage="clean-tags">
+            <span class="step-number">05 · metadata</span><span class="step-name">clean tags</span><span class="step-hint">deterministic mode only</span>
+          </button>
+          <button type="button" class="step" data-run-stage="caption">
+            <span class="step-number">06 · metadata</span><span class="step-name">caption</span><span class="step-hint">write .txt captions</span>
+          </button>
+          <button type="button" class="step" data-run-stage="export">
+            <span class="step-number">07 · output</span><span class="step-name">export</span><span class="step-hint">create Kohya-ready folder</span>
+          </button>
+          <button type="button" class="step" data-run-stage="pack">
+            <span class="step-number">08 · output</span><span class="step-name">make ZIP</span><span class="step-hint">build final archive</span>
+          </button>
+        </div>
+        <div class="card-title-row" style="margin-top:17px">
+          <div class="card-title">how the pipeline flows</div>
+          <div class="card-kicker">safe to rerun stages</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:11px">
+          <span class="helper"><b>raw/</b> source images</span>
+          <span class="helper"><b>work/</b> processed images + captions</span>
+          <span class="helper"><b>output/</b> export + ZIP</span>
+          <span class="helper"><b>manifest.json</b> source of truth</span>
+        </div>
+      </section>
+
       <section class="card card-pad" style="margin-top:14px">
         <div class="section-head">
           <div>
@@ -842,63 +898,6 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
           </div>
         </section>
       </div>
-    </section>
-
-    <section class="view" data-view-panel="prepare">
-      <div class="section-head">
-        <div>
-          <h2>prepare dataset</h2>
-          <p>run the full pipeline or execute one stage at a time when you need control.</p>
-        </div>
-        <span class="helper">one job at a time · project-bound execution</span>
-      </div>
-
-      <section class="card card-pad">
-        <div class="pipeline">
-          <button type="button" class="step primary" data-run-stage="prepare">
-            <span class="step-number">all stages</span>
-            <span class="step-name">prepare dataset</span>
-            <span class="step-hint">validate → clean / dedup → process → caption → export → ZIP when VLM mode is selected</span>
-          </button>
-          <button type="button" class="step" data-run-stage="validate">
-            <span class="step-number">01 · input</span><span class="step-name">validate</span><span class="step-hint">scan and validate raw images</span>
-          </button>
-          <button type="button" class="step" data-run-stage="clean">
-            <span class="step-number">02 · quality</span><span class="step-name">clean / dedup</span><span class="step-hint">remove duplicates, text, and low-quality images</span>
-          </button>
-          <button type="button" class="step" data-run-stage="process">
-            <span class="step-number">03 · image</span><span class="step-name">stage / resize</span><span class="step-hint">make training-ready images</span>
-          </button>
-          <button type="button" class="step" data-run-stage="tag">
-            <span class="step-number">04 · metadata</span><span class="step-name">tag</span><span class="step-hint">deterministic mode only</span>
-          </button>
-          <button type="button" class="step" data-run-stage="clean-tags">
-            <span class="step-number">05 · metadata</span><span class="step-name">clean tags</span><span class="step-hint">deterministic mode only</span>
-          </button>
-          <button type="button" class="step" data-run-stage="caption">
-            <span class="step-number">06 · metadata</span><span class="step-name">caption</span><span class="step-hint">write .txt captions</span>
-          </button>
-          <button type="button" class="step" data-run-stage="export">
-            <span class="step-number">07 · output</span><span class="step-name">export</span><span class="step-hint">create Kohya-ready folder</span>
-          </button>
-          <button type="button" class="step" data-run-stage="pack">
-            <span class="step-number">08 · output</span><span class="step-name">make ZIP</span><span class="step-hint">build final archive</span>
-          </button>
-        </div>
-      </section>
-
-      <section class="card card-pad" style="margin-top:14px">
-        <div class="card-title-row">
-          <div class="card-title">how the pipeline flows</div>
-          <div class="card-kicker">safe to rerun stages</div>
-        </div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:11px">
-          <span class="helper"><b>raw/</b> source images</span>
-          <span class="helper"><b>work/</b> processed images + captions</span>
-          <span class="helper"><b>output/</b> export + ZIP</span>
-          <span class="helper"><b>manifest.json</b> source of truth</span>
-        </div>
-      </section>
     </section>
 
     <section class="view" data-view-panel="settings">
@@ -1094,6 +1093,10 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
   <div class="preview-meta">
     <div class="preview-name" id="preview-name"></div>
     <div class="preview-status" id="preview-status"></div>
+  </div>
+  <div class="modal-actions">
+    <button type="button" class="action-secondary" id="preview-close">close</button>
+    <button type="button" class="action-primary" id="preview-save">save to phone</button>
   </div>
 </dialog>
 
@@ -1469,7 +1472,7 @@ function renderGallery(images){
   }
   $("gallery").innerHTML=visible.map(x=>{
     const src="/media/"+encodeURIComponent(x.path);
-    return '<div class="tile" data-preview-path="'+esc(src)+'" data-preview-name="'+esc(x.path)+'" data-preview-status="'+esc(x.status)+'"><img loading="lazy" src="'+esc(src)+'" alt="'+esc(x.path)+'"><div class="tile-meta"><div class="tile-path" title="'+esc(x.path)+'">'+esc(x.path)+'</div><div class="tile-status">'+esc(x.status)+'</div><div class="tile-actions"><button type="button" class="tile-delete" data-image-delete="'+esc(x.id)+'" data-image-path="'+esc(x.path)+'"'+(busy?" disabled":"")+' aria-label="remove image">remove</button></div></div></div>';
+    return '<div class="tile" data-preview-path="'+esc(src)+'" data-preview-name="'+esc(x.path)+'" data-preview-status="'+esc(x.status)+'"><img loading="lazy" src="'+esc(src)+'" alt="'+esc(x.path)+'"><div class="tile-meta"><div class="tile-path" title="'+esc(x.path)+'">'+esc(x.path)+'</div><div class="tile-status">'+esc(x.status)+'</div><div class="tile-actions"><button type="button" class="tile-save" data-image-save="'+esc(src)+'" data-image-name="'+esc(x.path)+'" title="save image to phone" aria-label="save image to phone">save</button><button type="button" class="tile-delete" data-image-delete="'+esc(x.id)+'" data-image-path="'+esc(x.path)+'"'+(busy?" disabled":"")+' aria-label="remove image">remove</button></div></div></div>';
   }).join("");
 }
 function updateProjectHeader(s){
@@ -1486,7 +1489,8 @@ function updateProjectHeader(s){
     : "no active dataset";
 }
 function setView(view,push=true){
-  const allowed=new Set(["overview","collect","prepare","settings"]);
+  if(view==="prepare")view="overview";
+  const allowed=new Set(["overview","collect","settings"]);
   if(!allowed.has(view))view="overview";
   document.querySelectorAll("[data-view]").forEach(button=>button.classList.toggle("active",button.dataset.view===view));
   document.querySelectorAll("[data-view-panel]").forEach(panel=>panel.classList.toggle("active",panel.dataset.viewPanel===view));
@@ -1907,11 +1911,53 @@ function updateFileSummary(){
 }
 function openPreview(tile){
   const path=tile.dataset.previewPath;
+  const name=tile.dataset.previewName||"";
   $("preview-image").src=path;
-  $("preview-image").alt=tile.dataset.previewName||"";
-  $("preview-name").textContent=tile.dataset.previewName||"";
+  $("preview-image").alt=name;
+  $("preview-name").textContent=name;
   $("preview-status").textContent=tile.dataset.previewStatus||"";
+  $("preview-save").dataset.imageSave=path;
+  $("preview-save").dataset.imageName=name;
   $("preview-modal").showModal();
+}
+async function saveImageToPhone(button){
+  const src=button.dataset.imageSave||"";
+  const path=button.dataset.imageName||"image";
+  if(!src){toast("image path is missing","bad");return;}
+  const wasDisabled=button.disabled;
+  button.disabled=true;
+  try{
+    const response=await fetch(src);
+    if(!response.ok)throw Error("could not load image ("+response.status+")");
+    const blob=await response.blob();
+    const filename=path.split(/[\\/]/).pop()||"image";
+    if(typeof File==="function"&&window.isSecureContext&&navigator.share&&navigator.canShare){
+      const file=new File([blob],filename,{type:blob.type||"application/octet-stream"});
+      if(navigator.canShare({files:[file]})){
+        try{
+          await navigator.share({files:[file],title:filename});
+          toast("share completed. the image is saved wherever you selected.","ok");
+          return;
+        }catch(shareError){
+          if(shareError&&shareError.name==="AbortError")return;
+        }
+      }
+    }
+    const objectUrl=URL.createObjectURL(blob);
+    const link=document.createElement("a");
+    link.href=objectUrl;
+    link.download=filename;
+    link.style.display="none";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
+    toast("download started. check Downloads, then move it to your gallery if needed.","ok");
+  }catch(error){
+    toast(error.message||"could not save image","bad");
+  }finally{
+    button.disabled=wasDisabled;
+  }
 }
 document.querySelectorAll("[data-view]").forEach(button=>{
   button.addEventListener("click",()=>setView(button.dataset.view));
@@ -1961,6 +2007,11 @@ $("job-footer").addEventListener("click",event=>{
   if(cancel)cancelScrape(cancel.dataset.jobCancel);
 });
 $("gallery").addEventListener("click",event=>{
+  const save=event.target.closest("[data-image-save]");
+  if(save){
+    saveImageToPhone(save);
+    return;
+  }
   const remove=event.target.closest("[data-image-delete]");
   if(remove){
     deleteImage(remove.dataset.imageDelete, remove.dataset.imagePath||"image");
@@ -1969,6 +2020,8 @@ $("gallery").addEventListener("click",event=>{
   const tile=event.target.closest("[data-preview-path]");
   if(tile)openPreview(tile);
 });
+$("preview-save").addEventListener("click",()=>saveImageToPhone($("preview-save")));
+$("preview-close").addEventListener("click",()=>$("preview-modal").close());
 const drop=$("drop");
 ["dragenter","dragover"].forEach(type=>drop.addEventListener(type,event=>{
   event.preventDefault();
