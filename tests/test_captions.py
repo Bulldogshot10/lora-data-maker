@@ -335,6 +335,9 @@ def test_caption_manifest_keeps_unstructured_api_caption_and_marks_warning(tmp_p
     assert image.metadata["caption_vlm_format_warning"].startswith(
         "VLM caption does not contain the expected"
     )
+    assert image.metadata["caption_vlm_raw_output"] == (
+        "A woman standing in a black dress indoors."
+    )
     assert (
         (root / image.caption_path).read_text(encoding="utf-8")
         == "julia, A woman standing in a black dress indoors.\n"
