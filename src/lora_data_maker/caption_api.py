@@ -4,6 +4,7 @@ import base64
 import io
 import mimetypes
 import os
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -145,19 +146,33 @@ class _ApiVlmCaptioner:
         try:
             import requests
 
+            self._session_factory = requests.Session
             self._session = requests.Session()
+            self._thread_local = threading.local()
+            self._thread_local.session = self._session
+            self._sessions = [self._session]
+            self._sessions_lock = threading.Lock()
         except ImportError as exc:
             raise VlmCaptionerError(
                 "API VLM captions require the requests package"
             ) from exc
 
+    def _get_session(self):
+        session = getattr(self._thread_local, "session", None)
+        if session is not None:
+            return session
+        session = self._session_factory()
+        self._thread_local.session = session
+        with self._sessions_lock:
+            self._sessions.append(session)
+        return session
+
     def _post(self, url: str, *, headers: dict[str, str], payload: dict[str, Any]) -> Any:
-        assert self._session is not None
         retryable_statuses = {429, 500, 502, 503, 504}
 
         for attempt in range(3):
             try:
-                response = self._session.post(
+                response = self._get_session().post(
                     url,
                     headers=headers,
                     json=payload,
@@ -191,9 +206,11 @@ class _ApiVlmCaptioner:
             time.sleep(max(0.0, delay))
 
     def close(self) -> None:
-        session = self._session
+        with self._sessions_lock:
+            sessions = list(self._sessions)
+            self._sessions.clear()
         self._session = None
-        if session is not None:
+        for session in sessions:
             try:
                 session.close()
             except Exception:
