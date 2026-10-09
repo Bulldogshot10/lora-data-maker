@@ -78,19 +78,53 @@ def _extract_openai_text(data: dict[str, Any]) -> str:
 
 API_VLM_PROMPT = (
     "caption this image for a stable diffusion character lora dataset. "
-    "return exactly these 5 fields, one per line. "
-    "fields must be in this order: pose, angle camera, clothing, expression, background. "
-    "use short phrases only, with a maximum of 5 words per field. "
-    "pose: describe body pose. "
-    "angle camera: describe the visible camera angle or view. "
-    "clothing: describe visible clothing. "
-    "expression: describe visible expression. "
-    "background: describe the visible background and include lighting. "
+    "return exactly these 5 fields, in this exact order, one field per line. "
+    "copy the field labels exactly as written in the required template below. "
+    "each field value must be a short phrase, maximum 5 words. "
+    "describe body pose; describe the visible camera angle or view; describe visible clothing; "
+    "describe visible expression; describe the visible background and include lighting. "
     "do not mention hair color, eye color, face, age, or gender. "
     "do not mention image quality, watermarks, text, metadata, ai, or this task. "
     "do not guess hidden or ambiguous details. "
-    "no extra text, explanation, bullets, markdown, or quotes."
+    "replace every placeholder with a real short phrase; never output the angle-bracket placeholders. "
+    "required template, with exactly these labels and line breaks:\\n"
+    "pose: <body pose>\\n"
+    "angle camera: <camera angle or view>\\n"
+    "clothing: <visible clothing>\\n"
+    "expression: <visible expression>\\n"
+    "background: <background and lighting>\\n"
+    "return only those five lines, no introduction, explanation, bullets, markdown, or quotes."
 )
+
+
+_CAPTION_FIELD_LABEL_RE = re.compile(
+    r"""(?im)(?<![A-Za-z0-9_])["']?(pose|angle[ _-]+camera|camera[ _-]+angle|clothing|expression|background)["']?\\s*:"""
+)
+
+
+def _has_all_caption_fields(text: str) -> bool:
+    found: set[str] = set()
+    for match in _CAPTION_FIELD_LABEL_RE.finditer(str(text)):
+        name = re.sub(r"[ _-]+", " ", match.group(1).lower()).strip()
+        if name == "camera angle":
+            name = "angle camera"
+        found.add(name)
+    return {"pose", "angle camera", "clothing", "expression", "background"} <= found
+
+
+def _format_retry_prompt(previous: str) -> str:
+    return (
+        "Your previous response did not follow the required format. "
+        "Inspect the image again and rewrite the answer using exactly these five labeled lines, "
+        "in this order. Each value must be a short phrase of at most 5 words. "
+        "Do not return a paragraph or JSON. Return only the lines below, replacing the placeholders:\\n"
+        "pose: <body pose>\\n"
+        "angle camera: <camera angle or view>\\n"
+        "clothing: <visible clothing>\\n"
+        "expression: <visible expression>\\n"
+        "background: <background and lighting>\\n"
+        "Previous response to reformat: " + str(previous).strip()[:2000]
+    )
 
 
 class _ApiVlmCaptioner:
@@ -186,59 +220,64 @@ class GeminiVlmCaptioner(_ApiVlmCaptioner):
     def caption(self, image_path: Path | str) -> str:
         path = Path(image_path).expanduser().resolve()
         mime_type, encoded = _image_payload(path)
-
-        payload = {
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [
-                        {
-                            "inline_data": {
-                                "mime_type": mime_type,
-                                "data": encoded,
-                            }
-                        },
-                        {"text": API_VLM_PROMPT},
-                    ],
-                }
-            ],
-        }
         url = f"{self._base_url}/models/{self._model}:generateContent"
 
-        data = self._post(
-            url,
-            headers={
-                "Content-Type": "application/json",
-                "x-goog-api-key": self._api_key,
-            },
-            payload=payload,
-        )
-
-        try:
-            candidates = data["candidates"]
-            parts = candidates[0]["content"]["parts"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise VlmCaptionerError(
-                "Gemini API returned no candidate text"
-            ) from exc
-
-        answer_parts: list[str] = []
-        for part in parts:
-            if not isinstance(part, dict):
-                continue
-            if part.get("thought") is True:
-                continue
-            value = part.get("text")
-            if isinstance(value, str) and value.strip():
-                answer_parts.append(value.strip())
-
-        text = "\n".join(answer_parts).strip()
-        if not text:
-            finish_reason = candidates[0].get("finishReason") if isinstance(candidates[0], dict) else None
-            raise VlmCaptionerError(
-                "Gemini API returned no visible caption text"
-                + (f" (finishReason={finish_reason!r})" if finish_reason else "")
+        def request_caption(prompt: str) -> str:
+            payload = {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [
+                            {
+                                "inline_data": {
+                                    "mime_type": mime_type,
+                                    "data": encoded,
+                                }
+                            },
+                            {"text": prompt},
+                        ],
+                    }
+                ],
+            }
+            data = self._post(
+                url,
+                headers={
+                    "Content-Type": "application/json",
+                    "x-goog-api-key": self._api_key,
+                },
+                payload=payload,
             )
+
+            try:
+                candidates = data["candidates"]
+                parts = candidates[0]["content"]["parts"]
+            except (KeyError, IndexError, TypeError) as exc:
+                raise VlmCaptionerError(
+                    "Gemini API returned no candidate text"
+                ) from exc
+
+            answer_parts: list[str] = []
+            for part in parts:
+                if not isinstance(part, dict):
+                    continue
+                if part.get("thought") is True:
+                    continue
+                value = part.get("text")
+                if isinstance(value, str) and value.strip():
+                    answer_parts.append(value.strip())
+
+            text = "\n".join(answer_parts).strip()
+            if not text:
+                finish_reason = candidates[0].get("finishReason") if isinstance(candidates[0], dict) else None
+                raise VlmCaptionerError(
+                    "Gemini API returned no visible caption text"
+                    + (f" (finishReason={finish_reason!r})" if finish_reason else "")
+                )
+            return text
+
+        text = request_caption(API_VLM_PROMPT)
+        if not _has_all_caption_fields(text):
+            text = request_caption(_format_retry_prompt(text))
         return text
 
 
@@ -266,36 +305,41 @@ class OpenAICompatibleVlmCaptioner(_ApiVlmCaptioner):
         path = Path(image_path).expanduser().resolve()
         image_url = _data_uri(path)
 
-        payload = {
-            "model": self._model,
-            "messages": [
-                {
-                    "role": "user",
-                    "content": [
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": image_url},
-                        },
-                        {
-                            "type": "text",
-                            "text": API_VLM_PROMPT,
-                        },
-                    ],
-                }
-            ],
-        }
-
-        data = self._post(
-            self._url,
-            headers={
-                "Authorization": f"Bearer {self._api_key}",
-                "Content-Type": "application/json",
-            },
-            payload=payload,
-        )
-        text = _extract_openai_text(data).strip()
-        if not text:
-            raise VlmCaptionerError(
-                "OpenAI-compatible API returned empty caption text"
+        def request_caption(prompt: str) -> str:
+            payload = {
+                "model": self._model,
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "type": "image_url",
+                                "image_url": {"url": image_url},
+                            },
+                            {
+                                "type": "text",
+                                "text": prompt,
+                            },
+                        ],
+                    }
+                ],
+            }
+            data = self._post(
+                self._url,
+                headers={
+                    "Authorization": f"Bearer {self._api_key}",
+                    "Content-Type": "application/json",
+                },
+                payload=payload,
             )
+            text = _extract_openai_text(data).strip()
+            if not text:
+                raise VlmCaptionerError(
+                    "OpenAI-compatible API returned empty caption text"
+                )
+            return text
+
+        text = request_caption(API_VLM_PROMPT)
+        if not _has_all_caption_fields(text):
+            text = request_caption(_format_retry_prompt(text))
         return text
