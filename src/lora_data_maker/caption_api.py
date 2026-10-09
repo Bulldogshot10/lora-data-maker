@@ -97,36 +97,6 @@ API_VLM_PROMPT = (
 )
 
 
-_CAPTION_FIELD_LABEL_RE = re.compile(
-    r"""(?im)(?<![A-Za-z0-9_])["']?(pose|angle[ _-]+camera|camera[ _-]+angle|clothing|expression|background)["']?\s*:"""
-)
-
-
-def _has_all_caption_fields(text: str) -> bool:
-    found: set[str] = set()
-    for match in _CAPTION_FIELD_LABEL_RE.finditer(str(text)):
-        name = re.sub(r"[ _-]+", " ", match.group(1).lower()).strip()
-        if name == "camera angle":
-            name = "angle camera"
-        found.add(name)
-    return {"pose", "angle camera", "clothing", "expression", "background"} <= found
-
-
-def _format_retry_prompt(previous: str) -> str:
-    return (
-        "Your previous response did not follow the required format. "
-        "Use the image and previous response to produce a corrected caption. "
-        "Each value must be a short phrase of at most 5 words. "
-        "Do not return a paragraph, JSON, explanation, or markdown. "
-        "Previous response to reformat: " + str(previous).strip()[:2000] + "\n"
-        "Return only the five lines below, in this exact order, replacing every placeholder:\n"
-        "pose: <body pose>\n"
-        "angle camera: <camera angle or view>\n"
-        "clothing: <visible clothing>\n"
-        "expression: <visible expression>\n"
-        "background: <background and lighting>\n"
-    )
-
 
 class _ApiVlmCaptioner:
     def __init__(self, config: VlmConfig) -> None:
@@ -276,10 +246,7 @@ class GeminiVlmCaptioner(_ApiVlmCaptioner):
                 )
             return text
 
-        text = request_caption(API_VLM_PROMPT)
-        if not _has_all_caption_fields(text):
-            text = request_caption(_format_retry_prompt(text))
-        return text
+        return request_caption(API_VLM_PROMPT)
 
 
 class OpenAICompatibleVlmCaptioner(_ApiVlmCaptioner):
@@ -340,7 +307,4 @@ class OpenAICompatibleVlmCaptioner(_ApiVlmCaptioner):
                 )
             return text
 
-        text = request_caption(API_VLM_PROMPT)
-        if not _has_all_caption_fields(text):
-            text = request_caption(_format_retry_prompt(text))
-        return text
+        return request_caption(API_VLM_PROMPT)
