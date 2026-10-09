@@ -119,12 +119,12 @@ def _format_retry_prompt(previous: str) -> str:
         "Each value must be a short phrase of at most 5 words. "
         "Do not return a paragraph, JSON, explanation, or markdown. "
         "Previous response to reformat: " + str(previous).strip()[:2000] + "\n"
-        "Return only the five lines below, in this exact order, replacing every placeholder:\\n"
-        "pose: <body pose>\\n"
-        "angle camera: <camera angle or view>\\n"
-        "clothing: <visible clothing>\\n"
-        "expression: <visible expression>\\n"
-        "background: <background and lighting>\\n"
+        "Return only the five lines below, in this exact order, replacing every placeholder:\n"
+        "pose: <body pose>\n"
+        "angle camera: <camera angle or view>\n"
+        "clothing: <visible clothing>\n"
+        "expression: <visible expression>\n"
+        "background: <background and lighting>\n"
     )
 
 
