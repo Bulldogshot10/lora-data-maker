@@ -6,6 +6,19 @@ on:
   pull_request:
     branches: ["main"]
   workflow_dispatch:
+    inputs:
+      heavy_suite:
+        description: "Optional model/runtime smoke test to run"
+        type: choice
+        required: true
+        default: none
+        options:
+          - none
+          - yolox
+          - face
+          - textocr
+          - caption
+          - all
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -25,10 +38,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
 
-      - name: Install package
-        run: python -m pip install .
-
-      - name: Install test tooling and optional runtimes
+      - name: Install test dependencies
         run: python -m pip install ".[web,tagger,quality,dev]"
 
       - name: Compile
@@ -92,7 +102,7 @@ jobs:
 
 
   yolox-smoke:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && (inputs.heavy_suite == 'yolox' || inputs.heavy_suite == 'all')
     name: YOLOX person detector smoke
     runs-on: ubuntu-24.04
     steps:
@@ -119,7 +129,7 @@ jobs:
         run: pytest -q tests/test_person_detector.py -k real_model_smoke
 
   face-smoke:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && (inputs.heavy_suite == 'face' || inputs.heavy_suite == 'all')
     name: YuNet face smoke
     runs-on: ubuntu-24.04
     steps:
@@ -139,7 +149,7 @@ jobs:
 
 
   textocr-smoke:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && (inputs.heavy_suite == 'textocr' || inputs.heavy_suite == 'all')
     name: PP-OCR text detector smoke
     runs-on: ubuntu-24.04
     steps:
@@ -173,7 +183,7 @@ jobs:
         run: pytest -q tests/test_text_detector.py -k ppocr_real_model_smoke
 
   caption-runtime-smoke:
-    if: github.event_name == 'workflow_dispatch'
+    if: github.event_name == 'workflow_dispatch' && (inputs.heavy_suite == 'caption' || inputs.heavy_suite == 'all')
     name: Caption VLM runtime smoke
     runs-on: ubuntu-24.04
     steps:
