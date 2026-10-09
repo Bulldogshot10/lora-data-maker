@@ -376,3 +376,87 @@ def test_gemini_downscales_large_images_before_upload(monkeypatch, tmp_path):
     assert inline["mime_type"] == "image/jpeg"
     optimized = Image.open(io.BytesIO(base64.b64decode(inline["data"])))
     assert max(optimized.size) == 1024
+
+
+def test_remote_api_caption_manifest_uses_bounded_concurrency(monkeypatch, tmp_path):
+    import threading
+    import time
+
+    lock = threading.Lock()
+    active = 0
+    max_active = 0
+
+    class TrackingSession:
+        def post(self, url, **kwargs):
+            nonlocal active, max_active
+            with lock:
+                active += 1
+                max_active = max(max_active, active)
+            try:
+                time.sleep(0.08)
+                return FakeResponse(
+                    {
+                        "candidates": [
+                            {
+                                "content": {
+                                    "parts": [
+                                        {
+                                            "text": (
+                                                "pose: standing\\n"
+                                                "angle camera: straight-on\\n"
+                                                "clothing: white top\\n"
+                                                "expression: neutral\\n"
+                                                "background: indoors with soft lighting"
+                                            )
+                                        }
+                                    ]
+                                }
+                            }
+                        ]
+                    }
+                )
+            finally:
+                with lock:
+                    active -= 1
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(requests, "Session", TrackingSession)
+    monkeypatch.setenv("TEST_GEMINI_KEY", "secret")
+    root = tmp_path / "project"
+    manifest = ProjectManifest(
+        project_name="julia",
+        subject="julia",
+        trigger="julia",
+    )
+    for index in range(4):
+        processed = root / "work" / "processed" / f"{index}.jpg"
+        processed.parent.mkdir(parents=True, exist_ok=True)
+        Image.new("RGB", (32, 32), "white").save(processed)
+        manifest.add_image(
+            ImageRecord(
+                path=f"raw/{index}.jpg",
+                status="processed",
+                processed_path=f"work/processed/{index}.jpg",
+            )
+        )
+
+    summary = caption_manifest(
+        manifest,
+        root=root,
+        output_dir=root / "work" / "captions",
+        config=CaptionConfig(
+            backend="vlm",
+            vlm=VlmConfig(
+                runtime="gemini",
+                api_key_env="TEST_GEMINI_KEY",
+                api_model="gemini-test",
+                api_base_url="https://example.test/v1beta",
+            ),
+        ),
+    )
+
+    assert summary.captioned == 4
+    assert summary.failed == 0
+    assert max_active == 2
