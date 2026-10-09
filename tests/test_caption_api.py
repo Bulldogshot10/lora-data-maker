@@ -327,3 +327,52 @@ def test_api_vlm_caption_injects_trigger_from_four_fields(monkeypatch, tmp_path)
     record = next(iter(manifest.images.values()))
     caption = (root / record.caption_path).read_text(encoding="utf-8")
     assert caption == "julia, standing straight-on, wearing a white spandex top, neutral expression, indoors with soft lighting\n"
+
+
+def test_gemini_downscales_large_images_before_upload(monkeypatch, tmp_path):
+    import base64
+    import io
+
+    monkeypatch.setattr(requests, "Session", FakeSession)
+    FakeSession.payloads.clear()
+    FakeSession.responses[:] = [
+        FakeResponse(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [
+                                {
+                                    "text": (
+                                        "pose: standing\\nangle camera: straight-on\\nclothing: white top\\nexpression: neutral\\nbackground: indoors with soft lighting"
+                                    )
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        )
+    ]
+    monkeypatch.setenv("TEST_GEMINI_KEY", "secret")
+
+    image = tmp_path / "large.png"
+    Image.new("RGB", (2048, 1536), "white").save(image, format="PNG")
+    runtime = GeminiVlmCaptioner(
+        VlmConfig(
+            runtime="gemini",
+            api_key_env="TEST_GEMINI_KEY",
+            api_model="gemini-test",
+            api_base_url="https://example.test/v1beta",
+        )
+    )
+    try:
+        runtime.caption(image)
+    finally:
+        runtime.close()
+
+    _, kwargs = FakeSession.payloads[-1]
+    inline = kwargs["json"]["contents"][0]["parts"][0]["inline_data"]
+    assert inline["mime_type"] == "image/jpeg"
+    optimized = Image.open(io.BytesIO(base64.b64decode(inline["data"])))
+    assert max(optimized.size) == 1024
