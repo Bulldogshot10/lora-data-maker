@@ -4,6 +4,7 @@ import json
 import os
 import re
 import tempfile
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Iterable
@@ -664,6 +665,8 @@ def caption_manifest(
     hard_failures = 0
     captioned_count = 0
     failed_count = 0
+    api_executor: ThreadPoolExecutor | None = None
+    api_futures: dict[str, Future[str]] = {}
     try:
         resolved_trigger = resolve_trigger(
             subject=manifest.subject,
@@ -678,6 +681,34 @@ def caption_manifest(
                 )
 
         total_candidates = len(candidates)
+        parallel_remote_api = (
+            settings.backend == "vlm"
+            and captioner is None
+            and settings.vlm.runtime in {"gemini", "openai_compatible"}
+            and runtime is not None
+        )
+        if parallel_remote_api:
+            api_items: list[tuple[str, Path]] = []
+            for image in candidates:
+                processed_path = (
+                    root_path / str(image.processed_path)
+                    if image.processed_path
+                    else None
+                )
+                if processed_path is not None and processed_path.is_file():
+                    api_items.append((image.image_id, processed_path))
+            if api_items:
+                # Two concurrent remote requests reduce wall-clock time while
+                # keeping provider rate-limit pressure modest.
+                api_executor = ThreadPoolExecutor(
+                    max_workers=min(2, len(api_items)),
+                    thread_name_prefix="ldm-api-caption",
+                )
+                api_futures = {
+                    image_id: api_executor.submit(runtime.caption, processed_path)
+                    for image_id, processed_path in api_items
+                }
+
         for index, image in enumerate(candidates, start=1):
             caption = ""
             if progress is not None:
@@ -715,7 +746,12 @@ def caption_manifest(
 
                 try:
                     assert runtime is not None
-                    raw_caption = runtime.caption(processed_path)
+                    future = api_futures.get(image.image_id)
+                    raw_caption = (
+                        future.result()
+                        if future is not None
+                        else runtime.caption(processed_path)
+                    )
                     if settings.vlm.runtime in {"gemini", "openai_compatible"}:
                         try:
                             parse_vlm_fields(raw_caption)
@@ -844,6 +880,8 @@ def caption_manifest(
                     f"captioned {index}/{total_candidates}: {image.path}",
                 )
     finally:
+        if api_executor is not None:
+            api_executor.shutdown(wait=True, cancel_futures=True)
         if owns_runtime and runtime is not None:
             runtime.close()
 
