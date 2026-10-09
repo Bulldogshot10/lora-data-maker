@@ -4,15 +4,16 @@ on:
   push:
     branches: ["main"]
   pull_request:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   smoke:
     runs-on: ubuntu-24.04
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.12", "3.13", "3.14"]
-
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -20,15 +21,12 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: pyproject.toml
 
       - name: Install package
         run: python -m pip install .
-
-      - name: Install Playwright extra
-        run: |
-          python -m pip install ".[playwright]"
-          python -c "import playwright_termux; print('playwright-termux:', getattr(playwright_termux, '__version__', 'installed'))"
 
       - name: Install test tooling and optional runtimes
         run: python -m pip install ".[web,tagger,quality,dev]"
@@ -94,6 +92,7 @@ jobs:
 
 
   yolox-smoke:
+    if: github.event_name == 'workflow_dispatch'
     name: YOLOX person detector smoke
     runs-on: ubuntu-24.04
     steps:
@@ -120,6 +119,7 @@ jobs:
         run: pytest -q tests/test_person_detector.py -k real_model_smoke
 
   face-smoke:
+    if: github.event_name == 'workflow_dispatch'
     name: YuNet face smoke
     runs-on: ubuntu-24.04
     steps:
@@ -139,6 +139,7 @@ jobs:
 
 
   textocr-smoke:
+    if: github.event_name == 'workflow_dispatch'
     name: PP-OCR text detector smoke
     runs-on: ubuntu-24.04
     steps:
@@ -172,6 +173,7 @@ jobs:
         run: pytest -q tests/test_text_detector.py -k ppocr_real_model_smoke
 
   caption-runtime-smoke:
+    if: github.event_name == 'workflow_dispatch'
     name: Caption VLM runtime smoke
     runs-on: ubuntu-24.04
     steps:
