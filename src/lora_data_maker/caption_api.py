@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import io
 import mimetypes
 import os
 import time
@@ -19,6 +20,32 @@ def _image_payload(path: Path) -> tuple[str, str]:
         ) from exc
 
     mime_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    try:
+        from PIL import Image, ImageOps
+
+        with Image.open(io.BytesIO(payload)) as source:
+            width, height = source.size
+            needs_optimization = (
+                max(width, height) > 1024 or len(payload) > 1_500_000
+            )
+            if needs_optimization:
+                image = ImageOps.exif_transpose(source)
+                if image.mode == "RGBA" or "transparency" in image.info:
+                    rgba = image.convert("RGBA")
+                    background = Image.new("RGB", rgba.size, "white")
+                    background.paste(rgba, mask=rgba.getchannel("A"))
+                    image = background
+                else:
+                    image = image.convert("RGB")
+                image.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
+                buffer = io.BytesIO()
+                image.save(buffer, format="JPEG", quality=85, optimize=True)
+                payload = buffer.getvalue()
+                mime_type = "image/jpeg"
+    except Exception:
+        # Keep the original payload if an image format cannot be optimized.
+        pass
+
     return mime_type, base64.b64encode(payload).decode("ascii")
 
 
