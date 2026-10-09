@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 import base64
-import io
 import mimetypes
 import os
-import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -21,34 +19,7 @@ def _image_payload(path: Path) -> tuple[str, str]:
         ) from exc
 
     mime_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
-    try:
-        from PIL import Image, ImageOps
-
-        with Image.open(io.BytesIO(payload)) as source:
-            width, height = source.size
-            needs_optimization = (
-                max(width, height) > 1024 or len(payload) > 1_500_000
-            )
-            if needs_optimization:
-                image = ImageOps.exif_transpose(source)
-                if image.mode == "RGBA" or "transparency" in image.info:
-                    rgba = image.convert("RGBA")
-                    background = Image.new("RGB", rgba.size, "white")
-                    background.paste(rgba, mask=rgba.getchannel("A"))
-                    image = background
-                else:
-                    image = image.convert("RGB")
-                image.thumbnail((1024, 1024), Image.Resampling.LANCZOS)
-                buffer = io.BytesIO()
-                image.save(buffer, format="JPEG", quality=85, optimize=True)
-                payload = buffer.getvalue()
-                mime_type = "image/jpeg"
-    except Exception:
-        # Keep the original payload if an image format cannot be optimized.
-        pass
-
     return mime_type, base64.b64encode(payload).decode("ascii")
-
 
 def _response_error(response: Any) -> str:
     try:
@@ -146,33 +117,19 @@ class _ApiVlmCaptioner:
         try:
             import requests
 
-            self._session_factory = requests.Session
             self._session = requests.Session()
-            self._thread_local = threading.local()
-            self._thread_local.session = self._session
-            self._sessions = [self._session]
-            self._sessions_lock = threading.Lock()
         except ImportError as exc:
             raise VlmCaptionerError(
                 "API VLM captions require the requests package"
             ) from exc
 
-    def _get_session(self):
-        session = getattr(self._thread_local, "session", None)
-        if session is not None:
-            return session
-        session = self._session_factory()
-        self._thread_local.session = session
-        with self._sessions_lock:
-            self._sessions.append(session)
-        return session
-
     def _post(self, url: str, *, headers: dict[str, str], payload: dict[str, Any]) -> Any:
+        assert self._session is not None
         retryable_statuses = {429, 500, 502, 503, 504}
 
         for attempt in range(3):
             try:
-                response = self._get_session().post(
+                response = self._session.post(
                     url,
                     headers=headers,
                     json=payload,
@@ -206,16 +163,13 @@ class _ApiVlmCaptioner:
             time.sleep(max(0.0, delay))
 
     def close(self) -> None:
-        with self._sessions_lock:
-            sessions = list(self._sessions)
-            self._sessions.clear()
+        session = self._session
         self._session = None
-        for session in sessions:
+        if session is not None:
             try:
                 session.close()
             except Exception:
                 pass
-
 
 class GeminiVlmCaptioner(_ApiVlmCaptioner):
     """VLM caption runtime backed by the Google Gemini REST API."""
