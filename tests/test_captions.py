@@ -277,6 +277,70 @@ def test_build_api_vlm_caption_injects_trigger_from_five_fields():
 
 
 
+def test_build_api_vlm_caption_keeps_unstructured_output_for_audit():
+    config = CaptionConfig(backend="vlm")
+    assert build_api_vlm_caption(
+        "A woman standing in a black dress indoors.",
+        subject="Julia",
+        trigger="ignored",
+        config=config,
+    ) == "julia, A woman standing in a black dress indoors."
+
+
+def test_caption_manifest_keeps_unstructured_api_caption_and_marks_warning(tmp_path):
+    root = tmp_path / "project"
+    manifest = ProjectManifest(
+        project_name="julia-set",
+        subject="julia",
+        trigger="julia-trigger",
+    )
+    image = ImageRecord(
+        path="raw/001.jpg",
+        status="processed",
+        tags=[],
+        processed_path="work/processed/001.jpg",
+    )
+    manifest.add_image(image)
+    processed = root / image.processed_path
+    processed.parent.mkdir(parents=True, exist_ok=True)
+    processed.write_bytes(b"processed-image")
+
+    class UnstructuredCaptioner:
+        def caption(self, image_path):
+            return "A woman standing in a black dress indoors."
+
+        def close(self):
+            raise AssertionError("caller must not close injected captioner")
+
+    config = CaptionConfig(
+        backend="vlm",
+        vlm=VlmConfig(
+            runtime="openai_compatible",
+            api_key_env="OPENAI_API_KEY",
+            api_model="vision-model",
+            api_base_url="https://ollama.com/v1",
+        ),
+    )
+    summary = caption_manifest(
+        manifest,
+        root=root,
+        output_dir=root / "work" / "captions",
+        config=config,
+        captioner=UnstructuredCaptioner(),
+    )
+
+    assert summary.captioned == 1
+    assert summary.failed == 0
+    assert image.status == "captioned"
+    assert image.metadata["caption_vlm_format_warning"].startswith(
+        "VLM caption does not contain the expected"
+    )
+    assert (
+        (root / image.caption_path).read_text(encoding="utf-8")
+        == "julia, A woman standing in a black dress indoors.\\n"
+    )
+
+
 def test_build_vlm_caption_removes_repeated_trigger_mentions():
     config = CaptionConfig(
         backend="vlm",
