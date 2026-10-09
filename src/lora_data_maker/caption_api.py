@@ -115,15 +115,16 @@ def _has_all_caption_fields(text: str) -> bool:
 def _format_retry_prompt(previous: str) -> str:
     return (
         "Your previous response did not follow the required format. "
-        "Inspect the image again and rewrite the answer using exactly these five labeled lines, "
-        "in this order. Each value must be a short phrase of at most 5 words. "
-        "Do not return a paragraph or JSON. Return only the lines below, replacing the placeholders:\n"
-        "pose: <body pose>\n"
-        "angle camera: <camera angle or view>\n"
-        "clothing: <visible clothing>\n"
-        "expression: <visible expression>\n"
-        "background: <background and lighting>\n"
-        "Previous response to reformat: " + str(previous).strip()[:2000]
+        "Use the image and previous response to produce a corrected caption. "
+        "Each value must be a short phrase of at most 5 words. "
+        "Do not return a paragraph, JSON, explanation, or markdown. "
+        "Previous response to reformat: " + str(previous).strip()[:2000] + "\n"
+        "Return only the five lines below, in this exact order, replacing every placeholder:\\n"
+        "pose: <body pose>\\n"
+        "angle camera: <camera angle or view>\\n"
+        "clothing: <visible clothing>\\n"
+        "expression: <visible expression>\\n"
+        "background: <background and lighting>\\n"
     )
 
 
