@@ -1920,44 +1920,21 @@ function openPreview(tile){
   $("preview-save").dataset.imageName=name;
   $("preview-modal").showModal();
 }
-async function saveImageToPhone(button){
+function saveImageToPhone(button){
   const src=button.dataset.imageSave||"";
   const path=button.dataset.imageName||"image";
   if(!src){toast("image path is missing","bad");return;}
-  const wasDisabled=button.disabled;
-  button.disabled=true;
-  try{
-    const response=await fetch(src);
-    if(!response.ok)throw Error("could not load image ("+response.status+")");
-    const blob=await response.blob();
-    const filename=path.split("/").pop()||"image";
-    if(typeof File==="function"&&window.isSecureContext&&navigator.share&&navigator.canShare){
-      const file=new File([blob],filename,{type:blob.type||"application/octet-stream"});
-      if(navigator.canShare({files:[file]})){
-        try{
-          await navigator.share({files:[file],title:filename});
-          toast("share completed. check the app you selected for the image.","ok");
-          return;
-        }catch(shareError){
-          if(shareError&&shareError.name==="AbortError")return;
-        }
-      }
-    }
-    const objectUrl=URL.createObjectURL(blob);
-    const link=document.createElement("a");
-    link.href=objectUrl;
-    link.download=filename;
-    link.style.display="none";
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    window.setTimeout(()=>URL.revokeObjectURL(objectUrl),1000);
-    toast("download started. check Downloads, then move it to your gallery if needed.","ok");
-  }catch(error){
-    toast(error.message||"could not save image","bad");
-  }finally{
-    button.disabled=wasDisabled;
-  }
+  const filename=path.split("/").pop()||"image";
+  const url=new URL(src,window.location.href);
+  url.searchParams.set("download","true");
+  const link=document.createElement("a");
+  link.href=url.toString();
+  link.download=filename;
+  link.style.display="none";
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  toast("download started. check Downloads or your gallery app.","ok");
 }
 document.querySelectorAll("[data-view]").forEach(button=>{
   button.addEventListener("click",()=>setView(button.dataset.view));
@@ -3410,13 +3387,17 @@ def create_app(
         return FileResponse(target, filename=target.name, media_type="application/zip")
 
     @app.get("/media/{relative:path}")
-    def media(relative: str):
+    def media(relative: str, download: bool = False):
         current_root = require_active_root()
         target = (current_root / relative).resolve()
         try: target.relative_to(current_root)
         except ValueError: raise HTTPException(403, "invalid media path")
         if not target.is_file(): raise HTTPException(404, "image not found")
-        return FileResponse(target, media_type=mimetypes.guess_type(target.name)[0] or "application/octet-stream")
+        return FileResponse(
+            target,
+            media_type=mimetypes.guess_type(target.name)[0] or "application/octet-stream",
+            filename=target.name if download else None,
+        )
 
     @app.post("/api/project/new")
     def new_project(payload: dict[str, Any]):
