@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import mimetypes
 import os
 import re
 import threading
+import time
 import uuid
 from collections.abc import Callable
 from pathlib import Path
@@ -19,6 +21,7 @@ from .captions import (
     reset_vlm_captions_for_deterministic,
 )
 from .config import load_config, write_default_config
+from .credentials import default_api_key_store_path, load_api_keys, save_api_keys
 from .dataset import DatasetProject
 from .export import export_manifest, safe_component
 from .manifest import find_image_by_source_url, register_image
@@ -2088,8 +2091,24 @@ class JobStore:
             return result
 
 
-def create_app(root: Path | str = ".") -> FastAPI:
+def create_app(
+    root: Path | str = ".",
+    *,
+    api_key_store_path: Path | str | None = None,
+) -> FastAPI:
     app = FastAPI(title="LoRA Data Maker WebUI")
+    credential_path = (
+        Path(api_key_store_path).expanduser().resolve()
+        if api_key_store_path is not None
+        else default_api_key_store_path()
+    )
+    for env_name, saved_key in load_api_keys(credential_path).items():
+        if not os.environ.get(env_name, "").strip():
+            os.environ[env_name] = saved_key
+    model_list_cache: dict[
+        tuple[str, str, str], tuple[float, list[dict[str, str]]]
+    ] = {}
+    model_list_cache_lock = threading.Lock()
     static_root = Path(__file__).resolve().parent / "static"
     configured_root = Path(root).expanduser().resolve()
     if (configured_root / "config.toml").is_file() and (configured_root / "manifest.json").is_file():
@@ -2411,12 +2430,62 @@ def create_app(root: Path | str = ".") -> FastAPI:
         if runtime not in {"gemini", "openai_compatible"}:
             raise HTTPException(400, "API key can only be set for an API VLM runtime")
         env_name, _ = _api_runtime_settings(runtime)
+        saved_keys = load_api_keys(credential_path)
+        clear_requested = bool(payload.get("clear", False))
         value = str(payload.get("api_key", "")).strip()
-        if value:
-            os.environ[env_name] = value
-        else:
+
+        if clear_requested:
+            saved_keys.pop(env_name, None)
+            try:
+                save_api_keys(credential_path, saved_keys)
+            except OSError as exc:
+                raise HTTPException(500, f"could not update local credential store: {exc}") from exc
             os.environ.pop(env_name, None)
-        return {"ok": True, "runtime": runtime, "env": env_name, "key_set": bool(value)}
+            with model_list_cache_lock:
+                for cache_key in list(model_list_cache):
+                    if cache_key[0] == runtime:
+                        model_list_cache.pop(cache_key, None)
+            return {
+                "ok": True,
+                "runtime": runtime,
+                "env": env_name,
+                "key_set": False,
+                "saved": False,
+                "cleared": True,
+            }
+
+        if value:
+            saved_keys[env_name] = value
+            try:
+                save_api_keys(credential_path, saved_keys)
+            except OSError as exc:
+                raise HTTPException(500, f"could not save API key locally: {exc}") from exc
+            os.environ[env_name] = value
+            with model_list_cache_lock:
+                for cache_key in list(model_list_cache):
+                    if cache_key[0] == runtime:
+                        model_list_cache.pop(cache_key, None)
+            return {
+                "ok": True,
+                "runtime": runtime,
+                "env": env_name,
+                "key_set": True,
+                "saved": True,
+                "cleared": False,
+            }
+
+        existing_key = os.environ.get(env_name, "").strip()
+        if not existing_key and saved_keys.get(env_name):
+            existing_key = saved_keys[env_name]
+            os.environ[env_name] = existing_key
+        return {
+            "ok": True,
+            "runtime": runtime,
+            "env": env_name,
+            "key_set": bool(existing_key),
+            "saved": bool(saved_keys.get(env_name)),
+            "cleared": False,
+        }
 
 
     @app.get("/api/vlm/models")
@@ -2433,6 +2502,23 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 f"{env_name} is not set; enter the API key in WebUI first",
             )
 
+        cache_key = (
+            selected,
+            api_base,
+            hashlib.sha256(api_key.encode("utf-8")).hexdigest(),
+        )
+        now = time.monotonic()
+        with model_list_cache_lock:
+            cached = model_list_cache.get(cache_key)
+            if cached and now - cached[0] < 600:
+                return {
+                    "runtime": selected,
+                    "env": env_name,
+                    "key_set": True,
+                    "models": [dict(item) for item in cached[1]],
+                    "cached": True,
+                }
+
         try:
             import requests
         except ImportError as exc:
@@ -2445,8 +2531,8 @@ def create_app(root: Path | str = ".") -> FastAPI:
             if selected == "gemini":
                 models: list[dict[str, str]] = []
                 page_token = ""
-                for _ in range(10):
-                    params = {"pageSize": "1000"}
+                for _ in range(3):
+                    params = {"pageSize": "100"}
                     if page_token:
                         params["pageToken"] = page_token
                     response = requests.get(
@@ -2477,11 +2563,17 @@ def create_app(root: Path | str = ".") -> FastAPI:
                     if not page_token:
                         break
                 models.sort(key=lambda item: item["label"].lower())
+                with model_list_cache_lock:
+                    model_list_cache[cache_key] = (
+                        time.monotonic(),
+                        [dict(item) for item in models],
+                    )
                 return {
                     "runtime": selected,
                     "env": env_name,
                     "key_set": True,
                     "models": models,
+                    "cached": False,
                 }
 
             models = []
@@ -2507,11 +2599,17 @@ def create_app(root: Path | str = ".") -> FastAPI:
                 if model_id:
                     models.append({"id": model_id, "label": model_id})
             models.sort(key=lambda item: item["label"].lower())
+            with model_list_cache_lock:
+                model_list_cache[cache_key] = (
+                    time.monotonic(),
+                    [dict(item) for item in models],
+                )
             return {
                 "runtime": selected,
                 "env": env_name,
                 "key_set": True,
                 "models": models,
+                "cached": False,
             }
         except HTTPException:
             raise
