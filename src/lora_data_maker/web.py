@@ -982,8 +982,8 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
         <div class="form-grid three" style="margin-top:12px">
           <div class="field">
             <label for="caption_api_key">API key</label>
-            <div style="display:flex;gap:8px"><input id="caption_api_key" type="password" autocomplete="off" placeholder="paste API key"><button type="button" class="action-secondary" id="caption_api_key_set">set</button><button type="button" class="action-secondary" id="caption_api_key_clear">clear</button></div>
-            <div class="field-note" id="caption_api_key_status">key is stored only in the WebUI server process environment.</div>
+            <div style="display:flex;gap:8px"><input id="caption_api_key" type="password" autocomplete="off" placeholder="enter once; blank keeps saved key"><button type="button" class="action-secondary" id="caption_api_key_set">save / reuse</button><button type="button" class="action-secondary" id="caption_api_key_clear">clear</button></div>
+            <div class="field-note" id="caption_api_key_status">API keys are stored in a private local credential file, shared across dataset folders and WebUI restarts.</div>
           </div>
           <div class="field">
             <label for="caption_api_model">API model</label>
@@ -1109,7 +1109,8 @@ const appState={
   confirmResolve:null,
   toastSeq:0,
   projects:[],
-  apiKeysSet:{gemini:false,openai_compatible:false}
+  apiKeysSet:{gemini:false,openai_compatible:false},
+  apiModelCache:{}
 };
 
 async function api(url,opt={}){
@@ -1214,8 +1215,9 @@ function syncCaptionRuntimeUI(){
     $("caption_api_base_url").placeholder="https://generativelanguage.googleapis.com/v1beta";
     $("caption_model_status").textContent="unused by Gemini API";
     $("caption_mmproj_status").textContent="unused by Gemini API";
-    if($("caption_api_key_status").textContent!=="API key not set")
-      $("caption_api_key_status").textContent="Gemini key goes into GEMINI_API_KEY in the WebUI server process";
+    $("caption_api_key_status").textContent=appState.apiKeysSet.gemini
+      ? "Gemini key is saved locally. leave this field blank to keep using it."
+      : "No saved Gemini key yet. enter it once and it will persist across projects and restarts.";
   }else{
     $("caption_api_key").placeholder="paste OpenAI-compatible API key";
     if(!$("caption_api_base_url").value.trim()
@@ -1224,8 +1226,9 @@ function syncCaptionRuntimeUI(){
     }
     $("caption_model_status").textContent="unused by OpenAI-compatible API";
     $("caption_mmproj_status").textContent="unused by OpenAI-compatible API";
-    if($("caption_api_key_status").textContent!=="API key not set")
-      $("caption_api_key_status").textContent="key goes into OPENAI_API_KEY in the WebUI server process";
+    $("caption_api_key_status").textContent=appState.apiKeysSet.openai_compatible
+      ? "OpenAI-compatible key is saved locally. leave this field blank to keep using it."
+      : "No saved key for this provider yet. enter it once and it will persist across projects and restarts.";
   }
 }
 async function loadVlmModels(){
@@ -1233,8 +1236,8 @@ async function loadVlmModels(){
   if(runtime!=="gemini"&&runtime!=="openai_compatible")return;
   const select=$("caption_api_model");
   const selected=select.dataset.selectedModel||select.value||"";
-  select.disabled=true;
-  select.innerHTML='<option value="">loading models…</option>';
+  const base=runtime==="openai_compatible"?$("caption_api_base_url").value.trim():"";
+  const cacheKey=runtime+"|"+base;
   const fallbackModels=runtime==="gemini"
     ?[
       {id:"gemini-3.5-flash-lite",label:"Gemini 3.5 Flash-Lite"},
@@ -1264,35 +1267,62 @@ async function loadVlmModels(){
     if(selected)select.value=selected;
     select.dataset.selectedModel=select.value;
   };
+  const stillCurrent=()=>(
+    $("caption_runtime").value===runtime
+    && (runtime!=="openai_compatible"||$("caption_api_base_url").value.trim()===base)
+  );
+
+  const cached=appState.apiModelCache[cacheKey];
+  if(cached&&Date.now()-cached.at<600000){
+    renderModels(cached.models);
+    select.disabled=false;
+    $("caption_api_key_status").textContent=appState.apiKeysSet[runtime]
+      ? "API key saved locally. model list reused from cache."
+      : "No saved API key for this provider.";
+    return;
+  }
+
   if(!appState.apiKeysSet[runtime]){
     renderModels(fallbackModels);
     const env=runtime==="gemini"?"GEMINI_API_KEY":"OPENAI_API_KEY";
-    $("caption_api_key_status").textContent=env+" is not set; enter your API key and click Set.";
+    $("caption_api_key_status").textContent=env+" is not set; enter it once and click Save / reuse.";
     syncCaptionRuntimeUI();
     select.disabled=false;
     return;
   }
+
+  // Show known Gemini choices immediately while provider discovery runs.
+  renderModels(fallbackModels);
+  select.disabled=false;
+  $("caption_api_key_status").textContent="key saved locally; refreshing model list in the background…";
   try{
-    const base=runtime==="openai_compatible"?$("caption_api_base_url").value.trim():"";
     const qs=new URLSearchParams({runtime:runtime});
     if(base)qs.set("base_url",base);
     const d=await api("/api/vlm/models?"+qs.toString());
     const models=Array.isArray(d.models)?d.models:[];
-    renderModels(models.length?models:fallbackModels);
-    $("caption_api_key_status").textContent=d.key_set
-      ? "API key loaded in the WebUI server environment"
-      : "API key not set";
+    if(!stillCurrent())return;
+    if(models.length){
+      appState.apiModelCache[cacheKey]={at:Date.now(),models};
+      renderModels(models);
+    }else{
+      renderModels(fallbackModels);
+    }
+    $("caption_api_key_status").textContent=d.cached
+      ? "key saved locally; provider model list loaded from server cache."
+      : "key saved locally; provider model list refreshed.";
   }catch(e){
+    if(!stillCurrent())return;
     if(fallbackModels.length){
       renderModels(fallbackModels);
-      $("caption_api_key_status").textContent="model API lookup failed, showing known Gemini models. set your API key before running.";
+      $("caption_api_key_status").textContent="model discovery failed; known Gemini models are available, and the saved key is kept. "+e.message;
     }else{
-      select.innerHTML='<option value="">could not load models</option>';
-      $("caption_api_key_status").textContent=e.message;
+      $("caption_api_key_status").textContent="model discovery failed; saved key is kept. "+e.message;
     }
   }finally{
-    syncCaptionRuntimeUI();
-    select.disabled=false;
+    if(stillCurrent()){
+      syncCaptionRuntimeUI();
+      select.disabled=false;
+    }
   }
 }
 function applySettings(s,force=false){
@@ -1581,8 +1611,8 @@ async function setVlmApiKey(){
   const runtime=$("caption_runtime").value;
   if(runtime!=="gemini"&&runtime!=="openai_compatible")return;
   const key=$("caption_api_key").value.trim();
-  if(!key){
-    toast("paste an API key first.","bad");
+  if(!key&&!appState.apiKeysSet[runtime]){
+    toast("enter this provider's API key once first.","bad");
     return;
   }
   try{
@@ -1593,9 +1623,12 @@ async function setVlmApiKey(){
     });
     $("caption_api_key").value="";
     appState.apiKeysSet[runtime]=!!d.key_set;
-    $("caption_api_key_status").textContent="API key loaded into "+d.env+" in the WebUI server process";
-    await loadVlmModels();
-    toast("API key loaded","ok");
+    appState.apiModelCache={};
+    $("caption_api_key_status").textContent=d.saved
+      ? (key?"API key saved locally with owner-only file permissions.":"saved API key kept; nothing needed re-entering.")
+      : "no saved API key for this provider.";
+    void loadVlmModels();
+    toast(key?"API key saved for future sessions":"saved API key reused","ok");
   }catch(e){
     $("caption_api_key_status").textContent=e.message;
     toast(e.message,"bad");
@@ -1608,12 +1641,14 @@ async function clearVlmApiKey(){
     const d=await api("/api/vlm/api-key",{
       method:"POST",
       headers:{"content-type":"application/json"},
-      body:JSON.stringify({runtime:runtime,api_key:""})
+      body:JSON.stringify({runtime:runtime,clear:true})
     });
     $("caption_api_key").value="";
     appState.apiKeysSet[runtime]=false;
-    $("caption_api_key_status").textContent="API key cleared from "+d.env;
+    appState.apiModelCache={};
+    $("caption_api_key_status").textContent="API key removed from the local credential file and server process.";
     $("caption_api_model").innerHTML='<option value="">select model…</option>';
+    syncCaptionRuntimeUI();
     toast("API key cleared","ok");
   }catch(e){
     toast(e.message,"bad");
