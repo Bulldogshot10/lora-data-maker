@@ -731,7 +731,6 @@ def caption_manifest(
                         )
                     else:
                         image.metadata.pop("caption_vlm_format_warning", None)
-                    else:
                         caption = build_vlm_caption(
                             raw_caption,
                             subject=manifest.subject,
