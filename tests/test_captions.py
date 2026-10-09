@@ -337,7 +337,7 @@ def test_caption_manifest_keeps_unstructured_api_caption_and_marks_warning(tmp_p
     )
     assert (
         (root / image.caption_path).read_text(encoding="utf-8")
-        == "julia, A woman standing in a black dress indoors.\\n"
+        == "julia, A woman standing in a black dress indoors.\n"
     )
 
 
