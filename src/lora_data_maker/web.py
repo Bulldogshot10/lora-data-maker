@@ -2508,6 +2508,14 @@ def create_app(
         if not existing_key and saved_keys.get(env_name):
             existing_key = saved_keys[env_name]
             os.environ[env_name] = existing_key
+        elif existing_key and not saved_keys.get(env_name):
+            # If a key was supplied by the shell environment, an explicit
+            # Save / reuse click opts it into persistent WebUI storage too.
+            saved_keys[env_name] = existing_key
+            try:
+                save_api_keys(credential_path, saved_keys)
+            except OSError as exc:
+                raise HTTPException(500, f"could not save API key locally: {exc}") from exc
         return {
             "ok": True,
             "runtime": runtime,
