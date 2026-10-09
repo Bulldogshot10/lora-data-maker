@@ -197,7 +197,7 @@ def test_gemini_caption_normalizes_models_prefix(monkeypatch, tmp_path):
                             "parts": [
                                 {
                                     "text": (
-                                        "pose: standing\nclothing: white top\nexpression: neutral\nbackground: indoors"
+                                        "pose: standing\nangle camera: straight-on\nclothing: white top\nexpression: neutral\nbackground: indoors"
                                     )
                                 }
                             ]
@@ -243,7 +243,7 @@ def test_api_post_retries_transient_http_status(monkeypatch, tmp_path):
                             "parts": [
                                 {
                                     "text": (
-                                        "pose: standing\nclothing: white top\nexpression: neutral\nbackground: indoors"
+                                        "pose: standing\nangle camera: straight-on\nclothing: white top\nexpression: neutral\nbackground: indoors"
                                     )
                                 }
                             ]
