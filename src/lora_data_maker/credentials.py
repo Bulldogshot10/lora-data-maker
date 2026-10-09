@@ -28,7 +28,7 @@ def load_api_keys(path: Path | str) -> dict[str, str]:
         raw: Any = json.loads(target.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError):
         return {}
 
     if not isinstance(raw, dict):
