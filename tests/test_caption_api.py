@@ -146,10 +146,10 @@ def test_openai_compatible_retries_unstructured_caption(monkeypatch, tmp_path):
                     {
                         "message": {
                             "content": (
-                                "pose: standing\\n"
-                                "angle camera: straight-on\\n"
-                                "clothing: black dress\\n"
-                                "expression: neutral\\n"
+                                "pose: standing\n"
+                                "angle camera: straight-on\n"
+                                "clothing: black dress\n"
+                                "expression: neutral\n"
                                 "background: indoors, soft lighting"
                             )
                         }
