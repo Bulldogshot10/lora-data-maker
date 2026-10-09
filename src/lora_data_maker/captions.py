@@ -439,7 +439,7 @@ def build_api_vlm_caption(
     trigger: str,
     config: CaptionConfig,
 ) -> str:
-    """Parse a five-field API VLM caption and inject the dataset trigger."""
+    """Normalize an API VLM caption and inject the trigger, even if its format is unstructured."""
     try:
         fields = parse_vlm_fields(raw_caption)
     except VlmCaptionerError as parse_error:
@@ -721,8 +721,10 @@ def caption_manifest(
                             parse_vlm_fields(raw_caption)
                         except VlmCaptionerError as format_error:
                             image.metadata["caption_vlm_format_warning"] = str(format_error)[:500]
+                            image.metadata["caption_vlm_raw_output"] = str(raw_caption)[:4000]
                         else:
                             image.metadata.pop("caption_vlm_format_warning", None)
+                            image.metadata.pop("caption_vlm_raw_output", None)
                         caption = build_api_vlm_caption(
                             raw_caption,
                             subject=manifest.subject,
