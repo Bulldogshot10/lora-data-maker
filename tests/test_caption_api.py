@@ -344,7 +344,7 @@ def test_gemini_downscales_large_images_before_upload(monkeypatch, tmp_path):
                             "parts": [
                                 {
                                     "text": (
-                                        "pose: standing\\nangle camera: straight-on\\nclothing: white top\\nexpression: neutral\\nbackground: indoors with soft lighting"
+                                        "pose: standing\nangle camera: straight-on\nclothing: white top\nexpression: neutral\nbackground: indoors with soft lighting"
                                     )
                                 }
                             ]
@@ -402,10 +402,10 @@ def test_remote_api_caption_manifest_uses_bounded_concurrency(monkeypatch, tmp_p
                                     "parts": [
                                         {
                                             "text": (
-                                                "pose: standing\\n"
-                                                "angle camera: straight-on\\n"
-                                                "clothing: white top\\n"
-                                                "expression: neutral\\n"
+                                                "pose: standing\n"
+                                                "angle camera: straight-on\n"
+                                                "clothing: white top\n"
+                                                "expression: neutral\n"
                                                 "background: indoors with soft lighting"
                                             )
                                         }
