@@ -927,4 +927,25 @@ def test_webui_shell_exposes_curation_controls(tmp_path: Path) -> None:
     html = TestClient(create_app(make_project(tmp_path))).get("/").text
     assert 'data-job-cancel=' in html
     assert 'data-image-delete=' in html
+    assert 'data-image-save=' in html
+    assert 'url.searchParams.set("download","true")' in html
+    assert "navigator.share" not in html
     assert '/api/images/' in html
+
+
+def test_media_download_sets_attachment_filename(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    image = root / "raw" / "000001.jpg"
+    image.write_bytes(b"fake image")
+    client = TestClient(create_app(root))
+
+    preview = client.get("/media/raw/000001.jpg")
+    assert preview.status_code == 200
+    assert "content-disposition" not in preview.headers
+
+    download = client.get("/media/raw/000001.jpg?download=true")
+    assert download.status_code == 200
+    assert download.content == b"fake image"
+    disposition = download.headers["content-disposition"]
+    assert disposition.startswith("attachment;")
+    assert "000001.jpg" in disposition
