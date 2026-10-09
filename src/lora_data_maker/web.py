@@ -2577,7 +2577,7 @@ def create_app(
                         f"{api_base}/models",
                         headers={"x-goog-api-key": api_key},
                         params=params,
-                        timeout=30,
+                        timeout=12,
                     )
                     if not response.ok:
                         detail = response.text.strip()[:500] or f"HTTP {response.status_code}"
@@ -2620,7 +2620,7 @@ def create_app(
                 if api_base.endswith("/v1") or api_base.endswith("/v1/")
                 else f"{api_base}/models",
                 headers={"Authorization": f"Bearer {api_key}"},
-                timeout=30,
+                timeout=12,
             )
             if not response.ok:
                 detail = response.text.strip()[:500] or f"HTTP {response.status_code}"
