@@ -440,7 +440,14 @@ def build_api_vlm_caption(
     config: CaptionConfig,
 ) -> str:
     """Parse a five-field API VLM caption and inject the dataset trigger."""
-    fields = parse_vlm_fields(raw_caption)
+    try:
+        fields = parse_vlm_fields(raw_caption)
+    except VlmCaptionerError as parse_error:
+        # Keep non-empty API output so it can be audited instead of failing the image.
+        fallback = clean_vlm_caption(_strip_vlm_wrappers(raw_caption))
+        if not fallback:
+            raise parse_error
+        fields = [fallback]
     resolved_trigger = resolve_trigger(
         subject=subject,
         trigger=trigger,
@@ -710,12 +717,20 @@ def caption_manifest(
                     assert runtime is not None
                     raw_caption = runtime.caption(processed_path)
                     if settings.vlm.runtime in {"gemini", "openai_compatible"}:
+                        try:
+                            parse_vlm_fields(raw_caption)
+                        except VlmCaptionerError as format_error:
+                            image.metadata["caption_vlm_format_warning"] = str(format_error)[:500]
+                        else:
+                            image.metadata.pop("caption_vlm_format_warning", None)
                         caption = build_api_vlm_caption(
                             raw_caption,
                             subject=manifest.subject,
                             trigger=manifest.trigger,
                             config=settings,
                         )
+                    else:
+                        image.metadata.pop("caption_vlm_format_warning", None)
                     else:
                         caption = build_vlm_caption(
                             raw_caption,
