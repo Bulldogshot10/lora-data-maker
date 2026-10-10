@@ -101,6 +101,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="number of successfully downloaded images (default: config)",
     )
     scrape_parser.add_argument(
+        "--year",
+        type=int,
+        default=None,
+        help="filter Playwright Bing results to a calendar year, e.g. 2019",
+    )
+    scrape_parser.add_argument(
+        "--date-from",
+        default=None,
+        help="start date for Playwright Bing filter (YYYY-MM-DD; requires --date-to)",
+    )
+    scrape_parser.add_argument(
+        "--date-to",
+        default=None,
+        help="end date for Playwright Bing filter (YYYY-MM-DD; requires --date-from)",
+    )
+    scrape_parser.add_argument(
         "--path",
         default=".",
         help="project directory (default: current directory)",
@@ -959,6 +975,30 @@ def command_scrape(args: argparse.Namespace) -> int:
     delay = float(scraper_config.get("delay", 1.0))
     max_scrolls = int(scraper_config.get("max_scrolls", 30))
 
+    cli_year = args.year
+    cli_date_from = getattr(args, "date_from", None)
+    cli_date_to = getattr(args, "date_to", None)
+    if cli_year is not None and (cli_date_from is not None or cli_date_to is not None):
+        raise LoraDataMakerError("use either --year or --date-from/--date-to, not both")
+
+    if cli_year is not None:
+        if cli_year < 1970 or cli_year > 9998:
+            raise LoraDataMakerError("--year must be between 1970 and 9998")
+        date_from, date_to = f"{cli_year:04d}-01-01", f"{cli_year:04d}-12-31"
+    elif cli_date_from is not None or cli_date_to is not None:
+        date_from, date_to = cli_date_from, cli_date_to
+    else:
+        configured_year = scraper_config.get("year", 0)
+        if isinstance(configured_year, bool) or not isinstance(configured_year, int):
+            raise LoraDataMakerError("scraper.year must be an integer")
+        if configured_year:
+            if configured_year < 1970 or configured_year > 9998:
+                raise LoraDataMakerError("scraper.year must be between 1970 and 9998")
+            date_from, date_to = f"{configured_year:04d}-01-01", f"{configured_year:04d}-12-31"
+        else:
+            date_from = scraper_config.get("date_from") or None
+            date_to = scraper_config.get("date_to") or None
+
     manager = ScraperManager(
         backend=args.backend,
         output_dir=paths.raw,
@@ -967,6 +1007,8 @@ def command_scrape(args: argparse.Namespace) -> int:
         retries=retries,
         delay=delay,
         max_scrolls=max_scrolls,
+        date_from=date_from,
+        date_to=date_to,
     )
     known_urls = {
         record.source_url
@@ -1005,12 +1047,16 @@ def command_scrape(args: argparse.Namespace) -> int:
             "last_scrape_downloaded": len(downloads),
             "last_scrape_added_records": added_records,
             "last_scrape_failed": len(failures),
+            "last_scrape_date_from": date_from,
+            "last_scrape_date_to": date_to,
         }
     )
     project.save()
 
     print(f"scrape backend: {args.backend}")
     print(f"query: {query}")
+    if date_from is not None and date_to is not None:
+        print(f"date range: {date_from} .. {date_to}")
     print(f"requested: {count}")
     print(f"downloaded: {len(downloads)}")
     print(f"failed: {len(failures)}")
