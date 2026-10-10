@@ -933,6 +933,11 @@ def test_webui_shell_exposes_curation_controls(tmp_path: Path) -> None:
     assert '/api/images/' in html
 
 
+def test_webui_date_filter_controls_mark_settings_dirty(tmp_path: Path) -> None:
+    html = TestClient(create_app(make_project(tmp_path))).get("/").text
+    assert '"scrape_date_mode","scrape_year","scrape_date_from","scrape_date_to"' in html
+
+
 def test_media_download_sets_attachment_filename(tmp_path: Path) -> None:
     root = make_project(tmp_path)
     image = root / "raw" / "000001.jpg"
