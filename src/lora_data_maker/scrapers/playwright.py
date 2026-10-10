@@ -1,13 +1,16 @@
 from __future__ import annotations
 
 import html
+import os
 import re
 import time
+from datetime import date
 from html.parser import HTMLParser
 from typing import Iterator
 from urllib.parse import urlencode, urlparse
 
 from .base import ImageResult, Scraper, ScraperError
+from .existing_chromium import ExistingChromium
 
 
 
@@ -59,6 +62,8 @@ class PlaywrightImagesScraper(Scraper):
         retries: int = 2,
         delay: float = 1.0,
         max_scrolls: int = 30,
+        date_from: str | None = None,
+        date_to: str | None = None,
     ) -> None:
         if provider not in self.PROVIDERS:
             raise ValueError(
@@ -79,6 +84,9 @@ class PlaywrightImagesScraper(Scraper):
         self.retries = retries
         self.delay = delay
         self.max_scrolls = max_scrolls
+        self.date_from, self.date_to = self._normalize_date_range(date_from, date_to)
+        if self.provider != "bing" and self.date_from is not None:
+            raise ValueError("date filtering is only supported by Playwright Bing")
 
     def search(self, query: str, *, limit: int) -> Iterator[ImageResult]:
         if not query.strip():
@@ -114,7 +122,13 @@ class PlaywrightImagesScraper(Scraper):
             f"{self.retries + 1} attempts: {last_error}"
         ) from last_error
 
-    def _search_once(self, query: str, limit: int) -> list[ImageResult]:
+    def _create_browser(self):
+        if self.provider == "google" and os.environ.get("CHROME_USER_DATA_DIR", "").strip():
+            try:
+                return ExistingChromium.from_environment(timeout=self.timeout)
+            except ValueError as exc:
+                raise ScraperError(str(exc)) from exc
+
         try:
             from playwright_termux import Chromium
         except ImportError as exc:
@@ -123,6 +137,9 @@ class PlaywrightImagesScraper(Scraper):
                 'install with python -m pip install ".[playwright]"'
             ) from exc
 
+        return Chromium(headless=True)
+
+    def _search_once(self, query: str, limit: int) -> list[ImageResult]:
         search_url = self._build_url(query)
         print(
             f"scrape: playwright provider={self.provider} query={query}",
@@ -130,7 +147,8 @@ class PlaywrightImagesScraper(Scraper):
         )
 
         try:
-            with Chromium(headless=True) as browser:
+            browser = self._create_browser()
+            with browser as browser:
                 page = browser.new_page()
                 try:
                     self._goto(page, search_url)
@@ -261,9 +279,38 @@ class PlaywrightImagesScraper(Scraper):
             + (f": {last_error}" if last_error else "")
         )
 
+    @staticmethod
+    def _normalize_date_range(
+        date_from: str | None,
+        date_to: str | None,
+    ) -> tuple[str | None, str | None]:
+        date_from = date_from or None
+        date_to = date_to or None
+        if date_from is None and date_to is None:
+            return None, None
+        if not date_from or not date_to:
+            raise ValueError("date_from and date_to must be provided together")
+        try:
+            start = date.fromisoformat(date_from)
+            end = date.fromisoformat(date_to)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("dates must use YYYY-MM-DD format") from exc
+        if start < date(1970, 1, 1) or end < date(1970, 1, 1):
+            raise ValueError("Bing date filtering supports dates from 1970 onward")
+        if start > end:
+            raise ValueError("date_from must be on or before date_to")
+        return start.isoformat(), end.isoformat()
+
     def _build_url(self, query: str) -> str:
         if self.provider == "bing":
-            return f"{self.BING_URL}?{urlencode({'q': query, 'form': 'HDRSC2', 'adlt': 'off'})}"
+            params = {"q": query, "form": "HDRSC2", "adlt": "off"}
+            if self.date_from is not None and self.date_to is not None:
+                epoch = date(1970, 1, 1)
+                start_day = (date.fromisoformat(self.date_from) - epoch).days
+                # Bing's end day is exclusive; add one day to include date_to.
+                end_day = (date.fromisoformat(self.date_to) - epoch).days + 1
+                params["filters"] = f'ex1:"ez5_{start_day}_{end_day}"'
+            return f"{self.BING_URL}?{urlencode(params)}"
         return (
             f"{self.GOOGLE_URL}?"
             f"{urlencode({'q': query, 'tbm': 'isch', 'hl': 'en'})}"
