@@ -1324,3 +1324,34 @@ def test_playwright_google_uses_existing_profile_when_configured(monkeypatch, tm
     assert isinstance(browser, ExistingChromium)
     assert browser.user_data_dir == profile.resolve()
     browser.close()
+
+
+def test_scraper_manager_forwards_bing_date_range(tmp_path):
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    manager = ScraperManager(
+        backend="playwright-bing",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        date_from="2019-01-01",
+        date_to="2019-12-31",
+    )
+
+    assert manager.scraper.date_from == "2019-01-01"
+    assert manager.scraper.date_to == "2019-12-31"
+
+
+def test_scraper_manager_rejects_date_filter_for_other_backends(tmp_path):
+    import pytest
+
+    from lora_data_maker.scrapers.base import ScraperError
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    with pytest.raises(ScraperError, match="playwright-bing"):
+        ScraperManager(
+            backend="duckduckgo",
+            output_dir=tmp_path / "raw",
+            cache_dir=tmp_path / "cache",
+            date_from="2019-01-01",
+            date_to="2019-12-31",
+        )
