@@ -890,11 +890,11 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
             </div>
             <div class="field" id="scrape_date_from_field" hidden>
               <label for="scrape_date_from">from</label>
-              <input id="scrape_date_from" type="date" min="1970-01-01">
+              <input id="scrape_date_from" type="text" inputmode="text" autocomplete="off" maxlength="10" placeholder="YYYY-MM-DD" spellcheck="false">
             </div>
             <div class="field" id="scrape_date_to_field" hidden>
               <label for="scrape_date_to">to</label>
-              <input id="scrape_date_to" type="date" min="1970-01-01">
+              <input id="scrape_date_to" type="text" inputmode="text" autocomplete="off" maxlength="10" placeholder="YYYY-MM-DD" spellcheck="false">
             </div>
           </div>
           <div class="save-bar">
@@ -1612,8 +1612,9 @@ async function saveSettings(){
     toast("scraper year must be between 1970 and 9998.","bad");
     return false;
   }
-  if(scrapeDateMode==="range"&&(!scrapeDateFrom||!scrapeDateTo||scrapeDateFrom>scrapeDateTo)){
-    toast("choose a valid date range, with the start on or before the end.","bad");
+  const isoDatePattern=/^\d{4}-\d{2}-\d{2}$/;
+  if(scrapeDateMode==="range"&&(!isoDatePattern.test(scrapeDateFrom)||!isoDatePattern.test(scrapeDateTo)||scrapeDateFrom>scrapeDateTo)){
+    toast("enter dates as YYYY-MM-DD, with the start on or before the end.","bad");
     return false;
   }
   document.querySelectorAll("[data-save]").forEach(button=>button.disabled=true);
