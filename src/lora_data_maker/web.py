@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import mimetypes
+from datetime import date
 import os
 import re
 import threading
@@ -873,6 +874,29 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
               <div class="field-note">direct URLs uses the query field as the input source expected by the configured scraper.</div>
             </div>
           </div>
+          <div class="form-grid" style="margin-top:12px">
+            <div class="field">
+              <label for="scrape_date_mode">date filter</label>
+              <select id="scrape_date_mode">
+                <option value="any">any date</option>
+                <option value="year">specific year</option>
+                <option value="range">custom range</option>
+              </select>
+              <div class="field-note" id="scrape_date_note">date filters are supported by Playwright Bing.</div>
+            </div>
+            <div class="field" id="scrape_date_year_field" hidden>
+              <label for="scrape_year">year</label>
+              <input id="scrape_year" type="number" min="1970" max="9998" step="1" inputmode="numeric" placeholder="2019">
+            </div>
+            <div class="field" id="scrape_date_from_field" hidden>
+              <label for="scrape_date_from">from</label>
+              <input id="scrape_date_from" type="date" min="1970-01-01">
+            </div>
+            <div class="field" id="scrape_date_to_field" hidden>
+              <label for="scrape_date_to">to</label>
+              <input id="scrape_date_to" type="date" min="1970-01-01">
+            </div>
+          </div>
           <div class="save-bar">
             <span class="save-note">save scraper settings before starting a run.</span>
             <button type="button" class="action-secondary" data-save>save</button>
@@ -1157,7 +1181,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
     if(el)el.disabled=busy;
   });
   const vlmOnly=$("caption_backend").value==="vlm";
@@ -1323,6 +1347,17 @@ async function loadVlmModels(){
     }
   }
 }
+function syncScrapeDateUI(){
+  const mode=$("scrape_date_mode").value;
+  const supported=$("scraper_backend").value==="playwright-bing";
+  $("scrape_date_mode").disabled=!supported;
+  $("scrape_date_year_field").hidden=mode!=="year";
+  $("scrape_date_from_field").hidden=mode!=="range";
+  $("scrape_date_to_field").hidden=mode!=="range";
+  $("scrape_date_note").textContent=supported
+    ?"Bing date filtering uses the selected publication date range."
+    :"date filters are only available with the Playwright · Bing backend.";
+}
 function applySettings(s,force=false){
   if(appState.settingsDirty&&!force)return;
   const captionState=s.caption||{};
@@ -1360,6 +1395,12 @@ function applySettings(s,force=false){
   $("scraper_backend").value=s.scraper.backend;
   $("scrape_query").value=s.scraper.query;
   $("scrape_count").value=s.scraper.count;
+  const scraper=s.scraper||{};
+  $("scrape_date_mode").value=Number(scraper.year||0)>0?"year":(scraper.date_from&&scraper.date_to?"range":"any");
+  $("scrape_year").value=Number(scraper.year||0)>0?String(scraper.year):"";
+  $("scrape_date_from").value=scraper.date_from||"";
+  $("scrape_date_to").value=scraper.date_to||"";
+  syncScrapeDateUI();
   $("face_crop").checked=!!s.processing.face_crop;
   $("face_padding").value=s.processing.face_padding;
   $("person_check").checked=!!s.quality.person_check;
@@ -1552,8 +1593,21 @@ async function saveSettings(){
   const textConfidence=Number($("text_confidence").value);
   const textMinArea=Number($("text_min_area_ratio").value);
   const scrapeCount=Number($("scrape_count").value);
+  const scrapeDateMode=$("scrape_date_mode").value;
+  const scrapeYearText=$("scrape_year").value.trim();
+  const scrapeYear=scrapeYearText?Number(scrapeYearText):0;
+  const scrapeDateFrom=$("scrape_date_from").value;
+  const scrapeDateTo=$("scrape_date_to").value;
   if(!Number.isFinite(width)||!Number.isFinite(height)||!Number.isFinite(quality)||!Number.isFinite(captionMaxTokens)||!Number.isFinite(facePadding)||!Number.isFinite(maxPersons)||!Number.isFinite(personThreshold)||!Number.isFinite(minArea)||!Number.isFinite(minVisibility)||!Number.isFinite(textConfidence)||!Number.isFinite(textMinArea)||!Number.isFinite(scrapeCount)){
     toast("please fill every numeric setting with a valid value.","bad");
+    return false;
+  }
+  if(scrapeDateMode==="year"&&(!Number.isInteger(scrapeYear)||scrapeYear<1970||scrapeYear>9998)){
+    toast("scraper year must be between 1970 and 9998.","bad");
+    return false;
+  }
+  if(scrapeDateMode==="range"&&(!scrapeDateFrom||!scrapeDateTo||scrapeDateFrom>scrapeDateTo)){
+    toast("choose a valid date range, with the start on or before the end.","bad");
     return false;
   }
   document.querySelectorAll("[data-save]").forEach(button=>button.disabled=true);
@@ -1569,6 +1623,10 @@ async function saveSettings(){
         scraper_backend:$("scraper_backend").value,
         scrape_query:$("scrape_query").value.trim(),
         scrape_count:scrapeCount,
+        scrape_date_mode:scrapeDateMode,
+        scrape_year:scrapeDateMode==="year"?scrapeYear:0,
+        scrape_date_from:scrapeDateMode==="range"?scrapeDateFrom:(scrapeDateMode==="year"?scrapeYear+"-01-01":""),
+        scrape_date_to:scrapeDateMode==="range"?scrapeDateTo:(scrapeDateMode==="year"?scrapeYear+"-12-31":""),
         mode:$("mode").value,
         width:width,
         height:height,
@@ -1970,6 +2028,8 @@ $("upload-button").addEventListener("click",upload);
 $("files").addEventListener("change",updateFileSummary);
 $("quality").addEventListener("input",()=>{$("qv").textContent=$("quality").value});
 $("caption_max_tokens").addEventListener("input",()=>{$("caption_tokens_value").textContent=$("caption_max_tokens").value});
+$("scraper_backend").addEventListener("change",syncScrapeDateUI);
+$("scrape_date_mode").addEventListener("change",syncScrapeDateUI);
 [
   "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count",
   "mode","width","height","quality","caption_backend","caption_runtime","caption_chat_format","caption_model_path","caption_mmproj_path","caption_api_model","caption_api_base_url","caption_max_tokens","face_crop","face_padding","person_check",
@@ -2320,6 +2380,9 @@ def create_app(
                     "query": "",
                     "count": 300,
                     "max_scrolls": 30,
+                    "year": 0,
+                    "date_from": "",
+                    "date_to": "",
                 },
                 "quality": {
                     "person_check": False,
@@ -2423,6 +2486,9 @@ def create_app(
                 "query": str(cfg.get("scraper", {}).get("query", p.manifest.subject)),
                 "count": int(cfg.get("scraper", {}).get("count", 300)),
                 "max_scrolls": int(cfg.get("scraper", {}).get("max_scrolls", 30)),
+                "year": int(cfg.get("scraper", {}).get("year", 0) or 0),
+                "date_from": str(cfg.get("scraper", {}).get("date_from", "") or ""),
+                "date_to": str(cfg.get("scraper", {}).get("date_to", "") or ""),
             },
             "quality": {
                 "person_check": bool(cfg.get("quality", {}).get("person_check", False)),
@@ -2707,6 +2773,41 @@ def create_app(
         scrape_count = int(
             payload.get("scrape_count", current_scraper.get("count", 300))
         )
+        current_scrape_year = int(current_scraper.get("year", 0) or 0)
+        current_date_from = str(current_scraper.get("date_from", "") or "")
+        current_date_to = str(current_scraper.get("date_to", "") or "")
+        inferred_date_mode = "year" if current_scrape_year else (
+            "range" if current_date_from and current_date_to else "any"
+        )
+        scrape_date_mode = str(payload.get("scrape_date_mode", inferred_date_mode)).strip().lower()
+        try:
+            scrape_year = int(payload.get("scrape_year", current_scrape_year) or 0)
+        except (TypeError, ValueError) as exc:
+            raise HTTPException(400, "scraper year must be an integer") from exc
+        scrape_date_from = str(payload.get("scrape_date_from", current_date_from) or "").strip()
+        scrape_date_to = str(payload.get("scrape_date_to", current_date_to) or "").strip()
+        if scrape_date_mode == "any":
+            scrape_year, scrape_date_from, scrape_date_to = 0, "", ""
+        elif scrape_date_mode == "year":
+            if not 1970 <= scrape_year <= 9998:
+                raise HTTPException(400, "scraper year must be between 1970 and 9998")
+            scrape_date_from = f"{scrape_year:04d}-01-01"
+            scrape_date_to = f"{scrape_year:04d}-12-31"
+        elif scrape_date_mode == "range":
+            scrape_year = 0
+            if not scrape_date_from or not scrape_date_to:
+                raise HTTPException(400, "provide both start and end dates")
+            try:
+                date_start = date.fromisoformat(scrape_date_from)
+                date_end = date.fromisoformat(scrape_date_to)
+            except ValueError as exc:
+                raise HTTPException(400, "dates must use YYYY-MM-DD format") from exc
+            if date_start < date(1970, 1, 1) or date_end < date(1970, 1, 1) or date_start > date_end:
+                raise HTTPException(400, "choose a valid date range from 1970 onward")
+        else:
+            raise HTTPException(400, "invalid scraper date filter mode")
+        if scrape_date_mode != "any" and scraper_backend != "playwright-bing":
+            raise HTTPException(400, "date filters are only supported by the Playwright Bing backend")
         preset = preset.strip().lower()
         width, height, quality = int(payload.get("width", 512)), int(payload.get("height", 512)), int(payload.get("quality", 95))
         face_crop = bool(payload.get("face_crop", False))
@@ -2881,6 +2982,9 @@ def create_app(
                 "backend": scraper_backend,
                 "query": scrape_query,
                 "count": scrape_count,
+                "year": scrape_year,
+                "date_from": scrape_date_from,
+                "date_to": scrape_date_to,
             },
             current_root,
         )
@@ -3061,6 +3165,13 @@ def create_app(
                 retries = int(sc.get("retries", 3))
                 delay = float(sc.get("delay", 1.0))
                 max_scrolls = int(sc.get("max_scrolls", 30))
+                date_from = str(sc.get("date_from", "") or "").strip() or None
+                date_to = str(sc.get("date_to", "") or "").strip() or None
+                year = int(sc.get("year", 0) or 0)
+                if year:
+                    if not 1970 <= year <= 9998:
+                        raise RuntimeError("scraper.year must be between 1970 and 9998")
+                    date_from, date_to = f"{year:04d}-01-01", f"{year:04d}-12-31"
                 manager = ScraperManager(
                     backend=backend,
                     output_dir=ps.raw,
@@ -3069,6 +3180,8 @@ def create_app(
                     retries=retries,
                     delay=delay,
                     max_scrolls=max_scrolls,
+                    date_from=date_from,
+                    date_to=date_to,
                 )
                 known_urls = {
                     record.source_url
