@@ -37,11 +37,14 @@ timeout = 20
 retries = 3
 delay = 1.0
 max_scrolls = 30
+year = 0
+date_from = ""
+date_to = ""
 ~~~
 
 Built-in backends are google, duckduckgo, chromium, playwright-bing, playwright-google, and direct.
 
-The existing `chromium` backend uses Selenium, DuckDuckGo first, and Bing Images as its browser fallback. The Playwright backends use Termux-native Chromium through the `playwright-termux` CDP adapter.
+The existing `chromium` backend uses Selenium, DuckDuckGo first, and Bing Images as its browser fallback. The Playwright backends use Termux-native Chromium through the `playwright-termux` CDP adapter. Bing's optional `year` or `date_from` + `date_to` fields filter results by date; use `year = 0` and blank date strings for any date. Date filtering is only supported with `playwright-bing`.
 
 ## validation
 
