@@ -117,6 +117,23 @@ def test_build_sd_cpp_command_always_uses_convert_mode(tmp_path):
     assert "q4_0" in command
 
 
+def test_build_sd_cpp_standalone_backbone_uses_component_input(tmp_path):
+    source = tmp_path / "flux.safetensors"
+    output = tmp_path / "flux-q4_0.gguf"
+    command = build_sd_cpp_command(
+        "sd-cli",
+        source,
+        output,
+        "q4_0",
+        "all",
+        standalone_diffusion_model=True,
+    )
+
+    assert "--diffusion-model" in command
+    assert str(source.resolve()) in command
+    assert "-m" not in command
+
+
 def test_build_sd_cpp_unet_command_passes_only_extracted_unet(tmp_path):
     unet = tmp_path / "unet-only.safetensors"
     output = tmp_path / "unet-q8_0.gguf"
@@ -213,6 +230,8 @@ def test_scan_recognizes_sdxl_sd3_and_flux_backbones(
     assert result["architecture"] == expected
     assert result["architecture_recognized"] is True
     assert result["components"][component_key]["tensor_count"] > 0
+    if expected == "flux":
+        assert result["is_standalone_backbone"] is True
 
 
 def test_extract_flux_backbone_keeps_root_diffusion_keys(tmp_path):
