@@ -172,7 +172,9 @@ python -m pip install ".[playwright]"
 
 The Playwright backend uses the native Termux Chromium package through the
 Termux-specific Playwright/CDP adapter. It does not run `playwright install`
-or download a glibc browser bundle.
+or download a glibc browser bundle. For authenticated Google searches, the
+backend can attach to an already-running Chromium using `CHROME_USER_DATA_DIR`
+and the local CDP port (9222 by default); see [Termux installation notes](docs/INSTALL_TERMUX.md).
 
 For tagging support:
 
@@ -278,13 +280,15 @@ Termux-native Chromium and extract original image URLs from the rendered
 Google or Bing Images pages. The Playwright navigation layer uses direct CDP navigation
 because the Termux adapter's stock navigation waiter can race lifecycle events.
 
-Example:
+Examples:
 
 ~~~bash
 lora-data-maker scrape duckduckgo "julia subject" --count 200
+lora-data-maker scrape playwright-bing "julia portrait" --year 2019 --count 100
+lora-data-maker scrape playwright-bing "julia portrait" --date-from 2019-04-01 --date-to 2019-09-30 --count 100
 ~~~
 
-The scraper is add-only and uses the manifest to avoid re-downloading known source URLs. A running WebUI scrape can be cancelled, and downloads completed before cancellation are preserved.
+Bing date filters are also available in the WebUI as **any date**, **specific year**, or **custom range**. The date filter controls appear when `playwright-bing` is selected. The scraper is add-only and uses the manifest to avoid re-downloading known source URLs. A running WebUI scrape can be cancelled, and downloads completed before cancellation are preserved.
 
 ## Dataset layout
 
