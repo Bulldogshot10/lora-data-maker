@@ -1175,3 +1175,152 @@ def test_downloader_honors_pre_cancel(tmp_path):
         )
 
     assert not (tmp_path / "000001.jpg").exists()
+
+
+def test_playwright_bing_builds_custom_date_range_url():
+    from urllib.parse import parse_qs, urlparse
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    scraper = PlaywrightImagesScraper(
+        provider="bing",
+        date_from="2019-01-01",
+        date_to="2019-12-31",
+    )
+    parsed = urlparse(scraper._build_url("julia russian woman"))
+
+    assert parsed.path == "/images/search"
+    params = parse_qs(parsed.query)
+    assert params["q"] == ["julia russian woman"]
+    assert params["filters"] == ['ex1:"ez5_17897_18262"']
+    assert params["adlt"] == ["off"]
+
+
+def test_playwright_bing_leaves_date_filter_off_by_default():
+    from urllib.parse import parse_qs, urlparse
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    scraper = PlaywrightImagesScraper(provider="bing")
+    params = parse_qs(urlparse(scraper._build_url("julia")).query)
+
+    assert "filters" not in params
+
+
+def test_playwright_bing_validates_custom_date_range():
+    import pytest
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    with pytest.raises(ValueError, match="provided together"):
+        PlaywrightImagesScraper(provider="bing", date_from="2019-01-01")
+    with pytest.raises(ValueError, match="on or before"):
+        PlaywrightImagesScraper(
+            provider="bing",
+            date_from="2020-01-01",
+            date_to="2019-12-31",
+        )
+    with pytest.raises(ValueError, match="only supported"):
+        PlaywrightImagesScraper(
+            provider="google",
+            date_from="2019-01-01",
+            date_to="2019-12-31",
+        )
+
+
+def test_existing_chromium_reads_google_profile_environment(monkeypatch, tmp_path):
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+    monkeypatch.setenv("CHROME_USER_DATA_DIR", str(profile))
+    monkeypatch.delenv("CHROME_DEBUG_PORT", raising=False)
+
+    browser = ExistingChromium.from_environment(timeout=20)
+
+    assert browser.user_data_dir == profile.resolve()
+    assert browser.port == 9222
+    assert browser.timeout == 5.0
+
+
+def test_existing_chromium_discovers_local_cdp_endpoint(monkeypatch, tmp_path):
+    from lora_data_maker.scrapers import existing_chromium as module
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def read(self):
+            return b'{"webSocketDebuggerUrl":"ws://127.0.0.1:9222/devtools/browser/test"}'
+
+    def fake_urlopen(url, timeout):
+        assert url == "http://127.0.0.1:9222/json/version"
+        assert 0 < timeout <= 5.0
+        return FakeResponse()
+
+    monkeypatch.setattr(module, "urlopen", fake_urlopen)
+
+    browser = ExistingChromium(
+        user_data_dir=profile,
+        port=9222,
+        timeout=20,
+    )
+    assert (
+        browser._discover_websocket_url()
+        == "ws://127.0.0.1:9222/devtools/browser/test"
+    )
+
+
+def test_existing_chromium_rejects_non_local_cdp_host(tmp_path):
+    import pytest
+
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    with pytest.raises(ValueError, match="CDP host must be local"):
+        ExistingChromium(
+            user_data_dir=tmp_path,
+            host="192.168.1.10",
+        )
+
+
+def test_existing_chromium_rejects_invalid_debug_port(monkeypatch, tmp_path):
+    import pytest
+
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+    monkeypatch.setenv("CHROME_USER_DATA_DIR", str(profile))
+    monkeypatch.setenv("CHROME_DEBUG_PORT", "not-a-port")
+
+    with pytest.raises(ValueError, match="CHROME_DEBUG_PORT"):
+        ExistingChromium.from_environment(timeout=20)
+
+
+def test_playwright_google_uses_existing_profile_when_configured(monkeypatch, tmp_path):
+    from lora_data_maker.scrapers import playwright as playwright_module
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+    monkeypatch.setenv("CHROME_USER_DATA_DIR", str(profile))
+
+    scraper = playwright_module.PlaywrightImagesScraper(
+        provider="google",
+        delay=0,
+        retries=0,
+        max_scrolls=1,
+    )
+
+    browser = scraper._create_browser()
+
+    assert isinstance(browser, ExistingChromium)
+    assert browser.user_data_dir == profile.resolve()
+    browser.close()
