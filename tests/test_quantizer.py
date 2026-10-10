@@ -12,15 +12,19 @@ from lora_data_maker.quantizer import (
 )
 
 
-def write_safetensors(path: Path, tensors: dict[str, bytes]) -> None:
+def write_safetensors(path: Path, tensors: dict[str, bytes | tuple[bytes, list[int]]]) -> None:
     header = {}
     payload = bytearray()
-    for name, value in tensors.items():
+    for name, raw in tensors.items():
+        if isinstance(raw, tuple):
+            value, shape = raw
+        else:
+            value, shape = raw, [len(raw)]
         start = len(payload)
         payload.extend(value)
         header[name] = {
             "dtype": "U8",
-            "shape": [len(value)],
+            "shape": shape,
             "data_offsets": [start, len(payload)],
         }
     header["__metadata__"] = {"format": "pt"}
@@ -75,7 +79,7 @@ def test_extract_unet_writes_only_unet_tensors_without_loading_weights(tmp_path)
     header_size = struct.unpack("<Q", content[:8])[0]
     header = json.loads(content[8:8 + header_size])
     assert list(k for k in header if k != "__metadata__") == [
-        "model.diffusion_model.input_blocks.0.weight"
+        "input_blocks.0.weight"
     ]
     assert content[8 + header_size:] == b"UNET"
     assert header["__metadata__"] == {"format": "pt"}
@@ -138,3 +142,94 @@ def test_unet_extraction_rejects_checkpoint_without_unet(tmp_path):
 
     with pytest.raises(QuantizerError, match="no UNet tensors"):
         extract_component_safetensors(source, output, "unet")
+
+
+
+@pytest.mark.parametrize(
+    ("tensor_name", "shape", "expected"),
+    [
+        (
+            "model.diffusion_model.input_blocks.1.1.transformer_blocks.0.attn2.to_k.weight",
+            [320, 768],
+            "sd15",
+        ),
+        (
+            "model.diffusion_model.input_blocks.1.1.transformer_blocks.0.attn2.to_k.weight",
+            [320, 1024],
+            "sd2",
+        ),
+    ],
+)
+def test_scan_estimates_sd15_and_sd2_from_cross_attention_shape(
+    tmp_path, tensor_name, shape, expected
+):
+    source = tmp_path / f"{expected}.safetensors"
+    write_safetensors(source, {tensor_name: (b"1234", shape)})
+
+    result = inspect_safetensors(source)
+
+    assert result["architecture"] == expected
+    assert result["architecture_recognized"] is True
+
+
+@pytest.mark.parametrize(
+    ("tensors", "expected", "component_key"),
+    [
+        (
+            {
+                "model.diffusion_model.label_emb.0.0.weight": b"SDXL",
+                "model.diffusion_model.input_blocks.0.weight": b"UNET",
+            },
+            "sdxl",
+            "unet",
+        ),
+        (
+            {
+                "model.diffusion_model.joint_blocks.0.x_block.attn.qkv.weight": b"SD3",
+                "model.diffusion_model.x_embedder.weight": b"EMBED",
+            },
+            "sd3",
+            "unet",
+        ),
+        (
+            {
+                "double_blocks.0.img_attn.qkv.weight": b"FLUX",
+                "single_blocks.0.linear1.weight": b"BLOCK",
+                "img_in.weight": b"INPUT",
+            },
+            "flux",
+            "unet",
+        ),
+    ],
+)
+def test_scan_recognizes_sdxl_sd3_and_flux_backbones(
+    tmp_path, tensors, expected, component_key
+):
+    source = tmp_path / f"{expected}.safetensors"
+    write_safetensors(source, tensors)
+
+    result = inspect_safetensors(source)
+
+    assert result["architecture"] == expected
+    assert result["architecture_recognized"] is True
+    assert result["components"][component_key]["tensor_count"] > 0
+
+
+def test_extract_flux_backbone_keeps_root_diffusion_keys(tmp_path):
+    source = tmp_path / "flux.safetensors"
+    output = tmp_path / "flux-only.safetensors"
+    write_safetensors(
+        source,
+        {
+            "double_blocks.0.img_attn.qkv.weight": b"FLUX",
+            "single_blocks.0.linear1.weight": b"BLOCK",
+            "clip_l.transformer.text_model.embeddings.weight": b"CLIP",
+        },
+    )
+
+    extract_component_safetensors(source, output, "unet")
+    result = inspect_safetensors(output)
+
+    assert result["components"]["unet"]["tensor_count"] == 2
+    assert result["components"]["clip"]["tensor_count"] == 0
+    assert result["architecture"] == "flux"
