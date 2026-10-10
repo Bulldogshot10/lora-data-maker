@@ -2059,9 +2059,11 @@ function renderQuantizerComponents(){
   const names=[["unet","Diffusion backbone (UNet / DiT)"],["clip","CLIP / text encoders"],["vae","VAE"],["other","other"]];
   const architecture=esc(model.architecture_label||"Unknown / custom architecture");
   const detectionNote=esc(model.architecture_note||"Architecture detection is best-effort; the converter is the final compatibility check.");
-  const status=model.architecture_recognized===false
-    ?"<div style='padding:8px 0;color:var(--warn)'>family not confidently identified · the converter may still support this file.</div>"
-    :"<div style='padding:8px 0;color:var(--ok)'>recognized target family · the converter will validate the actual weights.</div>";
+  const status=model.is_standalone_backbone
+    ?"<div style='padding:8px 0;color:var(--warn)'>standalone diffusion backbone detected · this file has no separate CLIP/VAE tensors, so the output will be backbone-only.</div>"
+    :model.architecture_recognized===false
+      ?"<div style='padding:8px 0;color:var(--warn)'>family not confidently identified · the converter may still support this file.</div>"
+      :"<div style='padding:8px 0;color:var(--ok)'>recognized target family · the converter will validate the actual weights.</div>";
   box.innerHTML="<div style='padding:8px 0;border-bottom:1px solid var(--line)'><b>Detected architecture:</b> "+architecture+"</div>"
     +status
     +names.map(pair=>{
