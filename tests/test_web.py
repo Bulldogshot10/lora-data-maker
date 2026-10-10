@@ -936,6 +936,9 @@ def test_webui_shell_exposes_curation_controls(tmp_path: Path) -> None:
 def test_webui_date_filter_controls_mark_settings_dirty(tmp_path: Path) -> None:
     html = TestClient(create_app(make_project(tmp_path))).get("/").text
     assert '"scrape_date_mode","scrape_year","scrape_date_from","scrape_date_to"' in html
+    assert 'id="scrape_date_from" type="text"' in html
+    assert 'id="scrape_date_to" type="text"' in html
+    assert 'placeholder="YYYY-MM-DD"' in html
 
 
 def test_media_download_sets_attachment_filename(tmp_path: Path) -> None:
