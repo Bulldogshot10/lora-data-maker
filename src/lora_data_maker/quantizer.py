@@ -176,7 +176,16 @@ def _component_for_tensor(name: str) -> str:
             "txt_in.",
             "vector_in.",
             "guidance_in.",
+            "time_in.",
             "final_layer.",
+            "norm_out.",
+            "pos_embed.",
+            "time_text_embed.",
+            "t_embedder.",
+            "pooled_text_embedder.",
+            "proj_out.",
+            "pe_embedder.",
+            "scale_shift_table.",
         ),
     ):
         return "unet"
