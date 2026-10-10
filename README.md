@@ -337,18 +337,18 @@ The project CI smoke-tests Python 3.12, 3.13, and 3.14, including package instal
 
 ## Stable Diffusion quantizer
 
-The WebUI includes an optional stable-diffusion.cpp quantizer; it does not expose image generation. Open **quantizer**, choose a .safetensors checkpoint using the phone's file picker (including Android's system file picker), scan the checkpoint's UNet / CLIP / VAE tensor namespaces, then select **all components** or **UNet only** and a weight type. The resulting GGUF is downloadable from the same panel.
+The WebUI includes an optional stable-diffusion.cpp quantizer; it does not expose image generation. Open **quantizer**, choose a .safetensors checkpoint using the phone's file picker (including Android's system file picker), scan its tensor namespaces, and select **all components** or **diffusion backbone only (UNet / DiT)** plus an output weight type. The scanner estimates the architecture from tensor names and shapes and labels the result for SD 1.x / SD 1.5-like, SD 2.x, SDXL (including Lightning), SD3 / SD3.5, and FLUX checkpoints. Detection is best-effort; stable-diffusion.cpp remains the final compatibility check, so the converter can still reject unsupported, merged, or nonstandard checkpoint layouts.
 
-Install/build stable-diffusion.cpp separately, then expose its conversion CLI to the WebUI process:
+Install/build stable-diffusion.cpp separately, then expose its conversion CLI to the WebUI process. For a source build in `~/stable-diffusion.cpp`, the CLI is normally under `build/bin/sd-cli`:
 
 ```bash
-export LORA_DATA_MAKER_SD_CPP_CLI="$HOME/stable-diffusion.cpp/bin/sd-cli"
+export LORA_DATA_MAKER_SD_CPP_CLI="$HOME/stable-diffusion.cpp/build/bin/sd-cli"
 lora-data-maker web --path ~/datasets
 ```
 
-Supported weight types are q4_0, q4_1, q5_0, q5_1, q8_0, f16, and f32. All-components mode converts the uploaded checkpoint. UNet-only mode streams just the detected UNet tensors into a temporary safetensors file and passes that file as the --diffusion-model conversion input; its output is a UNet-only GGUF, not a full pipeline checkpoint. Large uploads and conversions consume disk space and memory on the host running the WebUI. Source files are kept under the active dataset's quantizer/uploads/ directory, and output GGUFs under quantizer/output/.
+Supported output weight types are q4_0, q4_1, q5_0, q5_1, q8_0, f16, and f32. **All-components / whole-file mode** passes the uploaded file directly to conversion. **Diffusion-backbone-only mode** extracts detected UNet / DiT tensors into a temporary safetensors file and passes it with `--diffusion-model`; its output contains the diffusion backbone only, not CLIP, VAE, or a complete inference pipeline. For SD3 and FLUX in particular, a backbone-only GGUF still needs the model's other components separately when loading it for inference. Large uploads and conversions consume disk space and memory on the host running the WebUI. Source files are kept under the active dataset's `quantizer/uploads/` directory, and output GGUFs under `quantizer/output/`.
 
-For upstream conversion syntax and quantization types, see the stable-diffusion.cpp quantization guide: https://github.com/leejet/stable-diffusion.cpp/blob/master/docs/quantization_and_gguf.md.
+For upstream model support, conversion syntax, and quantization types, see the stable-diffusion.cpp repository and quantization guide: https://github.com/leejet/stable-diffusion.cpp and https://github.com/leejet/stable-diffusion.cpp/blob/master/docs/quantization_and_gguf.md.
 
 ## License
 
