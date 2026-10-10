@@ -1348,9 +1348,15 @@ async function loadVlmModels(){
   }
 }
 function syncScrapeDateUI(){
-  const mode=$("scrape_date_mode").value;
   const supported=$("scraper_backend").value==="playwright-bing";
-  $("scrape_date_mode").disabled=!supported;
+  if(!supported&&$("scrape_date_mode").value!=="any"){
+    $("scrape_date_mode").value="any";
+    $("scrape_year").value="";
+    $("scrape_date_from").value="";
+    $("scrape_date_to").value="";
+  }
+  const mode=$("scrape_date_mode").value;
+  $("scrape_date_mode").disabled=!supported||isBusyOnActiveProject();
   $("scrape_date_year_field").hidden=mode!=="year";
   $("scrape_date_from_field").hidden=mode!=="range";
   $("scrape_date_to_field").hidden=mode!=="range";
