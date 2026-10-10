@@ -26,6 +26,9 @@ timeout = 20
 retries = 3
 delay = 1.0
 max_scrolls = 30
+year = 0
+date_from = ""
+date_to = ""
 
 [validation]
 min_width = 1
