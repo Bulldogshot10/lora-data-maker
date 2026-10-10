@@ -274,12 +274,35 @@ def inspect_safetensors(path: Path | str) -> dict[str, Any]:
         and components["vae"]["tensor_count"] == 0
         and components["other"]["tensor_count"] == 0
     )
+    diffusers_prefixes = (
+        "down_blocks.",
+        "up_blocks.",
+        "mid_block.",
+        "conv_in.",
+        "conv_out.",
+        "time_embedding.",
+        "add_embedding.",
+        "transformer_blocks.",
+        "single_transformer_blocks.",
+        "unet.down_blocks.",
+        "unet.up_blocks.",
+        "transformer.transformer_blocks.",
+        "transformer.single_transformer_blocks.",
+    )
+    uses_diffusers_names = (
+        not has_model_diffusion_namespace
+        and any(
+            name.lower().startswith(diffusers_prefixes)
+            for name, _meta, _start, _end in entries
+        )
+    )
     return {
         "size_bytes": target.stat().st_size,
         "tensor_count": len(entries),
         "components": components,
         "can_quantize_unet": components["unet"]["tensor_count"] > 0,
         "is_standalone_backbone": is_standalone_backbone,
+        "uses_diffusers_names": uses_diffusers_names,
         "architecture": architecture,
         "architecture_label": ARCHITECTURE_LABELS[architecture],
         "architecture_recognized": architecture in SUPPORTED_ARCHITECTURES,
@@ -402,6 +425,7 @@ def build_sd_cpp_command(
     *,
     unet_path: Path | str | None = None,
     standalone_diffusion_model: bool = False,
+    convert_name: bool = False,
 ) -> list[str]:
     if quant_type not in SUPPORTED_QUANT_TYPES:
         raise QuantizerError(
@@ -423,7 +447,7 @@ def build_sd_cpp_command(
         input_args = ["--diffusion-model", str(Path(unet_path).resolve())]
 
     # Force sd.cpp conversion mode. No generation arguments are passed.
-    return [
+    command = [
         cli_path,
         "-M",
         "convert",
@@ -433,6 +457,9 @@ def build_sd_cpp_command(
         "--type",
         quant_type,
     ]
+    if convert_name:
+        command.append("--convert-name")
+    return command
 
 
 def _run_sd_cpp(
@@ -553,6 +580,7 @@ def quantize_safetensors(
             scope,
             unet_path=unet_path,
             standalone_diffusion_model=standalone_backbone,
+            convert_name=bool(summary.get("uses_diffusers_names")),
         )
         if progress is not None:
             progress(0, 0, f"starting sd.cpp conversion ({scope}, {quant_type})")
