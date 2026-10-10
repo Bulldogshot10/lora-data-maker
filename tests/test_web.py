@@ -949,3 +949,63 @@ def test_media_download_sets_attachment_filename(tmp_path: Path) -> None:
     disposition = download.headers["content-disposition"]
     assert disposition.startswith("attachment;")
     assert "000001.jpg" in disposition
+
+
+def test_web_saves_playwright_bing_custom_date_range(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    response = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "preset": "sweetspot",
+            "scraper_backend": "playwright-bing",
+            "scrape_query": "julia russian woman",
+            "scrape_count": 10,
+            "scrape_date_mode": "range",
+            "scrape_year": 0,
+            "scrape_date_from": "2019-01-01",
+            "scrape_date_to": "2019-12-31",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+        },
+    )
+
+    assert response.status_code == 200
+    scraper = client.get("/api/state").json()["scraper"]
+    assert scraper["backend"] == "playwright-bing"
+    assert scraper["year"] == 0
+    assert scraper["date_from"] == "2019-01-01"
+    assert scraper["date_to"] == "2019-12-31"
+
+
+def test_web_rejects_date_filter_for_non_bing_backend(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    response = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "preset": "sweetspot",
+            "scraper_backend": "duckduckgo",
+            "scrape_query": "julia",
+            "scrape_count": 10,
+            "scrape_date_mode": "year",
+            "scrape_year": 2019,
+            "scrape_date_from": "2019-01-01",
+            "scrape_date_to": "2019-12-31",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Playwright Bing backend" in response.json()["detail"]
