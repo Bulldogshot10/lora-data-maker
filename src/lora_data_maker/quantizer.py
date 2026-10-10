@@ -13,6 +13,15 @@ from typing import Any, Callable
 
 SUPPORTED_QUANT_TYPES = ("q4_0", "q4_1", "q5_0", "q5_1", "q8_0", "f16", "f32")
 COMPONENT_NAMES = ("unet", "clip", "vae", "other")
+ARCHITECTURE_LABELS = {
+    "sd15": "SD 1.x / SD 1.5-like",
+    "sd2": "SD 2.x",
+    "sdxl": "SDXL (including Lightning)",
+    "sd3": "SD3 / SD3.5",
+    "flux": "FLUX",
+    "unknown": "Unknown / custom architecture",
+}
+SUPPORTED_ARCHITECTURES = frozenset({"sd15", "sd2", "sdxl", "sd3", "flux"})
 _COPY_CHUNK = 4 * 1024 * 1024
 _MAX_HEADER_BYTES = 256 * 1024 * 1024
 
@@ -110,6 +119,11 @@ def _tensor_entries(
     return entries
 
 
+def _has_component_prefix(key: str, prefixes: tuple[str, ...]) -> bool:
+    """Match both root-level Diffusers keys and keys nested under a model namespace."""
+    return any(key.startswith(prefix) or ("." + prefix) in key for prefix in prefixes)
+
+
 def _component_for_tensor(name: str) -> str:
     key = name.replace("\\", "/").lower()
 
@@ -126,12 +140,19 @@ def _component_for_tensor(name: str) -> str:
             "text_encoders.",
             "clip_l.",
             "clip_g.",
+            "text_model.",
+            "token_embedding.",
+            "transformer.text_model.",
         )
     ):
         return "clip"
+    if key.startswith(("encoder.", "decoder.", "quant_conv.", "post_quant_conv.")):
+        return "vae"
 
-    # Root-level Diffusers component weights, e.g. down_blocks.* for a standalone UNet.
-    if key.startswith(
+    # Root-level UNet and DiT/diffusion-transformer namespaces. SD3 and FLUX
+    # use transformer backbones, so they must be included alongside classic UNets.
+    if _has_component_prefix(
+        key,
         (
             "down_blocks.",
             "up_blocks.",
@@ -143,14 +164,88 @@ def _component_for_tensor(name: str) -> str:
             "input_blocks.",
             "output_blocks.",
             "middle_block.",
-        )
+            "double_blocks.",
+            "single_blocks.",
+            "single_transformer_blocks.",
+            "joint_blocks.",
+            "transformer_blocks.",
+            "x_embedder.",
+            "context_embedder.",
+            "y_embedder.",
+            "img_in.",
+            "txt_in.",
+            "vector_in.",
+            "guidance_in.",
+            "final_layer.",
+        ),
     ):
         return "unet"
-    if key.startswith(("encoder.", "decoder.", "quant_conv.", "post_quant_conv.")):
-        return "vae"
-    if key.startswith(("text_model.", "token_embedding.", "transformer.text_model.")):
-        return "clip"
     return "other"
+
+
+def _detect_architecture(
+    entries: list[tuple[str, dict[str, Any], int, int]],
+) -> str:
+    """Best-effort architecture classification using tensor names and shapes only."""
+    keys = [name.replace("\\", "/").lower() for name, _meta, _start, _end in entries]
+
+    def has_any_token(tokens: tuple[str, ...]) -> bool:
+        return any(
+            key.startswith(token) or ("." + token) in key
+            for key in keys
+            for token in tokens
+        )
+
+    # Test FLUX first: some of its transformer naming overlaps with SD3.
+    if has_any_token(
+        (
+            "double_blocks.",
+            "single_blocks.",
+            "single_transformer_blocks.",
+            "img_in.",
+            "txt_in.",
+            "vector_in.",
+            "guidance_in.",
+        )
+    ):
+        return "flux"
+
+    if has_any_token(("joint_blocks.", "y_embedder.")):
+        return "sd3"
+
+    if has_any_token(
+        (
+            "conditioner.embedders.1.",
+            "text_encoder_2.",
+            "text_encoders.clip_g.",
+            "label_emb.0.0.",
+            "add_embedding.linear_1.",
+        )
+    ):
+        return "sdxl"
+
+    cross_attention_dims: set[int] = set()
+    for name, meta, _start, _end in entries:
+        key = name.lower()
+        if "attn2.to_k.weight" not in key and "attn2.to_v.weight" not in key:
+            continue
+        shape = meta.get("shape")
+        if isinstance(shape, list) and len(shape) >= 2 and isinstance(shape[-1], int):
+            cross_attention_dims.add(shape[-1])
+
+    if 2048 in cross_attention_dims:
+        return "sdxl"
+    if 1024 in cross_attention_dims:
+        return "sd2"
+    if 768 in cross_attention_dims:
+        return "sd15"
+
+    # A generic transformer-block namespace with an SD3-like context embedder is
+    # most likely an SD3-family checkpoint if no FLUX-specific signature appeared.
+    if has_any_token(("context_embedder.",)) and has_any_token(("transformer_blocks.",)):
+        return "sd3"
+
+    return "unknown"
 
 
 def inspect_safetensors(path: Path | str) -> dict[str, Any]:
@@ -167,21 +262,34 @@ def inspect_safetensors(path: Path | str) -> dict[str, Any]:
         components[component]["tensor_count"] += 1
         components[component]["bytes"] += end - start
 
+    architecture = _detect_architecture(entries)
     return {
         "size_bytes": target.stat().st_size,
         "tensor_count": len(entries),
         "components": components,
         "can_quantize_unet": components["unet"]["tensor_count"] > 0,
+        "architecture": architecture,
+        "architecture_label": ARCHITECTURE_LABELS[architecture],
+        "architecture_recognized": architecture in SUPPORTED_ARCHITECTURES,
+        "architecture_note": (
+            "Architecture detection is a best-effort estimate from tensor names and shapes; "
+            "stable-diffusion.cpp remains the final compatibility check."
+            if architecture != "unknown"
+            else "Could not confidently identify this architecture from tensor names/shapes. "
+                 "stable-diffusion.cpp may still support it, but conversion can fail."
+        ),
     }
 
 
 def _normalized_unet_key(name: str) -> str:
-    for prefix in ("diffusion_model.", "unet."):
+    # --diffusion-model adds the model.diffusion_model. namespace itself. Strip
+    # that prefix here to avoid double-prefixing extracted checkpoint tensors.
+    for prefix in ("model.diffusion_model.", "diffusion_model.", "unet.", "transformer."):
         if name.startswith(prefix):
             return name[len(prefix):]
-    if name.startswith("unet/"):
-        return name[len("unet/"):]
-    # Preserve the canonical model.diffusion_model.* namespace.
+    for prefix in ("model.diffusion_model/", "diffusion_model/", "unet/"):
+        if name.startswith(prefix):
+            return name[len(prefix):]
     return name
 
 
