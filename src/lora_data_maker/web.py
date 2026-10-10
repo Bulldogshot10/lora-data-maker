@@ -2038,6 +2038,7 @@ $("scraper_backend").addEventListener("change",syncScrapeDateUI);
 $("scrape_date_mode").addEventListener("change",syncScrapeDateUI);
 [
   "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count",
+  "scrape_date_mode","scrape_year","scrape_date_from","scrape_date_to",
   "mode","width","height","quality","caption_backend","caption_runtime","caption_chat_format","caption_model_path","caption_mmproj_path","caption_api_model","caption_api_base_url","caption_max_tokens","face_crop","face_padding","person_check",
   "max_persons","person_threshold","min_subject_area","min_subject_visibility",
   "text_check","text_confidence","text_min_area_ratio"
