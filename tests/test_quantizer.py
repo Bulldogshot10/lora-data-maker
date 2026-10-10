@@ -9,6 +9,7 @@ from lora_data_maker.quantizer import (
     build_sd_cpp_command,
     extract_component_safetensors,
     inspect_safetensors,
+    quantize_safetensors,
 )
 
 
@@ -215,6 +216,10 @@ def test_scan_estimates_sd15_and_sd2_from_cross_attention_shape(
                 "double_blocks.0.img_attn.qkv.weight": b"FLUX",
                 "single_blocks.0.linear1.weight": b"BLOCK",
                 "img_in.weight": b"INPUT",
+                "time_in.in_layer.weight": b"TIME",
+                "norm_out.weight": b"NORM",
+                "pos_embed": b"POS",
+                "proj_out.weight": b"OUT",
             },
             "flux",
             "unet",
@@ -272,3 +277,63 @@ def test_scan_detects_diffusers_style_backbone_names(tmp_path):
     assert result["architecture"] == "sdxl"
     assert result["is_standalone_backbone"] is True
     assert result["uses_diffusers_names"] is True
+
+
+
+def test_quantize_routes_standalone_flux_to_diffusion_model(monkeypatch, tmp_path):
+    import lora_data_maker.quantizer as quantizer
+
+    source = tmp_path / "flux.safetensors"
+    output = tmp_path / "flux.gguf"
+    write_safetensors(
+        source,
+        {
+            "double_blocks.0.img_attn.qkv.weight": b"FLUX",
+            "single_blocks.0.linear1.weight": b"BLOCK",
+            "img_in.weight": b"INPUT",
+            "time_in.in_layer.weight": b"TIME",
+            "norm_out.weight": b"NORM",
+        },
+    )
+    captured = {}
+
+    def fake_run(command, **_kwargs):
+        captured["command"] = command
+        output.write_bytes(b"GGUF")
+
+    monkeypatch.setattr(quantizer, "_run_sd_cpp", fake_run)
+    quantize_safetensors(source, output, quant_type="q4_0", cli_path="sd-cli")
+
+    command = captured["command"]
+    assert "--diffusion-model" in command
+    assert str(source.resolve()) in command
+    assert "-m" not in command
+    assert "--convert-name" not in command
+    assert output.read_bytes() == b"GGUF"
+
+
+def test_quantize_enables_name_conversion_for_diffusers_backbone(monkeypatch, tmp_path):
+    import lora_data_maker.quantizer as quantizer
+
+    source = tmp_path / "sdxl-unet.safetensors"
+    output = tmp_path / "sdxl.gguf"
+    write_safetensors(
+        source,
+        {
+            "down_blocks.0.resnets.0.conv1.weight": b"DOWN",
+            "add_embedding.linear_1.weight": b"ADD",
+        },
+    )
+    captured = {}
+
+    def fake_run(command, **_kwargs):
+        captured["command"] = command
+        output.write_bytes(b"GGUF")
+
+    monkeypatch.setattr(quantizer, "_run_sd_cpp", fake_run)
+    quantize_safetensors(source, output, quant_type="q4_0", cli_path="sd-cli")
+
+    command = captured["command"]
+    assert "--diffusion-model" in command
+    assert "--convert-name" in command
+    assert output.read_bytes() == b"GGUF"
