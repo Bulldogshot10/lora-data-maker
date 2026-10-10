@@ -127,9 +127,11 @@ def test_build_sd_cpp_standalone_backbone_uses_component_input(tmp_path):
         "q4_0",
         "all",
         standalone_diffusion_model=True,
+        convert_name=True,
     )
 
     assert "--diffusion-model" in command
+    assert "--convert-name" in command
     assert str(source.resolve()) in command
     assert "-m" not in command
 
@@ -252,3 +254,21 @@ def test_extract_flux_backbone_keeps_root_diffusion_keys(tmp_path):
     assert result["components"]["unet"]["tensor_count"] == 2
     assert result["components"]["clip"]["tensor_count"] == 0
     assert result["architecture"] == "flux"
+
+
+
+def test_scan_detects_diffusers_style_backbone_names(tmp_path):
+    source = tmp_path / "sdxl-diffusers-unet.safetensors"
+    write_safetensors(
+        source,
+        {
+            "down_blocks.0.resnets.0.conv1.weight": b"DOWN",
+            "add_embedding.linear_1.weight": b"ADD",
+        },
+    )
+
+    result = inspect_safetensors(source)
+
+    assert result["architecture"] == "sdxl"
+    assert result["is_standalone_backbone"] is True
+    assert result["uses_diffusers_names"] is True
