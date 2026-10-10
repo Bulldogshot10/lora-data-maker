@@ -1095,7 +1095,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
       <div class="section-head">
         <div>
           <h2>Stable Diffusion quantizer</h2>
-          <p>upload a safetensors checkpoint, scan its components, and convert weights to GGUF with stable-diffusion.cpp.</p>
+          <p>quantize SD 1.x / 1.5-like, SD 2.x, SDXL (including Lightning), SD3 / SD3.5, and FLUX checkpoints to GGUF. Architecture detection is best-effort; stable-diffusion.cpp validates the actual input.</p>
         </div>
         <span class="helper">conversion only · no image generation</span>
       </div>
@@ -1132,8 +1132,8 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
           <div class="field">
             <label for="quantizer-scope">conversion scope</label>
             <select id="quantizer-scope">
-              <option value="all">all components (full checkpoint)</option>
-              <option value="unet">UNet only</option>
+              <option value="all">whole uploaded file</option>
+              <option value="unet">diffusion backbone only (UNet / DiT)</option>
             </select>
           </div>
           <div class="field">
@@ -2056,11 +2056,20 @@ function renderQuantizerComponents(){
     return;
   }
   const c=model.components||{};
-  const names=[["unet","UNet"],["clip","CLIP"],["vae","VAE"],["other","other"]];
-  box.innerHTML=names.map(pair=>{
-    const stat=c[pair[0]]||{};
-    return "<div style='display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line)'><span>"+pair[1]+"</span><span>"+Number(stat.tensor_count||0).toLocaleString()+" tensors · "+formatBytes(stat.bytes||0)+"</span></div>";
-  }).join("")+"<div style='padding-top:9px;color:var(--muted)'>"+Number(model.tensor_count||0).toLocaleString()+" tensors total · "+formatBytes(model.size_bytes||0)+" file size</div>";
+  const names=[["unet","Diffusion backbone (UNet / DiT)"],["clip","CLIP / text encoders"],["vae","VAE"],["other","other"]];
+  const architecture=esc(model.architecture_label||"Unknown / custom architecture");
+  const detectionNote=esc(model.architecture_note||"Architecture detection is best-effort; the converter is the final compatibility check.");
+  const status=model.architecture_recognized===false
+    ?"<div style='padding:8px 0;color:var(--warn)'>family not confidently identified · the converter may still support this file.</div>"
+    :"<div style='padding:8px 0;color:var(--ok)'>recognized target family · the converter will validate the actual weights.</div>";
+  box.innerHTML="<div style='padding:8px 0;border-bottom:1px solid var(--line)'><b>Detected architecture:</b> "+architecture+"</div>"
+    +status
+    +names.map(pair=>{
+      const stat=c[pair[0]]||{};
+      return "<div style='display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line)'><span>"+pair[1]+"</span><span>"+Number(stat.tensor_count||0).toLocaleString()+" tensors · "+formatBytes(stat.bytes||0)+"</span></div>";
+    }).join("")
+    +"<div style='padding-top:9px;color:var(--muted)'>"+Number(model.tensor_count||0).toLocaleString()+" tensors total · "+formatBytes(model.size_bytes||0)+" file size</div>"
+    +"<div style='padding-top:7px;color:var(--muted-2);font-size:10px'>"+detectionNote+"</div>";
   run.disabled=$("quantizer-scope").value==="unet"&&!model.can_quantize_unet;
 }
 async function uploadQuantizerModel(){
