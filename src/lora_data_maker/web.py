@@ -30,6 +30,15 @@ from .pack import pack_dataset
 from .paths import ProjectPaths, manifest_path
 from .processing import ProcessConfig, YOLOXNanoPersonDetector, YuNetFaceDetector, clean_manifest, process_manifest, validate_image
 from .processing.text import PPOCRTextDetector
+from .quantizer import (
+    QuantizerCancelledError,
+    QuantizerError,
+    SUPPORTED_QUANT_TYPES,
+    find_sd_cli,
+    inspect_safetensors,
+    quantize_safetensors,
+    require_sd_cli,
+)
 from .reconcile import reconcile_raw
 from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
 from .scrapers.base import ScraperCancelledError
@@ -678,6 +687,7 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
       <button type="button" data-view="overview"><span class="nav-key">01</span><span>overview</span></button>
       <button type="button" data-view="collect"><span class="nav-key">02</span><span>collect</span></button>
       <button type="button" data-view="settings"><span class="nav-key">03</span><span>settings</span></button>
+      <button type="button" data-view="quantizer"><span class="nav-key">04</span><span>quantizer</span></button>
     </nav>
 
     <section class="side-section">
@@ -1080,6 +1090,81 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
         <button type="button" class="action-secondary" data-save>save settings</button>
       </div>
     </section>
+
+    <section class="view" data-view-panel="quantizer">
+      <div class="section-head">
+        <div>
+          <h2>Stable Diffusion quantizer</h2>
+          <p>upload a safetensors checkpoint, scan its components, and convert weights to GGUF with stable-diffusion.cpp.</p>
+        </div>
+        <span class="helper">conversion only · no image generation</span>
+      </div>
+
+      <section class="card card-pad">
+        <div class="card-title-row">
+          <div class="card-title">1 · upload checkpoint</div>
+          <div class="card-kicker">Android file picker / SAF</div>
+        </div>
+        <p class="field-note" style="font-size:11px">Choose a local <b>.safetensors</b> checkpoint. The scanner reads tensor names and file offsets without loading the full model into RAM.</p>
+        <div class="form-grid" style="margin-top:13px">
+          <div class="field" style="grid-column:1/-1">
+            <label for="quantizer-file">safetensors file</label>
+            <input id="quantizer-file" type="file" accept=".safetensors,application/octet-stream">
+          </div>
+        </div>
+        <div class="save-bar">
+          <span class="save-note" id="quantizer-cli-status">checking sd.cpp CLI…</span>
+          <button type="button" class="action-secondary" id="quantizer-refresh">refresh</button>
+          <button type="button" class="action-primary" id="quantizer-upload">upload & scan</button>
+        </div>
+      </section>
+
+      <section class="card card-pad" style="margin-top:14px">
+        <div class="card-title-row">
+          <div class="card-title">2 · choose components</div>
+          <div class="card-kicker">source checkpoint</div>
+        </div>
+        <div class="form-grid" style="margin-top:13px">
+          <div class="field">
+            <label for="quantizer-model">uploaded model</label>
+            <select id="quantizer-model"><option value="">upload a checkpoint first…</option></select>
+          </div>
+          <div class="field">
+            <label for="quantizer-scope">conversion scope</label>
+            <select id="quantizer-scope">
+              <option value="all">all components (full checkpoint)</option>
+              <option value="unet">UNet only</option>
+            </select>
+          </div>
+          <div class="field">
+            <label for="quantizer-type">output weight type</label>
+            <select id="quantizer-type">
+              <option value="q4_0">Q4_0 · smallest common option</option>
+              <option value="q4_1">Q4_1</option>
+              <option value="q5_0">Q5_0</option>
+              <option value="q5_1">Q5_1</option>
+              <option value="q8_0">Q8_0 · higher precision</option>
+              <option value="f16">F16 · no integer quantization</option>
+              <option value="f32">F32 · full precision</option>
+            </select>
+          </div>
+        </div>
+        <div id="quantizer-components" class="field-note" style="font-size:11px;margin-top:14px">no checkpoint scanned yet.</div>
+        <div class="save-bar">
+          <span class="save-note" id="quantizer-job-status">ready</span>
+          <button type="button" class="action-primary" id="quantizer-run">quantize</button>
+        </div>
+      </section>
+
+      <section class="card card-pad" style="margin-top:14px">
+        <div class="card-title-row">
+          <div class="card-title">3 · quantized outputs</div>
+          <div class="card-kicker">GGUF files</div>
+        </div>
+        <div id="quantizer-outputs" class="field-note" style="font-size:11px">no quantized outputs yet.</div>
+      </section>
+    </section>
+
   </main>
 </div>
 
@@ -1131,6 +1216,8 @@ const appState={
   settingsDirty:false,
   activeProjectPath:"",
   currentJob:null,
+  quantizerModels:[],
+  quantizerModelId:"",
   jobId:localStorage.getItem("ldm.jobId")||"",
   pollTimer:null,
   confirmResolve:null,
@@ -1181,7 +1268,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file,#quantizer-file,#quantizer-upload,#quantizer-refresh,#quantizer-model,#quantizer-scope,#quantizer-type,#quantizer-run").forEach(el=>{
     if(el)el.disabled=busy;
   });
   const vlmOnly=$("caption_backend").value==="vlm";
@@ -1537,7 +1624,7 @@ function updateProjectHeader(s){
 }
 function setView(view,push=true){
   if(view==="prepare")view="overview";
-  const allowed=new Set(["overview","collect","settings"]);
+  const allowed=new Set(["overview","collect","settings","quantizer"]);
   if(!allowed.has(view))view="overview";
   document.querySelectorAll("[data-view]").forEach(button=>button.classList.toggle("active",button.dataset.view===view));
   document.querySelectorAll("[data-view-panel]").forEach(panel=>panel.classList.toggle("active",panel.dataset.viewPanel===view));
@@ -1727,6 +1814,7 @@ async function poll(id){
   try{
     const d=await api("/api/jobs/"+encodeURIComponent(id));
     renderJob(d);
+    updateQuantizerJob(d);
     const kind=d.status==="failed"?"bad":d.status==="done"?"ok":d.status==="cancelled"?"cancelled":"running";
     setStatus(d.message||d.status,kind);
     if(d.status==="running"){
@@ -1735,6 +1823,7 @@ async function poll(id){
       localStorage.removeItem("ldm.jobId");
       appState.jobId="";
       await refresh();
+      await refreshQuantizer();
       if(d.status==="done")toast("job complete","ok");
       if(d.status==="failed")toast(d.message||"job failed","bad");
       if(d.status==="cancelled")toast(d.message||"scrape cancelled","ok");
@@ -1915,6 +2004,134 @@ function finishConfirm(value){
   if($("confirm-modal").open)$("confirm-modal").close();
   if(resolve)resolve(value);
 }
+
+function formatBytes(value){
+  const n=Math.max(0,Number(value||0));
+  if(n<1024)return n+" B";
+  const units=["KB","MB","GB","TB"];
+  let size=n/1024,index=0;
+  while(size>=1024&&index<units.length-1){size/=1024;index++;}
+  return size.toFixed(size>=100?0:size>=10?1:2)+" "+units[index];
+}
+async function refreshQuantizer(){
+  try{
+    const previous=$("quantizer-model").value||appState.quantizerModelId||"";
+    const data=await api("/api/quantizer/state");
+    appState.quantizerModels=Array.isArray(data.models)?data.models:[];
+    $("quantizer-cli-status").textContent=data.cli&&data.cli.available
+      ?"sd.cpp ready: "+data.cli.path
+      :"sd.cpp CLI not found. Set LORA_DATA_MAKER_SD_CPP_CLI to the path of sd-cli.";
+    const select=$("quantizer-model");
+    const selected=appState.quantizerModels.find(item=>item.id===previous);
+    select.innerHTML=appState.quantizerModels.length
+      ?appState.quantizerModels.map(item=>"<option value='"+esc(item.id)+"'>"+esc(item.filename)+" ("+formatBytes(item.size_bytes)+")</option>").join("")
+      :"<option value=''>upload a checkpoint first…</option>";
+    select.disabled=appState.quantizerModels.length===0;
+    if(selected)select.value=selected.id;
+    else if(appState.quantizerModels.length)select.selectedIndex=0;
+    appState.quantizerModelId=select.value||"";
+    renderQuantizerComponents();
+    const outputs=Array.isArray(data.outputs)?data.outputs:[];
+    $("quantizer-outputs").innerHTML=outputs.length
+      ?outputs.map(item=>"<div style='display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)'><span style='min-width:0;overflow-wrap:anywhere'>"+esc(item.filename)+"<span style='display:block;color:var(--muted)'>"+formatBytes(item.size_bytes)+"</span></span><a class='action-secondary' style='white-space:nowrap;padding:8px 11px;border-radius:10px;text-decoration:none' href='/api/quantizer/download/"+encodeURIComponent(item.filename)+"'>download</a></div>").join("")
+      :"no quantized outputs yet.";
+    return data;
+  }catch(e){
+    $("quantizer-cli-status").textContent=e.message;
+    return null;
+  }
+}
+function renderQuantizerComponents(){
+  const model=appState.quantizerModels.find(item=>item.id===$("quantizer-model").value);
+  const box=$("quantizer-components");
+  const run=$("quantizer-run");
+  if(!model){
+    box.textContent="no checkpoint scanned yet.";
+    run.disabled=true;
+    return;
+  }
+  if(model.scan_error){
+    box.textContent="scan failed: "+model.scan_error;
+    run.disabled=true;
+    return;
+  }
+  const c=model.components||{};
+  const names=[["unet","UNet"],["clip","CLIP"],["vae","VAE"],["other","other"]];
+  box.innerHTML=names.map(pair=>{
+    const stat=c[pair[0]]||{};
+    return "<div style='display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--line)'><span>"+pair[1]+"</span><span>"+Number(stat.tensor_count||0).toLocaleString()+" tensors · "+formatBytes(stat.bytes||0)+"</span></div>";
+  }).join("")+"<div style='padding-top:9px;color:var(--muted)'>"+Number(model.tensor_count||0).toLocaleString()+" tensors total · "+formatBytes(model.size_bytes||0)+" file size</div>";
+  run.disabled=$("quantizer-scope").value==="unet"&&!model.can_quantize_unet;
+}
+async function uploadQuantizerModel(){
+  const file=$("quantizer-file").files&&$("quantizer-file").files[0];
+  if(!file){toast("choose a .safetensors checkpoint first.","bad");return;}
+  if(!file.name.toLowerCase().endsWith(".safetensors")){toast("only .safetensors files are supported.","bad");return;}
+  if(isBusyOnActiveProject()){toast("this dataset is busy. wait for the current job to finish.","bad");return;}
+  const button=$("quantizer-upload");
+  button.disabled=true;
+  $("quantizer-job-status").textContent="uploading and scanning…";
+  try{
+    const form=new FormData();
+    form.append("file",file);
+    const data=await api("/api/quantizer/upload",{method:"POST",body:form});
+    appState.quantizerModelId=data.id;
+    $("quantizer-file").value="";
+    await refreshQuantizer();
+    $("quantizer-model").value=data.id;
+    appState.quantizerModelId=data.id;
+    renderQuantizerComponents();
+    $("quantizer-job-status").textContent="scan complete · "+Number(data.tensor_count||0).toLocaleString()+" tensors";
+    toast("checkpoint uploaded and scanned","ok");
+  }catch(e){
+    $("quantizer-job-status").textContent=e.message;
+    toast(e.message,"bad");
+  }finally{
+    button.disabled=false;
+    updateBusyUI();
+  }
+}
+async function startQuantization(){
+  const modelId=$("quantizer-model").value;
+  if(!modelId){toast("upload a checkpoint first.","bad");return;}
+  if(isBusyOnActiveProject()){toast("another job is already running.","bad");return;}
+  if($("quantizer-scope").value==="unet"){
+    const model=appState.quantizerModels.find(item=>item.id===modelId);
+    if(!model||!model.can_quantize_unet){toast("no UNet tensors were detected in this checkpoint.","bad");return;}
+  }
+  const button=$("quantizer-run");
+  button.disabled=true;
+  $("quantizer-job-status").textContent="starting sd.cpp conversion…";
+  try{
+    const data=await api("/api/quantizer/run",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({
+        model_id:modelId,
+        scope:$("quantizer-scope").value,
+        quant_type:$("quantizer-type").value
+      })
+    });
+    appState.jobId=data.job_id;
+    localStorage.setItem("ldm.jobId",data.job_id);
+    renderJob({status:"running",message:"quantization started",progress:{current:0,total:0,label:"starting sd.cpp conversion"},project_path:appState.activeProjectPath,stage:"quantize"});
+    $("quantizer-job-status").textContent="quantization running…";
+    poll(data.job_id);
+  }catch(e){
+    $("quantizer-job-status").textContent=e.message;
+    toast(e.message,"bad");
+  }finally{
+    button.disabled=false;
+    updateBusyUI();
+  }
+}
+function updateQuantizerJob(job){
+  if(!job)return;
+  if(job.stage==="quantize"||String(job.message||"").toLowerCase().includes("quantiz")){
+    $("quantizer-job-status").textContent=(job.progress&&job.progress.label)||job.message||job.status;
+  }
+}
+
 async function upload(){
   if(!appState.activeProjectPath){
     toast("create or open a dataset first.","bad");
@@ -2021,6 +2238,11 @@ document.querySelectorAll("[data-run-stage]").forEach(button=>{
   button.addEventListener("click",()=>runStage(button.dataset.runStage));
 });
 $("choose-images").addEventListener("click",()=>$("files").click());
+$("quantizer-upload").addEventListener("click",uploadQuantizerModel);
+$("quantizer-refresh").addEventListener("click",refreshQuantizer);
+$("quantizer-run").addEventListener("click",startQuantization);
+$("quantizer-model").addEventListener("change",()=>{appState.quantizerModelId=$("quantizer-model").value;renderQuantizerComponents();});
+$("quantizer-scope").addEventListener("change",renderQuantizerComponents);
 $("caption_model_upload").addEventListener("click",()=>$("caption_model_file").click());
 $("caption_mmproj_upload").addEventListener("click",()=>$("caption_mmproj_file").click());
 $("caption_backend").addEventListener("change",()=>{syncCaptionRuntimeUI();markDirty();});
@@ -2102,6 +2324,7 @@ const initialView=location.hash.slice(1)||"overview";
 setView(initialView,false);
 updateDirtyUI();
 refresh().then(()=>{
+  refreshQuantizer().catch(()=>{});
   if(appState.jobId){
     poll(appState.jobId);
   }else{
@@ -3073,6 +3296,219 @@ def create_app(
             "image_id": image_id,
             "deleted": [manifest_path(current_root, target) for target in targets],
         }
+
+
+    @app.get("/api/quantizer/state")
+    def quantizer_state():
+        current_root = require_active_root()
+        quantizer_root = current_root / "quantizer"
+        upload_dir = quantizer_root / "uploads"
+        output_dir = quantizer_root / "output"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        models = []
+        for source in sorted(upload_dir.glob("*.safetensors"), key=lambda item: item.stat().st_mtime, reverse=True):
+            model_id = source.stem
+            sidecar = upload_dir / (model_id + ".json")
+            try:
+                metadata = json.loads(sidecar.read_text(encoding="utf-8")) if sidecar.is_file() else {}
+                scan = inspect_safetensors(source)
+                models.append({
+                    "id": model_id,
+                    "filename": str(metadata.get("filename") or source.name),
+                    **scan,
+                })
+            except Exception as exc:
+                try:
+                    size_bytes = source.stat().st_size
+                except OSError:
+                    size_bytes = 0
+                models.append({
+                    "id": model_id,
+                    "filename": source.name,
+                    "size_bytes": size_bytes,
+                    "tensor_count": 0,
+                    "components": {
+                        name: {"tensor_count": 0, "bytes": 0}
+                        for name in ("unet", "clip", "vae", "other")
+                    },
+                    "can_quantize_unet": False,
+                    "scan_error": str(exc)[:300],
+                })
+
+        outputs = []
+        for output in sorted(output_dir.glob("*.gguf"), key=lambda item: item.stat().st_mtime, reverse=True):
+            try:
+                outputs.append({
+                    "filename": output.name,
+                    "size_bytes": output.stat().st_size,
+                })
+            except OSError:
+                continue
+
+        cli_path = find_sd_cli()
+        return {
+            "cli": {
+                "available": cli_path is not None,
+                "path": cli_path or "",
+            },
+            "supported_types": list(SUPPORTED_QUANT_TYPES),
+            "models": models,
+            "outputs": outputs,
+        }
+
+    @app.post("/api/quantizer/upload")
+    async def upload_quantizer_model(file: Annotated[UploadFile, File()]):
+        current_root = require_active_root()
+        if jobs.has_running_project(current_root):
+            raise HTTPException(409, "this dataset is busy. wait for the current job to finish")
+        filename = Path(file.filename or "").name
+        if not filename.lower().endswith(".safetensors"):
+            raise HTTPException(400, "only .safetensors model files are supported")
+
+        quantizer_root = current_root / "quantizer"
+        upload_dir = quantizer_root / "uploads"
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        model_id = uuid.uuid4().hex
+        target = upload_dir / (model_id + ".safetensors")
+        temporary = upload_dir / ("." + model_id + ".part")
+        try:
+            try:
+                max_bytes = int(os.environ.get("LORA_DATA_MAKER_MAX_QUANTIZER_UPLOAD_BYTES", str(64 * 1024**3)))
+            except ValueError:
+                max_bytes = 64 * 1024**3
+            if max_bytes < 1:
+                max_bytes = 64 * 1024**3
+
+            total = 0
+            with temporary.open("wb") as out:
+                while True:
+                    chunk = await file.read(4 * 1024 * 1024)
+                    if not chunk:
+                        break
+                    total += len(chunk)
+                    if total > max_bytes:
+                        raise HTTPException(
+                            413,
+                            "checkpoint exceeds LORA_DATA_MAKER_MAX_QUANTIZER_UPLOAD_BYTES",
+                        )
+                    out.write(chunk)
+                out.flush()
+                os.fsync(out.fileno())
+
+            if total == 0:
+                raise HTTPException(400, "uploaded checkpoint is empty")
+            os.replace(temporary, target)
+            scan = inspect_safetensors(target)
+            (upload_dir / (model_id + ".json")).write_text(
+                json.dumps({"filename": filename}, ensure_ascii=False, indent=2) + "\n",
+                encoding="utf-8",
+            )
+            return {
+                "id": model_id,
+                "filename": filename,
+                **scan,
+            }
+        except HTTPException:
+            temporary.unlink(missing_ok=True)
+            target.unlink(missing_ok=True)
+            (upload_dir / (model_id + ".json")).unlink(missing_ok=True)
+            raise
+        except QuantizerError as exc:
+            temporary.unlink(missing_ok=True)
+            target.unlink(missing_ok=True)
+            (upload_dir / (model_id + ".json")).unlink(missing_ok=True)
+            raise HTTPException(400, str(exc)) from exc
+        except OSError as exc:
+            temporary.unlink(missing_ok=True)
+            target.unlink(missing_ok=True)
+            (upload_dir / (model_id + ".json")).unlink(missing_ok=True)
+            raise HTTPException(500, f"could not save checkpoint: {exc}") from exc
+        finally:
+            await file.close()
+
+    @app.post("/api/quantizer/run")
+    def run_quantizer(payload: dict[str, Any]):
+        current_root = require_active_root()
+        if jobs.has_running_project(current_root):
+            raise HTTPException(409, "this dataset is busy. wait for the current job to finish")
+        model_id = str(payload.get("model_id", "")).strip().lower()
+        if not re.fullmatch(r"[a-f0-9]{32}", model_id):
+            raise HTTPException(400, "invalid uploaded model id")
+        scope = str(payload.get("scope", "all")).strip().lower()
+        quant_type = str(payload.get("quant_type", "q4_0")).strip().lower()
+        if scope not in {"all", "unet"}:
+            raise HTTPException(400, "scope must be all or unet")
+        if quant_type not in SUPPORTED_QUANT_TYPES:
+            raise HTTPException(
+                400,
+                "unsupported quantization type; choose one of " + ", ".join(SUPPORTED_QUANT_TYPES),
+            )
+
+        source = current_root / "quantizer" / "uploads" / (model_id + ".safetensors")
+        if not source.is_file():
+            raise HTTPException(404, "uploaded checkpoint not found")
+        try:
+            cli_path = require_sd_cli()
+            scan = inspect_safetensors(source)
+            if scope == "unet" and not scan["can_quantize_unet"]:
+                raise QuantizerError("no UNet tensors were detected in this checkpoint")
+        except QuantizerError as exc:
+            raise HTTPException(400, str(exc)) from exc
+
+        output_dir = current_root / "quantizer" / "output"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_name = f"{model_id[:8]}-{scope}-{quant_type}-{uuid.uuid4().hex[:8]}.gguf"
+        output_path = output_dir / output_name
+
+        def quantize_job(progress, cancel_event):
+            try:
+                output = quantize_safetensors(
+                    source,
+                    output_path,
+                    scope=scope,
+                    quant_type=quant_type,
+                    cli_path=cli_path,
+                    progress=progress,
+                    cancel_event=cancel_event,
+                )
+            except QuantizerCancelledError as exc:
+                raise JobCancelledError(str(exc)) from exc
+            return "quantization complete: " + output.name
+
+        try:
+            job_id = jobs.start(
+                f"quantizing {scope} as {quant_type}...",
+                quantize_job,
+                project_root=current_root,
+                stage="quantize",
+            )
+        except RuntimeError as exc:
+            raise HTTPException(409, str(exc)) from exc
+        return {
+            "job_id": job_id,
+            "message": f"quantizing {scope} as {quant_type}...",
+        }
+
+    @app.get("/api/quantizer/download/{filename}")
+    def download_quantized_model(filename: str):
+        current_root = require_active_root()
+        if Path(filename).name != filename or not filename.endswith(".gguf"):
+            raise HTTPException(400, "invalid output filename")
+        target = (current_root / "quantizer" / "output" / filename).resolve()
+        output_root = (current_root / "quantizer" / "output").resolve()
+        try:
+            target.relative_to(output_root)
+        except ValueError as exc:
+            raise HTTPException(400, "invalid output path") from exc
+        if not target.is_file():
+            raise HTTPException(404, "quantized GGUF file not found")
+        return FileResponse(
+            target,
+            filename=target.name,
+            media_type="application/octet-stream",
+        )
 
     @app.post("/api/vlm/upload/{kind}")
     async def upload_vlm(kind: str, file: Annotated[UploadFile, File()]):

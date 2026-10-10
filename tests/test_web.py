@@ -959,6 +959,15 @@ def test_media_download_sets_attachment_filename(tmp_path: Path) -> None:
     assert "000001.jpg" in disposition
 
 
+def test_webui_exposes_sd_cpp_quantizer_controls(tmp_path: Path) -> None:
+    html = TestClient(create_app(make_project(tmp_path))).get("/").text
+    assert 'data-view="quantizer"' in html
+    assert 'data-view-panel="quantizer"' in html
+    assert 'id="quantizer-file" type="file" accept=".safetensors,application/octet-stream"' in html
+    assert "UNet only" in html
+    assert "conversion only" in html
+
+
 def test_web_saves_playwright_bing_custom_date_range(tmp_path: Path) -> None:
     root = make_project(tmp_path)
     client = TestClient(create_app(root))

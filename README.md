@@ -334,6 +334,22 @@ pytest -q
 
 The project CI smoke-tests Python 3.12, 3.13, and 3.14, including package installation, compilation, tests, CLI entry points, documentation files, and project initialization.
 
+
+## Stable Diffusion quantizer
+
+The WebUI includes an optional stable-diffusion.cpp quantizer; it does not expose image generation. Open **quantizer**, choose a .safetensors checkpoint using the phone's file picker (including Android's system file picker), scan the checkpoint's UNet / CLIP / VAE tensor namespaces, then select **all components** or **UNet only** and a weight type. The resulting GGUF is downloadable from the same panel.
+
+Install/build stable-diffusion.cpp separately, then expose its conversion CLI to the WebUI process:
+
+```bash
+export LORA_DATA_MAKER_SD_CPP_CLI="$HOME/stable-diffusion.cpp/bin/sd-cli"
+lora-data-maker web --path ~/datasets
+```
+
+Supported weight types are q4_0, q4_1, q5_0, q5_1, q8_0, f16, and f32. All-components mode converts the uploaded checkpoint. UNet-only mode streams just the detected UNet tensors into a temporary safetensors file and passes that file as the --diffusion-model conversion input; its output is a UNet-only GGUF, not a full pipeline checkpoint. Large uploads and conversions consume disk space and memory on the host running the WebUI. Source files are kept under the active dataset's quantizer/uploads/ directory, and output GGUFs under quantizer/output/.
+
+For upstream conversion syntax and quantization types, see the stable-diffusion.cpp quantization guide: https://github.com/leejet/stable-diffusion.cpp/blob/master/docs/quantization_and_gguf.md.
+
 ## License
 
 Licensed under the Apache License 2.0. See `LICENSE` and `NOTICE`.
