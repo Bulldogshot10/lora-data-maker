@@ -975,7 +975,7 @@ def command_scrape(args: argparse.Namespace) -> int:
     delay = float(scraper_config.get("delay", 1.0))
     max_scrolls = int(scraper_config.get("max_scrolls", 30))
 
-    cli_year = args.year
+    cli_year = getattr(args, "year", None)
     cli_date_from = getattr(args, "date_from", None)
     cli_date_to = getattr(args, "date_to", None)
     if cli_year is not None and (cli_date_from is not None or cli_date_to is not None):
