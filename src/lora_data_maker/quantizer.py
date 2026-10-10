@@ -204,8 +204,9 @@ def extract_component_safetensors(
         if _component_for_tensor(name) == component
     ]
     if not selected:
+        label = {"unet": "UNet", "clip": "CLIP", "vae": "VAE"}[component]
         raise QuantizerError(
-            f"no {component.upper()} tensors were detected in the uploaded safetensors file"
+            f"no {label} tensors were detected in the uploaded safetensors file"
         )
 
     target_path.parent.mkdir(parents=True, exist_ok=True)
