@@ -263,11 +263,23 @@ def inspect_safetensors(path: Path | str) -> dict[str, Any]:
         components[component]["bytes"] += end - start
 
     architecture = _detect_architecture(entries)
+    has_model_diffusion_namespace = any(
+        name.lower().startswith("model.diffusion_model.")
+        for name, _meta, _start, _end in entries
+    )
+    is_standalone_backbone = (
+        not has_model_diffusion_namespace
+        and components["unet"]["tensor_count"] > 0
+        and components["clip"]["tensor_count"] == 0
+        and components["vae"]["tensor_count"] == 0
+        and components["other"]["tensor_count"] == 0
+    )
     return {
         "size_bytes": target.stat().st_size,
         "tensor_count": len(entries),
         "components": components,
         "can_quantize_unet": components["unet"]["tensor_count"] > 0,
+        "is_standalone_backbone": is_standalone_backbone,
         "architecture": architecture,
         "architecture_label": ARCHITECTURE_LABELS[architecture],
         "architecture_recognized": architecture in SUPPORTED_ARCHITECTURES,
@@ -389,6 +401,7 @@ def build_sd_cpp_command(
     scope: str,
     *,
     unet_path: Path | str | None = None,
+    standalone_diffusion_model: bool = False,
 ) -> list[str]:
     if quant_type not in SUPPORTED_QUANT_TYPES:
         raise QuantizerError(
@@ -398,7 +411,12 @@ def build_sd_cpp_command(
         raise QuantizerError("scope must be 'all' or 'unet'")
 
     if scope == "all":
-        input_args = ["-m", str(Path(source_path).resolve())]
+        if standalone_diffusion_model:
+            # Standalone UNet/DiT files need the diffusion-model namespace supplied by sd.cpp.
+            input_args = ["--diffusion-model", str(Path(source_path).resolve())]
+        else:
+            # Monolithic checkpoints already contain their own component namespaces.
+            input_args = ["-m", str(Path(source_path).resolve())]
     else:
         if unet_path is None:
             raise QuantizerError("UNet-only conversion requires an extracted UNet safetensors file")
@@ -524,6 +542,9 @@ def quantize_safetensors(
             unet_path = Path(temp_dir.name) / "unet-only.safetensors"
             extract_component_safetensors(source_path, unet_path, "unet")
 
+        standalone_backbone = (
+            scope == "all" and bool(summary.get("is_standalone_backbone"))
+        )
         command = build_sd_cpp_command(
             executable,
             source_path,
@@ -531,6 +552,7 @@ def quantize_safetensors(
             quant_type,
             scope,
             unet_path=unet_path,
+            standalone_diffusion_model=standalone_backbone,
         )
         if progress is not None:
             progress(0, 0, f"starting sd.cpp conversion ({scope}, {quant_type})")
