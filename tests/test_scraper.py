@@ -1162,6 +1162,91 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
     assert browser.closed is True
 
 
+def test_playwright_keeps_collected_results_if_scroll_throws(monkeypatch):
+    import sys
+    import types
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakeSession:
+        def send(self, method, params=None, timeout=None):
+            if method == "Page.navigate":
+                return {"loaderId": "loader-1"}
+            if method == "Runtime.evaluate":
+                return {
+                    "result": {
+                        "value": [
+                            "complete",
+                            "https://www.bing.com/images/search?q=julia",
+                            1,
+                        ]
+                    }
+                }
+            raise AssertionError(f"unexpected CDP method: {method}")
+
+    class FakePage:
+        def __init__(self):
+            self.session = FakeSession()
+            self.closed = False
+
+        def content(self):
+            return (
+                '<ul class="dgControl_list"><li><a class="iusc" '
+                'm=\'{"murl":"https://cdn.example.com/first.jpg"}\'></a>'
+                '</li></ul>'
+            )
+
+        def evaluate(self, _script):
+            raise RuntimeError("Uncaught")
+
+        def wait_for_timeout(self, _ms):
+            pass
+
+        def close(self):
+            self.closed = True
+
+    page = FakePage()
+
+    class FakeBrowser:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def new_page(self):
+            return page
+
+    class FakeChromium:
+        def __init__(self, *, headless):
+            assert headless is True
+
+        def __enter__(self):
+            return FakeBrowser()
+
+        def __exit__(self, *_args):
+            pass
+
+    monkeypatch.setitem(
+        sys.modules,
+        "playwright_termux",
+        types.SimpleNamespace(Chromium=FakeChromium),
+    )
+
+    scraper = PlaywrightImagesScraper(
+        provider="bing",
+        retries=0,
+        delay=0,
+        max_scrolls=3,
+    )
+    results = list(scraper.search("julia", limit=2))
+
+    assert [result.image_url for result in results] == [
+        "https://cdn.example.com/first.jpg"
+    ]
+    assert page.closed is True
+
+
 def test_playwright_scraper_validates_provider():
     import pytest
 
