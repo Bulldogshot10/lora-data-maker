@@ -1707,3 +1707,43 @@ def test_playwright_bing_ready_page_without_result_anchors_is_not_navigation_tim
     scraper._goto(page, scraper._build_url("julia"))
 
     assert page._url == "https://www.bing.com/images/search?q=julia"
+
+
+def test_playwright_bing_readiness_reports_verification_page():
+    import pytest
+
+    from lora_data_maker.scrapers.base import ScraperError
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakeSession:
+        def send(self, method, params=None, timeout=None):
+            if method == "Page.navigate":
+                return {"loaderId": "loader-1"}
+            if method == "Runtime.evaluate":
+                return {
+                    "result": {
+                        "value": [
+                            "complete",
+                            "https://www.bing.com/images/search?q=julia",
+                            0,
+                            "Verify you are human",
+                            "Please verify you are human before continuing.",
+                        ]
+                    }
+                }
+            raise AssertionError(f"unexpected CDP method: {method}")
+
+    class FakePage:
+        def __init__(self):
+            self.session = FakeSession()
+            self._url = "about:blank"
+
+    scraper = PlaywrightImagesScraper(
+        provider="bing",
+        timeout=1,
+        retries=0,
+        delay=0,
+    )
+
+    with pytest.raises(ScraperError, match="verification/block page"):
+        scraper._goto(FakePage(), scraper._build_url("julia"))
