@@ -1173,7 +1173,7 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
         def content(self):
             return (
                 '<ul class="dgControl_list"><li><a class="iusc" '
-                'm=\'{"murl":"https://cdn.example.com/a.jpg"}\'></a>'
+                'm=\'{"murl":"https://cdn.example.com/a.jpg","t":"Julia portrait"}\'></a>'
                 '<div class="infnmpt"><a>Julia portrait</a></div>'
                 '</li></ul>'
             )
@@ -1264,7 +1264,7 @@ def test_playwright_keeps_collected_results_if_scroll_throws(monkeypatch):
         def content(self):
             return (
                 '<ul class="dgControl_list"><li><a class="iusc" '
-                'm=\'{"murl":"https://cdn.example.com/first.jpg"}\'></a>'
+                'm=\'{"murl":"https://cdn.example.com/first.jpg","t":"Julia portrait"}\'></a>'
                 '<div class="infnmpt"><a>Julia portrait</a></div>'
                 '</li></ul>'
             )
