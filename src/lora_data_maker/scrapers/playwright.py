@@ -15,15 +15,18 @@ from .existing_chromium import ExistingChromium
 
 
 class _BingResultParser(HTMLParser):
-    """Extract Bing image metadata only from the main image-results region."""
+    """Extract Bing image metadata from individual cards in the main result grid."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.payloads: list[str] = []
         self._fallback_payloads: list[str] = []
-        self._element_stack: list[tuple[str, bool]] = []
+        self._element_stack: list[tuple[str, bool, bool]] = []
         self._result_container_depth = 0
         self._has_result_container = False
+        self._card_stack: list[dict[str, object]] = []
+        self.result_cards: list[dict[str, object]] = []
+        self._card_order = 0
 
     def handle_starttag(
         self,
@@ -44,7 +47,23 @@ class _BingResultParser(HTMLParser):
         if is_result_container:
             self._has_result_container = True
             self._result_container_depth += 1
-        self._element_stack.append((tag, is_result_container))
+
+        is_result_card = tag == "li" and self._result_container_depth > 0
+        self._element_stack.append((tag, is_result_container, is_result_card))
+
+        if is_result_card:
+            self._card_order += 1
+            self._card_stack.append(
+                {"payload": None, "text": [], "order": self._card_order}
+            )
+
+        if self._card_stack and self._result_container_depth:
+            parts = self._card_stack[-1]["text"]
+            if isinstance(parts, list):
+                for key in ("title", "alt", "aria-label"):
+                    value = attr_map.get(key)
+                    if value:
+                        parts.append(value)
 
         if tag != "a" or "iusc" not in classes:
             return
@@ -52,13 +71,21 @@ class _BingResultParser(HTMLParser):
         payload = attr_map.get("m")
         if not payload:
             return
+
         if self._result_container_depth:
             self.payloads.append(payload)
+            if self._card_stack:
+                self._card_stack[-1]["payload"] = payload
         else:
-            # Retain support for small/legacy markup fixtures that contain
-            # only a result anchor. Real pages with a known results container
-            # never use these out-of-grid anchors as search candidates.
+            # Legacy fallback is kept for the URL-only helper's lightweight
+            # fixtures. The actual scraper consumes result_cards only.
             self._fallback_payloads.append(payload)
+
+    def handle_data(self, data: str) -> None:
+        if self._card_stack and self._result_container_depth and data.strip():
+            parts = self._card_stack[-1]["text"]
+            if isinstance(parts, list):
+                parts.append(data.strip())
 
     def handle_endtag(self, tag: str) -> None:
         tag = tag.lower()
@@ -67,9 +94,26 @@ class _BingResultParser(HTMLParser):
                 continue
             removed = self._element_stack[index:]
             self._result_container_depth -= sum(
-                1 for _, is_container in removed if is_container
+                1 for _, is_container, _ in removed if is_container
             )
+            card_count = sum(1 for _, _, is_card in removed if is_card)
             del self._element_stack[index:]
+
+            for _ in range(card_count):
+                if not self._card_stack:
+                    break
+                card = self._card_stack.pop()
+                payload = card.get("payload")
+                if isinstance(payload, str) and payload:
+                    raw_text = card.get("text")
+                    text = " ".join(raw_text) if isinstance(raw_text, list) else ""
+                    self.result_cards.append(
+                        {
+                            "payload": payload,
+                            "text": text,
+                            "order": card.get("order", 0),
+                        }
+                    )
             break
 
     @property
@@ -78,6 +122,11 @@ class _BingResultParser(HTMLParser):
             return self.payloads
         return self._fallback_payloads
 
+    def ordered_result_cards(self) -> list[dict[str, object]]:
+        return sorted(
+            self.result_cards,
+            key=lambda item: int(item.get("order", 0)),
+        )
 
 class PlaywrightImagesScraper(Scraper):
     """Image-search scraper driven by Termux-native Chromium through Playwright.
@@ -214,8 +263,13 @@ class PlaywrightImagesScraper(Scraper):
                                 f"could not read rendered result HTML: {exc}"
                             ) from exc
 
+                        candidate_details: dict[str, dict[str, object]] = {}
                         if self.provider == "bing":
-                            candidates = self._extract_bing_urls(page_html)
+                            extracted = self._extract_bing_results(page_html, query)
+                            candidate_details = {
+                                str(item["image_url"]): item for item in extracted
+                            }
+                            candidates = list(candidate_details)
                         else:
                             candidates = self._extract_google_urls(page_html)
 
@@ -233,6 +287,16 @@ class PlaywrightImagesScraper(Scraper):
                                         "provider": self.provider,
                                         "playwright": True,
                                         "scroll": scroll_no,
+                                        **(
+                                            {
+                                                "title": candidate_details[image_url].get("title", ""),
+                                                "description": candidate_details[image_url].get("description", ""),
+                                                "query_terms_matched": candidate_details[image_url].get("matched_terms", 0),
+                                                "query_terms_total": candidate_details[image_url].get("query_terms_total", 0),
+                                            }
+                                            if image_url in candidate_details
+                                            else {}
+                                        ),
                                     },
                                 )
                             )
@@ -427,6 +491,108 @@ class PlaywrightImagesScraper(Scraper):
             f"{self.GOOGLE_URL}?"
             f"{urlencode({'q': query, 'tbm': 'isch', 'hl': 'en'})}"
         )
+
+    @staticmethod
+    def _query_terms(query: str) -> list[str]:
+        words = re.findall(r"[^\\W_]+", query.casefold(), flags=re.UNICODE)
+        stopwords = {
+            "a", "an", "and", "are", "as", "at", "be", "by", "for",
+            "from", "in", "into", "is", "of", "on", "or", "the", "to",
+            "with", "photo", "photos", "image", "images", "picture", "pictures",
+        }
+        if len(words) <= 1:
+            return list(dict.fromkeys(words))
+        return list(dict.fromkeys(word for word in words if word not in stopwords)) or list(dict.fromkeys(words))
+
+    @staticmethod
+    def _extract_bing_results(
+        page_html: str,
+        query: str,
+    ) -> list[dict[str, object]]:
+        """Extract main-grid Bing cards and reject cards whose text doesn't match the query."""
+        parser = _BingResultParser()
+        try:
+            parser.feed(page_html)
+        except Exception:
+            return []
+
+        query_terms = PlaywrightImagesScraper._query_terms(query)
+        if not query_terms:
+            return []
+
+        results: list[dict[str, object]] = []
+        seen: set[str] = set()
+        rejected = 0
+        import json
+
+        for card in parser.ordered_result_cards():
+            raw_payload = card.get("payload")
+            if not isinstance(raw_payload, str):
+                continue
+            try:
+                data = json.loads(html.unescape(raw_payload))
+            except (TypeError, ValueError):
+                continue
+            if not isinstance(data, dict):
+                continue
+
+            image_url = data.get("murl")
+            if not isinstance(image_url, str) or not image_url.startswith(("http://", "https://")):
+                continue
+            host = (urlparse(image_url).hostname or "").lower().rstrip(".")
+            if (
+                host == "bing.com"
+                or host.endswith(".bing.com")
+                or host == "bing.net"
+                or host.endswith(".bing.net")
+                or image_url in seen
+            ):
+                continue
+
+            title = str(data.get("t") or data.get("title") or "").strip()
+            description = str(data.get("desc") or data.get("description") or "").strip()
+            card_text = str(card.get("text") or "")
+            searchable_text = " ".join((title, description, card_text)).casefold()
+            result_words = set(re.findall(r"[^\\W_]+", searchable_text, flags=re.UNICODE))
+            # Basic plural tolerance for English titles.
+            normalized_result_words = set(result_words)
+            normalized_result_words.update(
+                word[:-1] for word in result_words if len(word) > 4 and word.endswith("s")
+            )
+            matched_terms = [
+                term for term in query_terms
+                if term in normalized_result_words
+                or (len(term) > 4 and term.endswith("s") and term[:-1] in normalized_result_words)
+            ]
+            required_matches = (
+                1 if len(query_terms) == 1
+                else max(2, (3 * len(query_terms) + 4) // 5)
+            )
+
+            # Do not silently fall back to arbitrary out-of-grid URLs or images
+            # with no textual evidence connecting them to the requested query.
+            if len(matched_terms) < required_matches:
+                rejected += 1
+                continue
+
+            seen.add(image_url)
+            results.append(
+                {
+                    "image_url": image_url,
+                    "title": title,
+                    "description": description,
+                    "matched_terms": len(matched_terms),
+                    "query_terms_total": len(query_terms),
+                }
+            )
+
+        print(
+            f"scrape: playwright provider=bing relevance "
+            f"accepted={len(results)} rejected={rejected} "
+            f"query_terms={len(query_terms)}",
+            flush=True,
+        )
+        return results
 
     @staticmethod
     def _extract_bing_urls(page_html: str) -> list[str]:
