@@ -174,7 +174,9 @@ class ChromiumImagesScraper:
                         ImageResult(
                             image_url=result.image_url,
                             query=query,
-                            page_url=result.page_url or DuckDuckGoImagesScraper.SITE_URL,
+                            page_url=(
+                                result.page_url or DuckDuckGoImagesScraper.SITE_URL
+                            ),
                             metadata=original_metadata,
                         )
                     )
@@ -210,6 +212,7 @@ class ChromiumImagesScraper:
             "Chromium image search returned no parseable image URLs "
             f"from Bing or DuckDuckGo{suffix}"
         )
+
     @staticmethod
     def _build_bing_search_url(query: str) -> str:
         params = {"q": query, "form": "HDRSC2"}
