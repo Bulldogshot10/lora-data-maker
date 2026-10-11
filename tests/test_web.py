@@ -1027,3 +1027,6 @@ def test_webui_polish_has_responsive_motion_and_clear_model_loading_feedback(
     assert 'loadButton.setAttribute("aria-busy","true")' in html
     assert 'loadButton.removeAttribute("aria-busy")' in html
     assert "Save / reuse your API key, load the provider's model list, then choose a model." in html
+    assert 'select.innerHTML=\'<option value="">loading models…</option>\'' in html
+    assert 'empty.textContent="no models available"' in html
+    assert ".field input,.field select,.field textarea{min-height:44px" in html
