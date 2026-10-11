@@ -305,28 +305,39 @@ class PlaywrightImagesScraper(Scraper):
                 if isinstance(value, list) and len(value) >= 2:
                     current_url = str(value[1])
                     current = urlparse(current_url)
-                    current_query = parse_qs(current.query).get("q", [""])[0]
-                    same_query = (
-                        " ".join(current_query.split()).casefold()
-                        == " ".join(requested_query.split()).casefold()
-                    )
-                    on_expected_page = (
-                        current.scheme in {"http", "https"}
-                        and current.hostname == requested_url.hostname
-                        and current.path == requested_url.path
-                        and bool(requested_query)
-                        and same_query
-                    )
-                    page_is_ready = str(value[0]).lower() == "complete"
-                    result_grid_ready = (
-                        self.provider != "bing"
-                        or (
+                    ready_state = str(value[0]).lower()
+
+                    if self.provider == "bing":
+                        current_query = parse_qs(current.query).get("q", [""])[0]
+                        same_query = (
+                            " ".join(current_query.split()).casefold()
+                            == " ".join(requested_query.split()).casefold()
+                        )
+                        on_expected_page = (
+                            current.scheme in {"http", "https"}
+                            and current.hostname == requested_url.hostname
+                            and current.path == requested_url.path
+                            and bool(requested_query)
+                            and same_query
+                        )
+                        result_grid_ready = (
                             len(value) >= 3
                             and isinstance(value[2], (int, float))
                             and value[2] > 0
                         )
-                    )
-                    if on_expected_page and page_is_ready and result_grid_ready:
+                        if (
+                            on_expected_page
+                            and ready_state == "complete"
+                            and result_grid_ready
+                        ):
+                            page._url = current_url
+                            return
+                    elif (
+                        ready_state in {"interactive", "complete"}
+                        and current_url not in {"", "about:blank"}
+                    ):
+                        # Let the Google extractor report consent/verification
+                        # pages directly instead of masking them as timeouts.
                         page._url = current_url
                         return
             except Exception as exc:
