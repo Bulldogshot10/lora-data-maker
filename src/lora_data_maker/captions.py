@@ -455,13 +455,15 @@ def _normalize_api_vlm_fields(fields: list[str]) -> list[str]:
         if re.match(r"^(?:a|an|the)\s+", clothing, re.IGNORECASE):
             clothing = "wearing " + clothing
         else:
-            first_word = clothing.split(maxsplit=1)[0].lower()
+            last_word = clothing.split()[-1].strip(".,;:").lower()
             plural_items = {
                 "jeans", "pants", "shorts", "leggings", "tights", "trousers",
                 "clothes", "clothing", "overalls", "glasses", "sunglasses",
+                "socks", "shoes", "boots", "sneakers", "sandals", "gloves",
+                "earrings",
             }
-            article = "" if first_word in plural_items or first_word.endswith("s") else (
-                "an " if first_word[:1] in {"a", "e", "i", "o", "u"} else "a "
+            article = "" if last_word in plural_items else (
+                "an " if clothing.split()[0][:1].lower() in {"a", "e", "i", "o", "u"} else "a "
             )
             clothing = "wearing " + article + clothing
 
