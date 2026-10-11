@@ -1,23 +1,6 @@
 name: WebUI smoke
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - "src/lora_data_maker/web.py"
-      - "src/lora_data_maker/cli.py"
-      - "pyproject.toml"
-      - "tests/test_web.py"
-      - "tests/test_web_scrape.py"
-      - ".github/workflows/web-smoke.yml"
-  pull_request:
-    branches: [main]
-    paths:
-      - "src/lora_data_maker/web.py"
-      - "src/lora_data_maker/cli.py"
-      - "pyproject.toml"
-      - "tests/test_web.py"
-      - ".github/workflows/web-smoke.yml"
   workflow_dispatch:
 
 jobs:
