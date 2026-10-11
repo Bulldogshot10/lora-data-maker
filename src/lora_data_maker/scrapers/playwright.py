@@ -182,11 +182,14 @@ class PlaywrightImagesScraper(Scraper):
             flush=True,
         )
 
+        stage = "creating browser"
         try:
             browser = self._create_browser()
             with browser as browser:
+                stage = "opening page"
                 page = browser.new_page()
                 try:
+                    stage = "waiting for matching search results"
                     self._goto(page, search_url)
 
                     seen: set[str] = set()
@@ -195,7 +198,22 @@ class PlaywrightImagesScraper(Scraper):
                     previous_count = 0
 
                     for scroll_no in range(1, self.max_scrolls + 1):
-                        page_html = page.content()
+                        stage = f"reading result page HTML (scroll {scroll_no})"
+                        try:
+                            page_html = page.content()
+                        except Exception as exc:
+                            if results:
+                                print(
+                                    f"scrape: playwright provider={self.provider} "
+                                    f"could not read next page state; keeping "
+                                    f"{len(results)} candidates: {exc}",
+                                    flush=True,
+                                )
+                                break
+                            raise ScraperError(
+                                f"could not read rendered result HTML: {exc}"
+                            ) from exc
+
                         if self.provider == "bing":
                             candidates = self._extract_bing_urls(page_html)
                         else:
@@ -237,13 +255,28 @@ class PlaywrightImagesScraper(Scraper):
                         if stagnant_rounds >= 4:
                             break
 
-                        page.evaluate(
-                            "window.scrollTo(0, document.body.scrollHeight)"
-                        )
-                        if self.delay:
-                            page.wait_for_timeout(
-                                int(max(self.delay, 0.5) * 1000)
+                        stage = f"scrolling result page (scroll {scroll_no})"
+                        try:
+                            page.evaluate(
+                                "window.scrollTo(0, "
+                                "Math.max(document.documentElement?.scrollHeight || 0, "
+                                "document.body?.scrollHeight || 0))"
                             )
+                            if self.delay:
+                                stage = f"waiting after scroll {scroll_no}"
+                                page.wait_for_timeout(
+                                    int(max(self.delay, 0.5) * 1000)
+                                )
+                        except Exception as exc:
+                            # A scroll helper failure must not discard valid image
+                            # URLs already extracted from the current result grid.
+                            print(
+                                f"scrape: playwright provider={self.provider} "
+                                f"scroll failed; keeping {len(results)} candidates: "
+                                f"{type(exc).__name__}: {exc}",
+                                flush=True,
+                            )
+                            break
 
                     return results
                 finally:
@@ -255,7 +288,8 @@ class PlaywrightImagesScraper(Scraper):
             raise
         except Exception as exc:
             raise ScraperError(
-                f"Playwright {self.provider} browser error: {exc}"
+                f"Playwright {self.provider} browser error during {stage}: "
+                f"{type(exc).__name__}: {exc}"
             ) from exc
 
     def _goto(self, page, url: str) -> None:
