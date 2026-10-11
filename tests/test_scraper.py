@@ -385,6 +385,7 @@ def test_chromium_uses_duckduckgo_without_launching_bing(monkeypatch):
 
     results = list(scraper.search("julia", limit=1))
 
+    assert browser.page.session.evaluate_calls == 3
     assert [item.image_url for item in results] == [
         "https://cdn.example.com/ddg.jpg"
     ]
@@ -1081,12 +1082,15 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
                 return {"loaderId": "loader-1"}
             if method == "Runtime.evaluate":
                 self.evaluate_calls += 1
-                href = (
-                    "about:blank"
-                    if self.evaluate_calls == 1
-                    else "https://www.bing.com/images/search?q=julia"
-                )
-                result_count = 0 if self.evaluate_calls == 1 else 1
+                if self.evaluate_calls == 1:
+                    href = "about:blank"
+                    result_count = 0
+                elif self.evaluate_calls == 2:
+                    href = "https://www.bing.com/images/search?q=wrong-query"
+                    result_count = 1
+                else:
+                    href = "https://www.bing.com/images/search?q=julia"
+                    result_count = 1
                 return {"result": {"value": ["complete", href, result_count]}}
             raise AssertionError(f"unexpected CDP method: {method}")
 
