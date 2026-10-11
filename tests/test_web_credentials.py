@@ -189,10 +189,19 @@ def test_openai_model_discovery_uses_saved_base_url_not_query_parameter(
         create_app(root, api_key_store_path=tmp_path / "private" / "api-keys.json")
     )
 
-    response = client.get(
+    unapproved = client.get(
         "/api/vlm/models"
         "?runtime=openai_compatible"
         "&base_url=https%3A%2F%2Fattacker.example%2Fv1"
+    )
+    assert unapproved.status_code == 409
+    assert calls == []
+
+    response = client.get(
+        "/api/vlm/models"
+        "?runtime=openai_compatible"
+        "&base_url=https%3A%2F%2Fattacker.example%2Fv1",
+        headers={"x-ldm-explicit-model-discovery": "1"},
     )
 
     assert response.status_code == 200
