@@ -1560,3 +1560,112 @@ def test_scraper_manager_rejects_date_filter_for_other_backends(tmp_path):
             date_from="2019-01-01",
             date_to="2019-12-31",
         )
+
+
+def test_chromium_prefers_bing_and_preserves_duckduckgo_metadata(monkeypatch):
+    import json
+
+    from lora_data_maker.scrapers import chromium as chromium_module
+    from lora_data_maker.scrapers.base import ImageResult
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
+
+    class FakeDriver:
+        closed = False
+
+        def execute_script(self, script):
+            if "querySelectorAll('a.iusc')" in script:
+                return [
+                    json.dumps(
+                        {"murl": "https://cdn.example.com/bing.jpg"}
+                    )
+                ]
+            return None
+
+        def quit(self):
+            self.closed = True
+
+    calls = {}
+    driver = FakeDriver()
+
+    class FakeDuckDuckGo:
+        def __init__(self, **kwargs):
+            pass
+
+        def search(self, query, *, limit):
+            calls["query"] = query
+            calls["limit"] = limit
+            yield ImageResult(
+                image_url="https://cdn.example.com/ddg.jpg",
+                query=query,
+                page_url="https://example.com/ddg-result",
+                metadata={
+                    "title": "Julia Patty portrait",
+                    "source": "example.com",
+                    "width": 640,
+                },
+            )
+
+    scraper = ChromiumImagesScraper(delay=0, max_scrolls=1)
+    monkeypatch.setattr(scraper, "_start_driver", lambda: driver)
+    monkeypatch.setattr(scraper, "_load_page", lambda _driver, _url: True)
+    monkeypatch.setattr(
+        chromium_module,
+        "DuckDuckGoImagesScraper",
+        FakeDuckDuckGo,
+    )
+    monkeypatch.setattr(chromium_module.time, "sleep", lambda _seconds: None)
+
+    results = list(scraper.search("Julia Patty", limit=2))
+
+    assert [result.image_url for result in results] == [
+        "https://cdn.example.com/bing.jpg",
+        "https://cdn.example.com/ddg.jpg",
+    ]
+    assert results[0].metadata == {"provider": "bing"}
+    assert results[1].metadata == {
+        "title": "Julia Patty portrait",
+        "source": "example.com",
+        "width": 640,
+        "provider": "duckduckgo",
+    }
+    assert results[1].page_url == "https://example.com/ddg-result"
+    assert calls == {"query": "Julia Patty", "limit": 1}
+    assert driver.closed is True
+
+
+def test_chromium_uses_duckduckgo_when_bing_browser_is_unavailable(monkeypatch):
+    from lora_data_maker.scrapers import chromium as chromium_module
+    from lora_data_maker.scrapers.base import ImageResult, ScraperError
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
+
+    class FakeDuckDuckGo:
+        def __init__(self, **kwargs):
+            pass
+
+        def search(self, query, *, limit):
+            yield ImageResult(
+                image_url="https://cdn.example.com/ddg.jpg",
+                query=query,
+                metadata={"title": "Julia Patty portrait"},
+            )
+
+    scraper = ChromiumImagesScraper(delay=0)
+    monkeypatch.setattr(
+        scraper,
+        "_start_driver",
+        lambda: (_ for _ in ()).throw(ScraperError("chromium unavailable")),
+    )
+    monkeypatch.setattr(
+        chromium_module,
+        "DuckDuckGoImagesScraper",
+        FakeDuckDuckGo,
+    )
+
+    results = list(scraper.search("Julia Patty", limit=1))
+
+    assert len(results) == 1
+    assert results[0].image_url == "https://cdn.example.com/ddg.jpg"
+    assert results[0].metadata == {
+        "title": "Julia Patty portrait",
+        "provider": "duckduckgo",
+    }
