@@ -975,6 +975,25 @@ def test_playwright_bing_ignores_iusc_anchors_outside_results_grid():
     ]
 
 
+def test_playwright_bing_relevance_fallback_when_grid_class_changes():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    # Some Bing layouts omit the known dgControl_list wrapper. The stable
+    # iusc metadata still contains title/description and can be relevance-checked.
+    body = """
+    <div class="results-experiment">
+      <a class="iusc" m='{"murl":"https://cdn.example.com/julia.jpg","t":"Julia Patty portrait"}'></a>
+      <a class="iusc" m='{"murl":"https://cdn.example.com/zelda.jpg","t":"Zelda gameplay screenshot"}'></a>
+    </div>
+    """
+
+    results = PlaywrightImagesScraper._extract_bing_results(body, "Julia Patty")
+
+    assert [item["image_url"] for item in results] == [
+        "https://cdn.example.com/julia.jpg"
+    ]
+
+
 def test_playwright_bing_relevance_filter_rejects_unrelated_cards():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
@@ -1131,6 +1150,7 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
                 )
                 return {"loaderId": "loader-1"}
             if method == "Runtime.evaluate":
+                assert "document.querySelectorAll('a.iusc').length" in params["expression"]
                 self.evaluate_calls += 1
                 if self.evaluate_calls == 1:
                     href = "about:blank"
