@@ -661,6 +661,149 @@ dialog::backdrop{background:rgba(0,0,0,.62);backdrop-filter:blur(4px)}
   html{scroll-behavior:auto}
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
+
+/* Y2K cybercore minimalism — visual-only layer; application behavior remains unchanged. */
+:root{
+  --bg:#080b0a;
+  --bg-2:#0c100e;
+  --panel:#101612;
+  --panel-2:#151d18;
+  --panel-3:#0d130f;
+  --line:#26352b;
+  --line-strong:#3d5947;
+  --text:#eaf4ed;
+  --muted:#9aa99e;
+  --muted-2:#718277;
+  --accent:#05ffa1;
+  --accent-2:#7dffca;
+  --accent-soft:rgba(5,255,161,.095);
+  --ok:#05ffa1;
+  --ok-soft:rgba(5,255,161,.09);
+  --bad:#ff477e;
+  --bad-soft:rgba(255,71,126,.10);
+  --warn:#ffd166;
+  --radius:10px;
+  --shadow:0 16px 48px rgba(0,0,0,.28);
+}
+html{background:var(--bg)}
+body{
+  background:
+    linear-gradient(rgba(5,255,161,.018) 1px,transparent 1px),
+    linear-gradient(90deg,rgba(5,255,161,.018) 1px,transparent 1px),
+    radial-gradient(800px 360px at 80% -170px,rgba(5,255,161,.10),transparent 72%),
+    var(--bg);
+  background-size:32px 32px,32px 32px,auto,auto;
+}
+body::before{
+  content:"";
+  position:fixed;inset:0;z-index:20;pointer-events:none;
+  opacity:.12;
+  background:repeating-linear-gradient(to bottom,transparent 0,transparent 3px,rgba(180,255,218,.035) 4px);
+}
+.sidebar{
+  background:rgba(9,13,10,.96);
+  border-right-color:var(--line);
+}
+.brand-mark{
+  border-radius:8px;
+  color:#07110b;
+  background:linear-gradient(145deg,#c9ffe5 0%,#05ffa1 48%,#8bffc9 100%);
+  box-shadow:0 0 0 1px rgba(5,255,161,.28),0 7px 22px rgba(5,255,161,.12);
+}
+.brand-name,.topbar-project,.section-head h2{letter-spacing:-.025em}
+.brand-sub,.eyebrow,.side-title,.hero-label,.stat-label,.step-number,.badge,.field label,.card-kicker{
+  font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;
+  letter-spacing:.055em;
+}
+.nav button:hover{background:#111a14;border-color:#26392c}
+.nav button.active,.project-item.active{
+  background:rgba(5,255,161,.065);
+  border-color:rgba(5,255,161,.34);
+}
+.nav .nav-key{border-radius:5px}
+.nav button.active .nav-key{border-color:rgba(5,255,161,.38);background:rgba(5,255,161,.08);color:var(--accent)}
+.badge{border-radius:4px}
+.badge.active{color:var(--accent);background:var(--accent-soft);border-color:rgba(5,255,161,.30)}
+.badge.busy{border-color:rgba(255,209,102,.32)}
+.project-item,.stat,.job,.step,.drop,.details,.output,.empty,.check{
+  border-radius:8px;
+}
+.topbar{
+  background:rgba(8,11,9,.91);
+  border-bottom-color:rgba(38,53,43,.9);
+}
+.eyebrow{color:#8a9e90}
+.action-primary,.side-new,.big-action,.tile-save{
+  color:#06110b;
+  background:var(--accent);
+  border-color:var(--accent);
+  border-radius:7px;
+  box-shadow:0 0 0 1px rgba(5,255,161,.08);
+}
+.action-primary:hover,.side-new:hover,.big-action:hover,.tile-save:hover{
+  color:#06110b;background:var(--accent-2);border-color:var(--accent-2);
+}
+.action-secondary,.icon-button,.project-actions .open{
+  border-radius:7px;background:#101712;border-color:var(--line);
+}
+.hero{
+  border-radius:12px;
+  border-color:rgba(5,255,161,.24);
+  background:
+    linear-gradient(115deg,rgba(5,255,161,.09),transparent 44%),
+    linear-gradient(135deg,rgba(195,255,224,.025),transparent 65%),
+    var(--panel);
+  box-shadow:0 16px 45px rgba(0,0,0,.24);
+}
+.hero-label{color:var(--accent)}
+.hero-label::before{border-radius:1px;background:var(--accent);box-shadow:0 0 12px rgba(5,255,161,.5)}
+.card{border-radius:10px;background:rgba(16,22,18,.94);border-color:var(--line)}
+.card-title{letter-spacing:.015em}
+.stat{background:#0c120e;border-color:#24352a}
+.stat-value{font-variant-numeric:tabular-nums}
+.status-dot.running{background:var(--accent);box-shadow:0 0 0 4px rgba(5,255,161,.08),0 0 11px rgba(5,255,161,.38)}
+.progress-track{border-radius:4px;background:#080c09}
+.progress-fill{border-radius:3px;background:linear-gradient(90deg,#05ffa1,#b4ffdc)}
+.step{background:#0c120e;border-radius:8px}
+.step:hover{border-color:rgba(5,255,161,.32);background:#101a13}
+.step.primary{background:linear-gradient(135deg,rgba(5,255,161,.09),rgba(5,255,161,.025));border-color:rgba(5,255,161,.32)}
+input,select{
+  border-radius:7px;background:#0b110d;border-color:#2a3a2e;
+}
+input:focus,select:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(5,255,161,.08)}
+.check input{accent-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{
+  outline:2px solid var(--accent);outline-offset:3px;
+}
+.save-bar{border-radius:9px;border-color:#2b4031;background:rgba(10,16,12,.95)}
+.drop{border-color:#395443;background:#0c120e}
+.drop.drag{border-color:var(--accent);background:rgba(5,255,161,.055)}
+.drop-icon{border-radius:9px;background:#111a14;color:var(--accent);border-color:#2c4936}
+.tile img{border-radius:7px}
+.tile:hover img{border-color:rgba(5,255,161,.42)}
+.tile-save,.tile-delete{border-radius:6px}
+.details summary{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;letter-spacing:.025em}
+.output a{border-radius:7px;color:#06110b;background:var(--accent)}
+.toast{border-radius:8px}
+a{accent-color:var(--accent)}
+@media (max-width:900px){
+  .app{grid-template-columns:220px minmax(0,1fr)}
+  .topbar{padding:12px 18px}
+  .view{padding:20px}
+}
+@media (max-width:680px){
+  body{background-size:26px 26px,26px 26px,auto,auto}
+  body::before{opacity:.07}
+  .sidebar{padding:14px 10px}
+  .topbar{padding:11px 12px}
+  .view{padding:14px}
+  .hero{padding:18px}
+}
+@media (prefers-reduced-motion:reduce){
+  body{scroll-behavior:auto}
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+
 </style>
 </head>
 <body>
