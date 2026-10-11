@@ -845,6 +845,8 @@ async function loadVlmModels(){
   // A custom API destination is trusted only after it has been saved in this project.
   if(runtime==="openai_compatible"&&appState.settingsDirty){
     if(!(await ensureSaved()))return;
+    // saveSettings refreshes the page state and starts a new model lookup.
+    return;
   }
   const select=$("caption_api_model");
   const selected=select.dataset.selectedModel||select.value||"";
