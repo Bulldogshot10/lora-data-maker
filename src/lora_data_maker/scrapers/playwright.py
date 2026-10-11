@@ -78,6 +78,7 @@ class _BingResultParser(HTMLParser):
             return self.payloads
         return self._fallback_payloads
 
+
 class PlaywrightImagesScraper(Scraper):
     """Image-search scraper driven by Termux-native Chromium through Playwright.
 
