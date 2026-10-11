@@ -48,11 +48,9 @@ def save_api_keys(path: Path | str, keys: dict[str, str]) -> None:
         for name in API_KEY_ENV_NAMES
         if isinstance((value := keys.get(name)), str) and value.strip()
     }
+    # Set private permissions when creating the app-owned directory, but never
+    # chmod an existing caller-supplied parent (e.g. /tmp or a shared config dir).
     target.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    try:
-        os.chmod(target.parent, 0o700)
-    except OSError:
-        pass
 
     fd, temporary_name = tempfile.mkstemp(
         prefix=".api-keys-",
