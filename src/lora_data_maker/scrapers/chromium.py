@@ -64,141 +64,152 @@ class ChromiumImagesScraper:
             return
 
         seen: set[str] = set()
-        ordered_candidates: list[str] = []
-        candidate_providers: dict[str, str] = {}
+        ordered_candidates: list[ImageResult] = []
+        bing_error: Exception | None = None
+        duckduckgo_error: Exception | None = None
 
-        print(
-            f"scrape: chromium provider=duckduckgo query={query}",
-            flush=True,
-        )
-        duckduckgo = DuckDuckGoImagesScraper(
-            timeout=self.timeout,
-            retries=self.retries,
-            delay=self.delay,
-            user_agent=self.user_agent,
-        )
-
+        # Chromium is the Bing-backed option: prefer its results, then use
+        # DuckDuckGo only to fill any remaining candidate budget.
+        print("scrape: chromium starting browser...", flush=True)
+        driver = None
         try:
-            for result in duckduckgo.search(query, limit=limit):
-                if result.image_url in seen:
-                    continue
-                seen.add(result.image_url)
-                ordered_candidates.append(result.image_url)
-                candidate_providers[result.image_url] = "duckduckgo"
-                if len(ordered_candidates) >= limit:
-                    break
-        except ScraperError as exc:
+            driver = self._start_driver()
+            target_url = self._build_bing_search_url(query)
             print(
-                f"scrape: duckduckgo unavailable; continuing with Bing Images: {exc}",
+                f"scrape: chromium provider=bing query={query}",
                 flush=True,
             )
+            self._load_page(driver, target_url)
 
-        if len(ordered_candidates) < limit:
-            print("scrape: chromium starting browser...", flush=True)
-            driver = None
-            try:
-                driver = self._start_driver()
-                target_url = self._build_bing_search_url(query)
+            last_candidate_count = 0
+            stagnant_rounds = 0
+
+            for scroll_no in range(1, self.max_scrolls + 1):
+                raw_items = driver.execute_script(
+                    """
+                    return Array.from(document.querySelectorAll('a.iusc'))
+                        .map(a => a.getAttribute('m'))
+                        .filter(Boolean);
+                    """
+                )
+                candidates = self._extract_bing_image_urls(raw_items)
+
+                for candidate in candidates:
+                    if candidate in seen:
+                        continue
+                    seen.add(candidate)
+                    ordered_candidates.append(
+                        ImageResult(
+                            image_url=candidate,
+                            query=query,
+                            page_url=self.BING_URL,
+                            metadata={"provider": "bing"},
+                        )
+                    )
+
                 print(
-                    f"scrape: chromium provider=bing query={query}",
+                    f"scrape: chromium provider=bing "
+                    f"scroll={scroll_no}/{self.max_scrolls} "
+                    f"candidates={len(ordered_candidates)}",
                     flush=True,
                 )
 
-                self._load_page(driver, target_url)
+                if len(ordered_candidates) >= limit:
+                    break
 
+                if len(ordered_candidates) == last_candidate_count:
+                    stagnant_rounds += 1
+                else:
+                    stagnant_rounds = 0
                 last_candidate_count = len(ordered_candidates)
-                stagnant_rounds = 0
 
-                for scroll_no in range(1, self.max_scrolls + 1):
-                    raw_items = driver.execute_script(
-                        """
-                        return Array.from(document.querySelectorAll('a.iusc'))
-                            .map(a => a.getAttribute('m'))
-                            .filter(Boolean);
-                        """
+                if stagnant_rounds >= 4:
+                    break
+
+                driver.execute_script(
+                    "window.scrollTo(0, document.body.scrollHeight);"
+                )
+                time.sleep(max(self.delay, 0.5))
+        except ScraperError as exc:
+            bing_error = exc
+            print(
+                f"scrape: Bing unavailable; trying DuckDuckGo fallback: {exc}",
+                flush=True,
+            )
+        except Exception as exc:
+            bing_error = exc
+            print(
+                "scrape: Bing failed; trying DuckDuckGo fallback: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+        finally:
+            if driver is not None:
+                try:
+                    driver.quit()
+                except Exception:
+                    pass
+
+        remaining = limit - len(ordered_candidates)
+        if remaining > 0:
+            print(
+                f"scrape: chromium provider=duckduckgo "
+                f"query={query} limit={remaining}",
+                flush=True,
+            )
+            duckduckgo = DuckDuckGoImagesScraper(
+                timeout=self.timeout,
+                retries=self.retries,
+                delay=self.delay,
+                user_agent=self.user_agent,
+            )
+            try:
+                for result in duckduckgo.search(query, limit=remaining):
+                    if result.image_url in seen:
+                        continue
+                    seen.add(result.image_url)
+                    original_metadata = dict(result.metadata or {})
+                    original_metadata["provider"] = "duckduckgo"
+                    ordered_candidates.append(
+                        ImageResult(
+                            image_url=result.image_url,
+                            query=query,
+                            page_url=result.page_url or DuckDuckGoImagesScraper.SITE_URL,
+                            metadata=original_metadata,
+                        )
                     )
-                    candidates = self._extract_bing_image_urls(raw_items)
-
-                    for candidate in candidates:
-                        if candidate not in seen:
-                            seen.add(candidate)
-                            ordered_candidates.append(candidate)
-                            candidate_providers[candidate] = "bing"
-
-                    print(
-                        f"scrape: chromium provider=bing "
-                        f"scroll={scroll_no}/{self.max_scrolls} "
-                        f"candidates={len(ordered_candidates)}",
-                        flush=True,
-                    )
-
                     if len(ordered_candidates) >= limit:
                         break
-
-                    if len(ordered_candidates) == last_candidate_count:
-                        stagnant_rounds += 1
-                    else:
-                        stagnant_rounds = 0
-                    last_candidate_count = len(ordered_candidates)
-
-                    if stagnant_rounds >= 4:
-                        break
-
-                    driver.execute_script(
-                        "window.scrollTo(0, document.body.scrollHeight);"
-                    )
-                    time.sleep(max(self.delay, 0.5))
             except ScraperError as exc:
-                if ordered_candidates:
-                    print(
-                        f"scrape: Bing unavailable; keeping "
-                        f"{len(ordered_candidates)} collected candidates: {exc}",
-                        flush=True,
-                    )
-                else:
-                    raise
-            except Exception as exc:
-                if ordered_candidates:
-                    print(
-                        f"scrape: Bing failed; keeping "
-                        f"{len(ordered_candidates)} collected candidates: {exc}",
-                        flush=True,
-                    )
-                else:
-                    raise ScraperError(
-                        f"Chromium Bing scraper failed: {exc}"
-                    ) from exc
-            finally:
-                if driver is not None:
-                    try:
-                        driver.quit()
-                    except Exception:
-                        pass
+                duckduckgo_error = exc
+                print(
+                    f"scrape: DuckDuckGo fallback unavailable: {exc}",
+                    flush=True,
+                )
 
         if ordered_candidates:
-            for rank, image_url in enumerate(ordered_candidates, start=1):
-                provider = candidate_providers.get(image_url, "chromium")
-                page_url = (
-                    DuckDuckGoImagesScraper.SITE_URL
-                    if provider == "duckduckgo"
-                    else self.BING_URL
-                )
+            for rank, result in enumerate(ordered_candidates[:limit], start=1):
+                metadata = dict(result.metadata or {})
+                metadata.setdefault("provider", "chromium")
                 yield ImageResult(
-                    image_url=image_url,
+                    image_url=result.image_url,
                     query=query,
-                    page_url=page_url,
+                    page_url=result.page_url,
                     rank=rank,
-                    metadata={"provider": provider},
+                    metadata=metadata,
                 )
-                if rank >= limit:
-                    break
             return
 
+        details = []
+        if bing_error is not None:
+            details.append(f"Bing: {bing_error}")
+        if duckduckgo_error is not None:
+            details.append(f"DuckDuckGo: {duckduckgo_error}")
+        suffix = f" ({'; '.join(details)})" if details else ""
         raise ScraperError(
             "Chromium image search returned no parseable image URLs "
-            "from DuckDuckGo or Bing"
+            f"from Bing or DuckDuckGo{suffix}"
         )
-
     @staticmethod
     def _build_bing_search_url(query: str) -> str:
         params = {"q": query, "form": "HDRSC2"}
