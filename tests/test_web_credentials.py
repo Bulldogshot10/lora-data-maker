@@ -267,3 +267,81 @@ def test_saving_api_keys_does_not_change_existing_parent_permissions(tmp_path: P
     if os.name == "posix":
         assert stat.S_IMODE(shared_dir.stat().st_mode) == 0o755
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
+
+
+
+def test_explicit_openai_model_discovery_accepts_unsaved_provider_url(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "ollama-cloud-key")
+    root = make_project(tmp_path / "workspace" / "dataset")
+    calls: list[tuple[str, dict]] = []
+
+    class Response:
+        ok = True
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"data": [{"id": "qwen3.5:cloud"}]}
+
+    def fake_get(url: str, **kwargs):
+        calls.append((url, kwargs))
+        return Response()
+
+    monkeypatch.setattr("requests.get", fake_get)
+    client = TestClient(
+        create_app(root, api_key_store_path=tmp_path / "private" / "api-keys.json")
+    )
+    payload = {
+        "runtime": "openai_compatible",
+        "base_url": "https://ollama.com/v1",
+    }
+
+    unapproved = client.post("/api/vlm/models", json=payload)
+    assert unapproved.status_code == 403
+    assert calls == []
+
+    invalid = client.post(
+        "/api/vlm/models",
+        json={**payload, "base_url": "file:///etc/passwd"},
+        headers={"x-ldm-explicit-model-discovery": "1"},
+    )
+    assert invalid.status_code == 400
+    assert calls == []
+
+    response = client.post(
+        "/api/vlm/models",
+        json=payload,
+        headers={"x-ldm-explicit-model-discovery": "1"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["models"] == [
+        {"id": "qwen3.5:cloud", "label": "qwen3.5:cloud"}
+    ]
+    assert len(calls) == 1
+    url, kwargs = calls[0]
+    assert url == "https://ollama.com/v1/models"
+    assert kwargs["headers"]["Authorization"] == "Bearer ollama-cloud-key"
+
+
+def test_explicit_model_discovery_post_rejects_cross_origin_requests(
+    tmp_path: Path,
+) -> None:
+    root = make_project(tmp_path / "workspace" / "dataset")
+    client = TestClient(create_app(root))
+    response = client.post(
+        "/api/vlm/models",
+        json={
+            "runtime": "openai_compatible",
+            "base_url": "https://attacker.example/v1",
+        },
+        headers={
+            "origin": "https://attacker.example",
+            "sec-fetch-site": "cross-site",
+            "x-ldm-explicit-model-discovery": "1",
+        },
+    )
+    assert response.status_code == 403
