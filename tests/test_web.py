@@ -1009,3 +1009,21 @@ def test_web_rejects_date_filter_for_non_bing_backend(tmp_path: Path) -> None:
 
     assert response.status_code == 400
     assert "Playwright Bing backend" in response.json()["detail"]
+
+
+
+def test_webui_polish_has_responsive_motion_and_clear_model_loading_feedback(
+    tmp_path: Path,
+) -> None:
+    client = TestClient(create_app(make_project(tmp_path)))
+    html = client.get("/").text
+
+    # Keep the UX improvements native/lightweight rather than adding a JS framework.
+    assert "LDM app polish" in html
+    assert "@media(prefers-reduced-motion:reduce)" in html
+    assert "@keyframes ldm-view-enter" in html
+    assert "@keyframes ldm-spin" in html
+    assert 'aria-current","page"' in html
+    assert 'loadButton.setAttribute("aria-busy","true")' in html
+    assert 'loadButton.removeAttribute("aria-busy")' in html
+    assert "Save / reuse your API key, load the provider's model list, then choose a model." in html
