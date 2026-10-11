@@ -7,7 +7,7 @@ import time
 from datetime import date
 from html.parser import HTMLParser
 from typing import Iterator
-from urllib.parse import urlencode, urlparse
+from urllib.parse import parse_qs, urlencode, urlparse
 
 from .base import ImageResult, Scraper, ScraperError
 from .existing_chromium import ExistingChromium
@@ -15,33 +15,68 @@ from .existing_chromium import ExistingChromium
 
 
 class _BingResultParser(HTMLParser):
-    """Extract Bing Images result metadata from rendered HTML."""
+    """Extract Bing image metadata only from the main image-results region."""
 
     def __init__(self) -> None:
         super().__init__(convert_charrefs=True)
         self.payloads: list[str] = []
+        self._fallback_payloads: list[str] = []
+        self._element_stack: list[tuple[str, bool]] = []
+        self._result_container_depth = 0
+        self._has_result_container = False
 
     def handle_starttag(
         self,
         tag: str,
         attrs: list[tuple[str, str | None]],
     ) -> None:
-        if tag.lower() != "a":
-            return
-
+        tag = tag.lower()
         attr_map = {
             key.lower(): value
             for key, value in attrs
             if value is not None
         }
         classes = attr_map.get("class", "").split()
-        if "iusc" not in classes:
+        is_result_container = (
+            "dgControl_list" in classes
+            or attr_map.get("id") == "mmComponent_images_2"
+        )
+        if is_result_container:
+            self._has_result_container = True
+            self._result_container_depth += 1
+        self._element_stack.append((tag, is_result_container))
+
+        if tag != "a" or "iusc" not in classes:
             return
 
         payload = attr_map.get("m")
-        if payload:
+        if not payload:
+            return
+        if self._result_container_depth:
             self.payloads.append(payload)
+        else:
+            # Retain support for small/legacy markup fixtures that contain
+            # only a result anchor. Real pages with a known results container
+            # never use these out-of-grid anchors as search candidates.
+            self._fallback_payloads.append(payload)
 
+    def handle_endtag(self, tag: str) -> None:
+        tag = tag.lower()
+        for index in range(len(self._element_stack) - 1, -1, -1):
+            if self._element_stack[index][0] != tag:
+                continue
+            removed = self._element_stack[index:]
+            self._result_container_depth -= sum(
+                1 for _, is_container in removed if is_container
+            )
+            del self._element_stack[index:]
+            break
+
+    @property
+    def result_payloads(self) -> list[str]:
+        if self._has_result_container:
+            return self.payloads
+        return self._fallback_payloads
 
 class PlaywrightImagesScraper(Scraper):
     """Image-search scraper driven by Termux-native Chromium through Playwright.
@@ -226,7 +261,8 @@ class PlaywrightImagesScraper(Scraper):
         """Navigate without relying on playwright-termux Page.goto()."""
         timeout = max(float(self.timeout), 0.1)
         navigation_timeout = min(timeout, 5.0)
-        initial_url = getattr(page, "url", "about:blank") or "about:blank"
+        requested_url = urlparse(url)
+        requested_query = parse_qs(requested_url.query).get("q", [""])[0]
         try:
             navigation = page.session.send(
                 "Page.navigate",
@@ -249,33 +285,63 @@ class PlaywrightImagesScraper(Scraper):
 
         while time.monotonic() < deadline:
             try:
+                expression = (
+                    "[document.readyState, location.href, "
+                    "document.querySelectorAll("
+                    "'ul.dgControl_list a.iusc, #mmComponent_images_2 a.iusc'"
+                    ").length]"
+                    if self.provider == "bing"
+                    else "[document.readyState, location.href]"
+                )
                 result = page.session.send(
                     "Runtime.evaluate",
                     {
-                        "expression": (
-                            "[document.readyState, location.href]"
-                        ),
+                        "expression": expression,
                         "returnByValue": True,
                     },
                     timeout=min(1.0, max(deadline - time.monotonic(), 0.1)),
                 )
                 value = result.get("result", {}).get("value")
-                if (
-                    isinstance(value, list)
-                    and len(value) == 2
-                    and value[0] in {"interactive", "complete"}
-                    and str(value[1]) not in {"", initial_url, "about:blank"}
-                ):
-                    page._url = str(value[1])
-                    return
+                if isinstance(value, list) and len(value) >= 2:
+                    current_url = str(value[1])
+                    current = urlparse(current_url)
+                    current_query = parse_qs(current.query).get("q", [""])[0]
+                    same_query = (
+                        " ".join(current_query.split()).casefold()
+                        == " ".join(requested_query.split()).casefold()
+                    )
+                    on_expected_page = (
+                        current.scheme in {"http", "https"}
+                        and current.hostname == requested_url.hostname
+                        and current.path == requested_url.path
+                        and bool(requested_query)
+                        and same_query
+                    )
+                    page_is_ready = str(value[0]).lower() == "complete"
+                    result_grid_ready = (
+                        self.provider != "bing"
+                        or (
+                            len(value) >= 3
+                            and isinstance(value[2], (int, float))
+                            and value[2] > 0
+                        )
+                    )
+                    if on_expected_page and page_is_ready and result_grid_ready:
+                        page._url = current_url
+                        return
             except Exception as exc:
                 last_error = exc
 
             time.sleep(0.05)
 
+        detail = (
+            " (Bing did not render image-result cards for the requested query)"
+            if self.provider == "bing"
+            else ""
+        )
         raise ScraperError(
             f"Playwright {self.provider} navigation timed out after "
-            f"{timeout:g}s"
+            f"{timeout:g}s{detail}"
             + (f": {last_error}" if last_error else "")
         )
 
@@ -329,7 +395,7 @@ class PlaywrightImagesScraper(Scraper):
 
         import json
 
-        for raw_payload in parser.payloads:
+        for raw_payload in parser.result_payloads:
             try:
                 data = json.loads(html.unescape(raw_payload))
             except (TypeError, ValueError):
