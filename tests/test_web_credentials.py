@@ -345,3 +345,74 @@ def test_explicit_model_discovery_post_rejects_cross_origin_requests(
         },
     )
     assert response.status_code == 403
+
+
+
+def test_gemini_model_discovery_follows_all_pages(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    root = make_project(tmp_path / "workspace" / "dataset")
+    calls: list[tuple[str, dict]] = []
+    pages = {
+        "": {
+            "models": [
+                {
+                    "name": "models/gemini-page-1",
+                    "displayName": "Gemini Page 1",
+                    "supportedGenerationMethods": ["generateContent"],
+                }
+            ],
+            "nextPageToken": "page-2",
+        },
+        "page-2": {
+            "models": [
+                {
+                    "name": "models/gemini-page-2",
+                    "displayName": "Gemini Page 2",
+                    "supportedGenerationMethods": ["generateContent"],
+                }
+            ],
+            "nextPageToken": "page-3",
+        },
+        "page-3": {
+            "models": [
+                {
+                    "name": "models/gemini-page-3",
+                    "displayName": "Gemini Page 3",
+                    "supportedGenerationMethods": ["generateContent"],
+                }
+            ],
+            "nextPageToken": "",
+        },
+    }
+
+    class Response:
+        ok = True
+        status_code = 200
+        text = ""
+
+        def __init__(self, payload):
+            self.payload = payload
+
+        def json(self):
+            return self.payload
+
+    def fake_get(url: str, **kwargs):
+        calls.append((url, kwargs))
+        params = kwargs.get("params", {})
+        return Response(pages[params.get("pageToken", "")])
+
+    monkeypatch.setattr("requests.get", fake_get)
+    client = TestClient(
+        create_app(root, api_key_store_path=tmp_path / "private" / "api-keys.json")
+    )
+
+    response = client.get("/api/vlm/models?runtime=gemini")
+
+    assert response.status_code == 200
+    assert [model["id"] for model in response.json()["models"]] == [
+        "gemini-page-1",
+        "gemini-page-2",
+        "gemini-page-3",
+    ]
+    assert len(calls) == 3
+    assert all(call[1]["params"]["pageSize"] == "1000" for call in calls)
