@@ -12,6 +12,7 @@ import uuid
 from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
@@ -844,8 +845,8 @@ async function loadVlmModels(explicit=false){
   const runtime=$("caption_runtime").value;
   if(runtime!=="gemini"&&runtime!=="openai_compatible")return;
   // A custom API destination is trusted only after it has been saved in this project.
-  if(runtime==="openai_compatible"&&appState.settingsDirty){
-    $("caption_api_key_status").textContent="save settings before discovering models for this endpoint.";
+  if(runtime==="openai_compatible"&&appState.settingsDirty&&!explicit){
+    $("caption_api_key_status").textContent="click Load models to explicitly test this endpoint; save settings after choosing a model.";
     return;
   }
   const select=$("caption_api_model");
@@ -917,8 +918,18 @@ async function loadVlmModels(explicit=false){
   $("caption_api_key_status").textContent="key saved locally; refreshing model list in the background…";
   try{
     const qs=new URLSearchParams({runtime:runtime});
-    const options=explicit?{headers:{"x-ldm-explicit-model-discovery":"1"}}:{};
-    const d=await api("/api/vlm/models?"+qs.toString(),options);
+    const options=explicit?{
+      method:"POST",
+      headers:{
+        "content-type":"application/json",
+        "x-ldm-explicit-model-discovery":"1"
+      },
+      body:JSON.stringify({runtime:runtime,base_url:base})
+    }:{};
+    const d=await api(
+      explicit?"/api/vlm/models":("/api/vlm/models?"+qs.toString()),
+      options
+    );
     const models=Array.isArray(d.models)?d.models:[];
     if(!stillCurrent())return;
     if(models.length){
@@ -2251,42 +2262,7 @@ def create_app(
         }
 
 
-    @app.get("/api/vlm/models")
-    def vlm_models(request: Request, runtime: str = "gemini"):
-        selected = runtime.strip().lower()
-        if selected not in {"gemini", "openai_compatible"}:
-            raise HTTPException(400, "unsupported API VLM runtime")
-
-        # Never trust a request query parameter as an outbound credential destination.
-        # OpenAI-compatible discovery must use the URL explicitly saved in the active
-        # project's config, not a URL supplied by whichever site calls this GET route.
-        if selected == "openai_compatible":
-            current_root = active_root()
-            if current_root is None:
-                raise HTTPException(
-                    409,
-                    "create or open a dataset and save the API base URL before model discovery",
-                )
-            current_config = load_config(current_root / "config.toml")
-            caption_config = current_config.get("caption", {})
-            vlm_config = caption_config.get("vlm", {}) if isinstance(caption_config, dict) else {}
-            saved_base_url = (
-                str(vlm_config.get("api_base_url", "")).strip()
-                if isinstance(vlm_config, dict)
-                else ""
-            )
-            env_name, api_base = _api_runtime_settings(selected, saved_base_url)
-            if (
-                api_base != "https://api.openai.com/v1"
-                and request.headers.get("x-ldm-explicit-model-discovery") != "1"
-            ):
-                raise HTTPException(
-                    409,
-                    "custom API endpoint requires an explicit Load models action in the WebUI",
-                )
-        else:
-            env_name, api_base = _api_runtime_settings(selected)
-
+    def _fetch_vlm_models(selected: str, env_name: str, api_base: str) -> dict[str, Any]:
         api_key = os.environ.get(env_name, "").strip()
         if not api_key:
             raise HTTPException(
@@ -2408,6 +2384,74 @@ def create_app(
         except Exception as exc:
             raise HTTPException(502, f"could not fetch VLM models: {exc}") from exc
 
+    @app.get("/api/vlm/models")
+    def vlm_models(request: Request, runtime: str = "gemini"):
+        selected = runtime.strip().lower()
+        if selected not in {"gemini", "openai_compatible"}:
+            raise HTTPException(400, "unsupported API VLM runtime")
+
+        # A GET never trusts a URL supplied in its query string. Automatic discovery
+        # uses the saved project endpoint; custom destinations require explicit approval.
+        if selected == "openai_compatible":
+            current_root = active_root()
+            if current_root is None:
+                raise HTTPException(
+                    409,
+                    "create or open a dataset and save the API base URL before model discovery",
+                )
+            current_config = load_config(current_root / "config.toml")
+            caption_config = current_config.get("caption", {})
+            vlm_config = caption_config.get("vlm", {}) if isinstance(caption_config, dict) else {}
+            saved_base_url = (
+                str(vlm_config.get("api_base_url", "")).strip()
+                if isinstance(vlm_config, dict)
+                else ""
+            )
+            env_name, api_base = _api_runtime_settings(selected, saved_base_url)
+            if (
+                api_base != "https://api.openai.com/v1"
+                and request.headers.get("x-ldm-explicit-model-discovery") != "1"
+            ):
+                raise HTTPException(
+                    409,
+                    "custom API endpoint requires an explicit Load models action in the WebUI",
+                )
+        else:
+            env_name, api_base = _api_runtime_settings(selected)
+
+        return _fetch_vlm_models(selected, env_name, api_base)
+
+    @app.post("/api/vlm/models")
+    def vlm_models_explicit(request: Request, payload: dict[str, Any]):
+        # This POST is called only by the user's explicit Load models action. Using a
+        # body lets users discover a model before a model ID can be saved in config.
+        if request.headers.get("x-ldm-explicit-model-discovery") != "1":
+            raise HTTPException(403, "explicit model discovery approval is required")
+
+        selected = str(payload.get("runtime", "")).strip().lower()
+        if selected not in {"gemini", "openai_compatible"}:
+            raise HTTPException(400, "unsupported API VLM runtime")
+
+        if selected == "openai_compatible":
+            base_url = str(payload.get("base_url", "")).strip()
+            parts = urlsplit(base_url)
+            if (
+                parts.scheme not in {"http", "https"}
+                or not parts.hostname
+                or parts.username is not None
+                or parts.password is not None
+                or parts.query
+                or parts.fragment
+            ):
+                raise HTTPException(
+                    400,
+                    "custom API base URL must be an http(s) URL without embedded credentials, query, or fragment",
+                )
+            env_name, api_base = _api_runtime_settings(selected, base_url)
+        else:
+            env_name, api_base = _api_runtime_settings(selected)
+
+        return _fetch_vlm_models(selected, env_name, api_base)
 
     @app.post("/api/settings")
     def settings(payload: dict[str, Any]):
