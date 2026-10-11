@@ -9,11 +9,12 @@ from typing import Any, Protocol
 from .exceptions import LoraDataMakerError
 
 DEFAULT_VLM_PROMPT = (
-    "describe this photo for a stable diffusion character lora training caption.\n"
-    "use exactly these 5 fields, one per line.\n"
-    "use short phrases only, with a maximum of 5 words per field.\n\n"
-    "pose: describe body pose\n"
-    "angle camera: describe the visible camera angle or view\n"
+    "describe this photo for a stable diffusion character lora training caption.\\n"
+    "use exactly these 5 fields, one per line.\\n"
+    "use short phrases only, with a maximum of 7 words per field.\\n\\n"
+    "pose: include shot type and body pose, e.g. close-up portrait, medium shot standing, cowboy shot, full-body shot standing, wide shot seated.\\n"
+    "choose shot type from visible framing: extreme close-up, close-up, medium close-up, medium shot, medium-long shot, cowboy shot, full-body shot, wide shot.\\n"
+    "angle camera: describe the visible camera angle or view\\n"
     "prefer camera terms: straight-on, from above, from below, high-angle shot, low-angle shot, overhead shot.\n"
     "clothing:\n"
     "expression:\n"
