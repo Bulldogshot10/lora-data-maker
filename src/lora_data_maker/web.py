@@ -1171,8 +1171,10 @@ async function loadVlmModels(explicit=false){
   const renderModels=(models)=>{
     select.innerHTML="";
     if(!models.length){
-      select.innerHTML='<option value="">no models available</option>';
-      return;
+      const empty=document.createElement("option");
+      empty.value="";
+      empty.textContent="no models available";
+      select.appendChild(empty);
     }
     for(const model of models){
       const option=document.createElement("option");
@@ -1220,8 +1222,12 @@ async function loadVlmModels(explicit=false){
     return;
   }
 
-  // Show known Gemini choices immediately while provider discovery runs.
-  renderModels(fallbackModels);
+  // Keep the selector informative while discovery is in flight.
+  if(fallbackModels.length){
+    renderModels(fallbackModels);
+  }else{
+    select.innerHTML='<option value="">loading models…</option>';
+  }
   select.disabled=false;
   $("caption_api_key_status").textContent="key saved locally; refreshing model list…";
   const loadButton=$("caption_api_models_reload");
