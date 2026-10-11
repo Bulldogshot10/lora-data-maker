@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
+from urllib.parse import urlsplit
 from urllib.request import urlopen
 
 from .base import ScraperError
@@ -151,12 +152,32 @@ class ExistingChromium:
             if isinstance(payload, dict)
             else None
         )
-        if not isinstance(websocket_url, str) or not websocket_url.startswith(
-            ("ws://", "wss://")
-        ):
+        if not isinstance(websocket_url, str):
             raise ScraperError(
                 f"Chromium CDP endpoint {endpoint} did not provide "
                 "a valid webSocketDebuggerUrl"
+            )
+
+        try:
+            parsed = urlsplit(websocket_url)
+            websocket_host = (parsed.hostname or "").lower().rstrip(".")
+            websocket_port = parsed.port
+        except ValueError as exc:
+            raise ScraperError(
+                f"Chromium CDP endpoint {endpoint} returned an invalid "
+                "webSocketDebuggerUrl"
+            ) from exc
+
+        if (
+            parsed.scheme not in {"ws", "wss"}
+            or websocket_host not in {"127.0.0.1", "localhost", "::1"}
+            or websocket_port != self.port
+            or parsed.username is not None
+            or parsed.password is not None
+        ):
+            raise ScraperError(
+                f"Chromium CDP endpoint {endpoint} returned a non-local "
+                "webSocketDebuggerUrl"
             )
 
         return websocket_url
