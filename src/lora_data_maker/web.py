@@ -2299,8 +2299,11 @@ def create_app(
             if selected == "gemini":
                 models: list[dict[str, str]] = []
                 page_token = ""
-                for _ in range(3):
-                    params = {"pageSize": "100"}
+                # Gemini's ListModels supports up to 1,000 entries per page.
+                # Follow every nextPageToken (with a defensive ceiling) so larger
+                # catalogs are not silently truncated after only a few pages.
+                for _ in range(100):
+                    params = {"pageSize": "1000"}
                     if page_token:
                         params["pageToken"] = page_token
                     response = requests.get(
