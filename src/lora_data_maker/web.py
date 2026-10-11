@@ -591,7 +591,7 @@ dialog{max-width:min(520px,calc(100vw - 28px));width:calc(100% - 28px);padding:0
           </div>
           <div class="field">
             <label for="caption_api_model">API model</label>
-            <select id="caption_api_model"><option value="">select model…</option></select>
+            <div style="display:flex;gap:8px;min-width:0"><select id="caption_api_model" style="flex:1;min-width:0"><option value="">select model…</option></select><button type="button" class="action-secondary" id="caption_api_models_reload">load models</button></div>
           </div>
           <div class="field">
             <label for="caption_api_base_url">API base URL · OpenAI-compatible only</label>
@@ -839,7 +839,7 @@ function syncCaptionRuntimeUI(){
       : "No saved key for this provider yet. enter it once and it will persist across projects and restarts.";
   }
 }
-async function loadVlmModels(){
+async function loadVlmModels(explicit=false){
   const runtime=$("caption_runtime").value;
   if(runtime!=="gemini"&&runtime!=="openai_compatible")return;
   // A custom API destination is trusted only after it has been saved in this project.
@@ -904,13 +904,20 @@ async function loadVlmModels(){
     return;
   }
 
+  if(runtime==="openai_compatible"&&base!=="https://api.openai.com/v1"&&!explicit){
+    $("caption_api_key_status").textContent="custom endpoint configured. click Load models to explicitly send the saved key to this provider.";
+    select.disabled=false;
+    return;
+  }
+
   // Show known Gemini choices immediately while provider discovery runs.
   renderModels(fallbackModels);
   select.disabled=false;
   $("caption_api_key_status").textContent="key saved locally; refreshing model list in the background…";
   try{
     const qs=new URLSearchParams({runtime:runtime});
-    const d=await api("/api/vlm/models?"+qs.toString());
+    const options=explicit?{headers:{"x-ldm-explicit-model-discovery":"1"}}:{};
+    const d=await api("/api/vlm/models?"+qs.toString(),options);
     const models=Array.isArray(d.models)?d.models:[];
     if(!stillCurrent())return;
     if(models.length){
@@ -1613,6 +1620,7 @@ $("caption_api_model").addEventListener("change",()=>{ $("caption_api_model").da
 $("caption_api_base_url").addEventListener("change",()=>{markDirty();if($("caption_runtime").value==="openai_compatible")loadVlmModels();});
 $("caption_api_key_set").addEventListener("click",setVlmApiKey);
 $("caption_api_key_clear").addEventListener("click",clearVlmApiKey);
+$("caption_api_models_reload").addEventListener("click",()=>loadVlmModels(true));
 $("caption_model_file").addEventListener("change",()=>uploadVlmFile("model","caption_model_file","caption_model_path","caption_model_status"));
 $("caption_mmproj_file").addEventListener("change",()=>uploadVlmFile("mmproj","caption_mmproj_file","caption_mmproj_path","caption_mmproj_status"));
 $("upload-button").addEventListener("click",upload);
@@ -2243,7 +2251,7 @@ def create_app(
 
 
     @app.get("/api/vlm/models")
-    def vlm_models(runtime: str = "gemini"):
+    def vlm_models(request: Request, runtime: str = "gemini"):
         selected = runtime.strip().lower()
         if selected not in {"gemini", "openai_compatible"}:
             raise HTTPException(400, "unsupported API VLM runtime")
@@ -2267,6 +2275,14 @@ def create_app(
                 else ""
             )
             env_name, api_base = _api_runtime_settings(selected, saved_base_url)
+            if (
+                api_base != "https://api.openai.com/v1"
+                and request.headers.get("x-ldm-explicit-model-discovery") != "1"
+            ):
+                raise HTTPException(
+                    409,
+                    "custom API endpoint requires an explicit Load models action in the WebUI",
+                )
         else:
             env_name, api_base = _api_runtime_settings(selected)
 
