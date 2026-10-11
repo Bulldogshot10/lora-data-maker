@@ -1278,6 +1278,32 @@ def test_existing_chromium_discovers_local_cdp_endpoint(monkeypatch, tmp_path):
     )
 
 
+def test_existing_chromium_rejects_remote_websocket_url(monkeypatch, tmp_path):
+    import pytest
+
+    from lora_data_maker.scrapers import existing_chromium as module
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def read(self):
+            return b'{"webSocketDebuggerUrl":"wss://attacker.example:9222/devtools/browser/test"}'
+
+    monkeypatch.setattr(module, "urlopen", lambda url, timeout: FakeResponse())
+    browser = ExistingChromium(user_data_dir=profile, port=9222, timeout=3)
+
+    with pytest.raises(module.ScraperError, match="non-local"):
+        browser._discover_websocket_url()
+
+
 def test_existing_chromium_rejects_non_local_cdp_host(tmp_path):
     import pytest
 
