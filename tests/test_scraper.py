@@ -975,6 +975,56 @@ def test_playwright_bing_ignores_iusc_anchors_outside_results_grid():
     ]
 
 
+def test_playwright_bing_relevance_filter_rejects_unrelated_cards():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = """
+    <a class="iusc" m='{"murl":"https://cdn.example.com/outside.jpg"}'></a>
+    <ul class="dgControl_list">
+      <li>
+        <a class="iusc" m='{"murl":"https://cdn.example.com/zelda.jpg","desc":"game"}'></a>
+        <div class="infnmpt"><a>Zelda character gameplay screenshot</a></div>
+      </li>
+      <li>
+        <a class="iusc" m='{"murl":"https://cdn.example.com/julia.jpg","desc":"portrait photo"}'></a>
+        <div class="infnmpt"><a>Julia Patty portrait photo</a></div>
+      </li>
+    </ul>
+    """
+
+    results = PlaywrightImagesScraper._extract_bing_results(
+        body,
+        "Julia Patty portrait",
+    )
+
+    assert [item["image_url"] for item in results] == [
+        "https://cdn.example.com/julia.jpg"
+    ]
+    assert results[0]["matched_terms"] == 3
+    assert results[0]["query_terms_total"] == 3
+
+
+def test_playwright_bing_relevance_filter_uses_title_or_description():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = """
+    <ul class="dgControl_list">
+      <li>
+        <a class="iusc" m='{"murl":"https://cdn.example.com/one.jpg","desc":"julia patty portrait photo"}'></a>
+      </li>
+      <li>
+        <a class="iusc" m='{"murl":"https://cdn.example.com/two.jpg","desc":"zelda video game"}'></a>
+      </li>
+    </ul>
+    """
+
+    results = PlaywrightImagesScraper._extract_bing_results(body, "Julia Patty")
+
+    assert [item["image_url"] for item in results] == [
+        "https://cdn.example.com/one.jpg"
+    ]
+
+
 def test_playwright_bing_parser_handles_html_entities_and_quote_styles():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
@@ -1103,7 +1153,9 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
         def content(self):
             return (
                 '<ul class="dgControl_list"><li><a class="iusc" '
-                'm=\'{"murl":"https://cdn.example.com/a.jpg"}\'></a></li></ul>'
+                'm=\'{"murl":"https://cdn.example.com/a.jpg"}\'></a>'
+                '<div class="infnmpt"><a>Julia portrait</a></div>'
+                '</li></ul>'
             )
 
         def evaluate(self, _script):
@@ -1193,6 +1245,7 @@ def test_playwright_keeps_collected_results_if_scroll_throws(monkeypatch):
             return (
                 '<ul class="dgControl_list"><li><a class="iusc" '
                 'm=\'{"murl":"https://cdn.example.com/first.jpg"}\'></a>'
+                '<div class="infnmpt"><a>Julia portrait</a></div>'
                 '</li></ul>'
             )
 
