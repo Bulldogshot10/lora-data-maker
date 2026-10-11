@@ -432,6 +432,55 @@ def reset_vlm_captions_for_deterministic(
     return reset
 
 
+def _normalize_api_vlm_fields(fields: list[str]) -> list[str]:
+    """Turn the five API fields into four consistent, readable caption phrases."""
+    if len(fields) != 5:
+        return fields
+
+    pose, camera_angle, clothing, expression, background = (
+        re.sub(r"\s+", " ", str(value)).strip(" ,.;:")
+        for value in fields
+    )
+
+    # Fold the camera angle into the pose phrase so the API caption has four fields.
+    if camera_angle and camera_angle.casefold() not in pose.casefold():
+        pose = " ".join(part for part in (pose, camera_angle) if part)
+
+    # Normalize clothing into a natural phrase without duplicating existing wording.
+    if clothing and not re.match(
+        r"^(?:wearing\b|dressed\s+in\b|clad\s+in\b|in\s+(?:a|an|the)\b)",
+        clothing,
+        re.IGNORECASE,
+    ):
+        if re.match(r"^(?:a|an|the)\s+", clothing, re.IGNORECASE):
+            clothing = "wearing " + clothing
+        else:
+            first_word = clothing.split(maxsplit=1)[0].lower()
+            plural_items = {
+                "jeans", "pants", "shorts", "leggings", "tights", "trousers",
+                "clothes", "clothing", "overalls", "glasses", "sunglasses",
+            }
+            article = "" if first_word in plural_items or first_word.endswith("s") else (
+                "an " if first_word[:1] in {"a", "e", "i", "o", "u"} else "a "
+            )
+            clothing = "wearing " + article + clothing
+
+    if expression and not re.search(r"\bexpression\b", expression, re.IGNORECASE):
+        expression += " expression"
+
+    # Make the common "indoor/outdoor + lighting" shape read naturally while
+    # leaving specific location phrases such as "indoor studio" intact.
+    if background and not re.match(r"^(?:indoors|outdoors)\s+(?:with|in)\b", background, re.IGNORECASE):
+        match = re.match(r"^(indoor|indoors|outdoor|outdoors)\s+(.+)$", background, re.IGNORECASE)
+        if match:
+            setting, detail = match.groups()
+            if re.search(r"\b(?:light|lighting|illumination|sunlight|shadows?)\b", detail, re.IGNORECASE):
+                location = "indoors" if setting.lower().startswith("indoor") else "outdoors"
+                background = f"{location} with {detail}"
+
+    return [pose, clothing, expression, background]
+
+
 def build_api_vlm_caption(
     raw_caption: str,
     *,
@@ -448,6 +497,9 @@ def build_api_vlm_caption(
         if not fallback:
             raise parse_error
         fields = [fallback]
+    else:
+        fields = _normalize_api_vlm_fields(fields)
+
     resolved_trigger = resolve_trigger(
         subject=subject,
         trigger=trigger,
