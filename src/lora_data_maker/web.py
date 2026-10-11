@@ -598,7 +598,7 @@ dialog{max-width:min(520px,calc(100vw - 28px));width:calc(100% - 28px);padding:0
             <input id="caption_api_base_url" autocomplete="off" placeholder="https://api.openai.com/v1">
           </div>
         </div>
-        <div class="field-note" style="margin-top:9px">local VLM uses a structured pose → clothing → expression → background contract. API VLM sends the image plus a fixed four-field caption prompt and returns pose → clothing → expression → background. the backend injects the resolved trigger first.</div>
+        <div class="field-note" style="margin-top:9px">VLM captioning uses five structured fields: pose, camera angle, clothing, expression, and background. API captions combine camera angle with pose and normalize the result into four phrases; the backend injects the resolved trigger first.</div>
       </section>
 
       <section class="card card-pad" style="margin-top:14px">
