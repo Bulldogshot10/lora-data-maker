@@ -13,7 +13,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Annotated, Any
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse
 
 from .captions import (
@@ -844,8 +844,7 @@ async function loadVlmModels(){
   if(runtime!=="gemini"&&runtime!=="openai_compatible")return;
   // A custom API destination is trusted only after it has been saved in this project.
   if(runtime==="openai_compatible"&&appState.settingsDirty){
-    if(!(await ensureSaved()))return;
-    // saveSettings refreshes the page state and starts a new model lookup.
+    $("caption_api_key_status").textContent="save settings before discovering models for this endpoint.";
     return;
   }
   const select=$("caption_api_model");
@@ -1818,6 +1817,19 @@ def create_app(
     api_key_store_path: Path | str | None = None,
 ) -> FastAPI:
     app = FastAPI(title="LoRA Data Maker WebUI")
+
+    def require_same_origin_browser_request(request: Request) -> None:
+        """Reject cross-site browser requests to endpoints using saved credentials."""
+        fetch_site = request.headers.get("sec-fetch-site", "").strip().lower()
+        if fetch_site and fetch_site not in {"same-origin", "none"}:
+            raise HTTPException(403, "cross-origin browser requests are not allowed")
+
+        origin = request.headers.get("origin", "").strip()
+        if origin:
+            expected = f"{request.url.scheme}://{request.headers.get('host', '')}"
+            if origin.rstrip("/").lower() != expected.rstrip("/").lower():
+                raise HTTPException(403, "cross-origin browser requests are not allowed")
+
     credential_path = (
         Path(api_key_store_path).expanduser().resolve()
         if api_key_store_path is not None
@@ -2152,7 +2164,8 @@ def create_app(
         }
 
     @app.post("/api/vlm/api-key")
-    def set_vlm_api_key(payload: dict[str, Any]):
+    def set_vlm_api_key(request: Request, payload: dict[str, Any]):
+        require_same_origin_browser_request(request)
         runtime = str(payload.get("runtime", "")).strip().lower()
         if runtime not in {"gemini", "openai_compatible"}:
             raise HTTPException(400, "API key can only be set for an API VLM runtime")
@@ -2224,7 +2237,8 @@ def create_app(
 
 
     @app.get("/api/vlm/models")
-    def vlm_models(runtime: str = "gemini"):
+    def vlm_models(request: Request, runtime: str = "gemini"):
+        require_same_origin_browser_request(request)
         selected = runtime.strip().lower()
         if selected not in {"gemini", "openai_compatible"}:
             raise HTTPException(400, "unsupported API VLM runtime")
