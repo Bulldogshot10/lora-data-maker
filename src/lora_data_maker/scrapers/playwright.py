@@ -371,22 +371,17 @@ class PlaywrightImagesScraper(Scraper):
             ) from exc
 
     def _goto(self, page, url: str) -> None:
-        """Navigate, then wait briefly for Bing's result cards to hydrate.
-
-        Bing can finish document navigation before its image cards appear.
-        Conversely, requiring cards for the whole navigation timeout turns an
-        empty/changed result page into a misleading navigation-timeout error.
-        """
+        """Navigate and distinguish slow cards from redirects or blocked pages."""
         timeout = max(float(self.timeout), 0.1)
         navigation_timeout = min(timeout, 5.0)
         requested_url = urlparse(url)
         requested_query = parse_qs(requested_url.query).get("q", [""])[0]
-        # Give client-rendered result cards a short grace period after the
-        # expected page is ready, but don't spend the whole timeout waiting
-        # for a selector that may have changed or may genuinely be absent.
         result_grace = min(2.0, max(0.35, timeout * 0.1))
+        redirect_grace = min(3.0, max(0.75, timeout * 0.1))
         ready_without_results_since: float | None = None
         ready_url_without_results: str | None = None
+        unexpected_page_since: float | None = None
+        last_unexpected_url: str | None = None
         try:
             navigation = page.session.send(
                 "Page.navigate",
@@ -411,7 +406,8 @@ class PlaywrightImagesScraper(Scraper):
             try:
                 expression = (
                     "[document.readyState, location.href, "
-                    "document.querySelectorAll('a.iusc').length]"
+                    "document.querySelectorAll('a.iusc').length, "
+                    "document.title, (document.body?.innerText || '').slice(0, 2000)]"
                     if self.provider == "bing"
                     else "[document.readyState, location.href]"
                 )
@@ -455,9 +451,31 @@ class PlaywrightImagesScraper(Scraper):
                         )
 
                         if on_expected_page and dom_ready:
+                            unexpected_page_since = None
+                            last_unexpected_url = None
                             page._url = current_url
                             if result_grid_ready:
                                 return
+
+                            title = str(value[3]) if len(value) >= 4 else ""
+                            body_text = (
+                                str(value[4]).casefold() if len(value) >= 5 else ""
+                            )
+                            block_markers = (
+                                "verify you are human",
+                                "unusual traffic",
+                                "enter the characters you see",
+                                "captcha",
+                                "automated requests",
+                                "access denied",
+                                "temporarily blocked",
+                            )
+                            if any(marker in body_text for marker in block_markers):
+                                raise ScraperError(
+                                    "Bing returned a verification/block page instead "
+                                    "of image results "
+                                    f"(title={title!r}, URL={current_url})"
+                                )
 
                             now = time.monotonic()
                             if ready_without_results_since is None:
@@ -468,13 +486,31 @@ class PlaywrightImagesScraper(Scraper):
                                     "scrape: playwright provider=bing "
                                     "page is ready but no a.iusc result anchors "
                                     f"appeared after {result_grace:g}s; "
-                                    "continuing so the parser can report the result",
+                                    "continuing to result parsing",
                                     flush=True,
                                 )
                                 return
                         else:
                             ready_without_results_since = None
                             ready_url_without_results = None
+                            if dom_ready and current_url not in {"", "about:blank"}:
+                                now = time.monotonic()
+                                if unexpected_page_since is None:
+                                    unexpected_page_since = now
+                                    last_unexpected_url = current_url
+                                else:
+                                    last_unexpected_url = current_url
+                                    if now - unexpected_page_since >= redirect_grace:
+                                        raise ScraperError(
+                                            "Bing did not remain on the requested "
+                                            "image-search page; possible redirect, "
+                                            "consent, or verification page. "
+                                            f"Expected query={requested_query!r}, "
+                                            f"current URL={current_url}"
+                                        )
+                            else:
+                                unexpected_page_since = None
+                                last_unexpected_url = None
                     elif (
                         ready_state in {"interactive", "complete"}
                         and current_url not in {"", "about:blank"}
@@ -483,6 +519,8 @@ class PlaywrightImagesScraper(Scraper):
                         # pages directly instead of masking them as timeouts.
                         page._url = current_url
                         return
+            except ScraperError:
+                raise
             except Exception as exc:
                 last_error = exc
 
@@ -499,9 +537,15 @@ class PlaywrightImagesScraper(Scraper):
             )
             return
 
+        if self.provider == "bing" and last_unexpected_url:
+            raise ScraperError(
+                "Playwright Bing did not reach the requested image-search page; "
+                f"expected query={requested_query!r}, "
+                f"last URL={last_unexpected_url}"
+            ) from last_error
+
         detail = (
-            " (Bing never reached the requested image-search URL with the "
-            "matching query; last URL="
+            " (Bing did not reach the requested image-search URL; last URL="
             f"{current_url if 'current_url' in locals() else 'unknown'})"
             if self.provider == "bing"
             else ""
@@ -511,6 +555,7 @@ class PlaywrightImagesScraper(Scraper):
             f"{timeout:g}s{detail}"
             + (f": {last_error}" if last_error else "")
         )
+
     @staticmethod
     def _normalize_date_range(
         date_from: str | None,
