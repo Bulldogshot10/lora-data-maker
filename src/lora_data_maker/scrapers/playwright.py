@@ -494,7 +494,7 @@ class PlaywrightImagesScraper(Scraper):
 
     @staticmethod
     def _query_terms(query: str) -> list[str]:
-        words = re.findall(r"[^\\W_]+", query.casefold(), flags=re.UNICODE)
+        words = re.findall(r"[^\W_]+", query.casefold(), flags=re.UNICODE)
         stopwords = {
             "a", "an", "and", "are", "as", "at", "be", "by", "for",
             "from", "in", "into", "is", "of", "on", "or", "the", "to",
@@ -553,7 +553,7 @@ class PlaywrightImagesScraper(Scraper):
             description = str(data.get("desc") or data.get("description") or "").strip()
             card_text = str(card.get("text") or "")
             searchable_text = " ".join((title, description, card_text)).casefold()
-            result_words = set(re.findall(r"[^\\W_]+", searchable_text, flags=re.UNICODE))
+            result_words = set(re.findall(r"[^\W_]+", searchable_text, flags=re.UNICODE))
             # Basic plural tolerance for English titles.
             normalized_result_words = set(result_words)
             normalized_result_words.update(
