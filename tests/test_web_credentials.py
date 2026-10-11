@@ -235,9 +235,14 @@ def test_vlm_credential_routes_reject_cross_origin_browser_requests(
         json={"runtime": "gemini", "clear": True},
         headers=cross_origin_headers,
     )
+    start_job = client.post(
+        "/api/run/scrape",
+        headers=cross_origin_headers,
+    )
 
     assert discovery.status_code == 403
     assert mutate_key.status_code == 403
+    assert start_job.status_code == 403
     assert calls == []
     assert load_api_keys(tmp_path / "private" / "api-keys.json") == {}
 
