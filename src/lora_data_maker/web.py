@@ -762,7 +762,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_models_reload,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
     if(el)el.disabled=busy;
   });
   const vlmOnly=$("caption_backend").value==="vlm";
@@ -791,6 +791,7 @@ function syncCaptionRuntimeUI(){
   $("caption_api_key_set").disabled=!api;
   $("caption_api_key_clear").disabled=!api;
   $("caption_api_model").disabled=!api;
+  $("caption_api_models_reload").disabled=!api;
   $("caption_api_base_url").disabled=!api||gemini;
 
   const showField=(id,visible)=>{
