@@ -151,3 +151,56 @@ def test_gemini_model_discovery_is_cached(tmp_path: Path, monkeypatch) -> None:
     assert first.json()["models"][0]["id"] == "gemini-fast"
     assert second.json()["cached"] is True
     assert len(calls) == 1
+
+def test_openai_model_discovery_uses_saved_base_url_not_query_parameter(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "trusted-openai-key")
+    root = make_project(tmp_path / "workspace" / "dataset")
+    config_path = root / "config.toml"
+    config_text = config_path.read_text(encoding="utf-8")
+    assert 'api_base_url = ""' in config_text
+    config_path.write_text(
+        config_text.replace(
+            'api_base_url = ""',
+            'api_base_url = "https://trusted-provider.example/v1"',
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    calls: list[tuple[str, dict]] = []
+
+    class Response:
+        ok = True
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"data": [{"id": "vision-model"}]}
+
+    def fake_get(url: str, **kwargs):
+        calls.append((url, kwargs))
+        return Response()
+
+    monkeypatch.setattr("requests.get", fake_get)
+    client = TestClient(
+        create_app(root, api_key_store_path=tmp_path / "private" / "api-keys.json")
+    )
+
+    response = client.get(
+        "/api/vlm/models"
+        "?runtime=openai_compatible"
+        "&base_url=https%3A%2F%2Fattacker.example%2Fv1"
+    )
+
+    assert response.status_code == 200
+    assert response.json()["models"] == [
+        {"id": "vision-model", "label": "vision-model"}
+    ]
+    assert len(calls) == 1
+    url, kwargs = calls[0]
+    assert url == "https://trusted-provider.example/v1/models"
+    assert kwargs["headers"]["Authorization"] == "Bearer trusted-openai-key"
+    assert "attacker.example" not in url
