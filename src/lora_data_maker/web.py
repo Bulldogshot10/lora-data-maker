@@ -842,6 +842,10 @@ function syncCaptionRuntimeUI(){
 async function loadVlmModels(){
   const runtime=$("caption_runtime").value;
   if(runtime!=="gemini"&&runtime!=="openai_compatible")return;
+  // A custom API destination is trusted only after it has been saved in this project.
+  if(runtime==="openai_compatible"&&appState.settingsDirty){
+    if(!(await ensureSaved()))return;
+  }
   const select=$("caption_api_model");
   const selected=select.dataset.selectedModel||select.value||"";
   const base=runtime==="openai_compatible"?$("caption_api_base_url").value.trim():"";
@@ -905,7 +909,6 @@ async function loadVlmModels(){
   $("caption_api_key_status").textContent="key saved locally; refreshing model list in the background…";
   try{
     const qs=new URLSearchParams({runtime:runtime});
-    if(base)qs.set("base_url",base);
     const d=await api("/api/vlm/models?"+qs.toString());
     const models=Array.isArray(d.models)?d.models:[];
     if(!stillCurrent())return;
@@ -1604,7 +1607,7 @@ $("choose-images").addEventListener("click",()=>$("files").click());
 $("caption_model_upload").addEventListener("click",()=>$("caption_model_file").click());
 $("caption_mmproj_upload").addEventListener("click",()=>$("caption_mmproj_file").click());
 $("caption_backend").addEventListener("change",()=>{syncCaptionRuntimeUI();markDirty();});
-$("caption_runtime").addEventListener("change",()=>{syncCaptionRuntimeUI();loadVlmModels();markDirty();});
+$("caption_runtime").addEventListener("change",()=>{syncCaptionRuntimeUI();markDirty();loadVlmModels();});
 $("caption_api_model").addEventListener("change",()=>{ $("caption_api_model").dataset.selectedModel=$("caption_api_model").value; markDirty(); });
 $("caption_api_base_url").addEventListener("change",()=>{markDirty();if($("caption_runtime").value==="openai_compatible")loadVlmModels();});
 $("caption_api_key_set").addEventListener("click",setVlmApiKey);
@@ -2219,12 +2222,33 @@ def create_app(
 
 
     @app.get("/api/vlm/models")
-    def vlm_models(runtime: str = "gemini", base_url: str = ""):
+    def vlm_models(runtime: str = "gemini"):
         selected = runtime.strip().lower()
         if selected not in {"gemini", "openai_compatible"}:
             raise HTTPException(400, "unsupported API VLM runtime")
 
-        env_name, api_base = _api_runtime_settings(selected, base_url)
+        # Never trust a request query parameter as an outbound credential destination.
+        # OpenAI-compatible discovery must use the URL explicitly saved in the active
+        # project's config, not a URL supplied by whichever site calls this GET route.
+        if selected == "openai_compatible":
+            current_root = active_root()
+            if current_root is None:
+                raise HTTPException(
+                    409,
+                    "create or open a dataset and save the API base URL before model discovery",
+                )
+            current_config = load_config(current_root / "config.toml")
+            caption_config = current_config.get("caption", {})
+            vlm_config = caption_config.get("vlm", {}) if isinstance(caption_config, dict) else {}
+            saved_base_url = (
+                str(vlm_config.get("api_base_url", "")).strip()
+                if isinstance(vlm_config, dict)
+                else ""
+            )
+            env_name, api_base = _api_runtime_settings(selected, saved_base_url)
+        else:
+            env_name, api_base = _api_runtime_settings(selected)
+
         api_key = os.environ.get(env_name, "").strip()
         if not api_key:
             raise HTTPException(
