@@ -382,7 +382,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .step.primary:hover{background:var(--ink);box-shadow:0 8px 18px rgba(24,32,43,.13)}
 .step-number{font-size:10px;letter-spacing:.05em}
 .step-name{font-size:14px;letter-spacing:-.01em;text-transform:none}
-.step.hint,.step-hint{font-size:11px;line-height:1.55}
+.step-hint{font-size:11px;line-height:1.55}
 #prepare-pipeline .card-title-row{margin-top:22px!important;padding-top:18px;border-color:#e5e8ed}
 .collect-grid{gap:var(--gap)}
 .form-grid{gap:17px}.form-grid.three{gap:17px}
