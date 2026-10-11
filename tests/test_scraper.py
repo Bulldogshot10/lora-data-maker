@@ -959,6 +959,21 @@ def test_playwright_bing_extracts_original_urls():
 
 
 
+def test_playwright_bing_ignores_iusc_anchors_outside_results_grid():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = """
+    <a class="iusc" m='{"murl":"https://cdn.example.com/unrelated.jpg"}'></a>
+    <ul class="dgControl_list">
+      <li><a class="iusc" m='{"murl":"https://cdn.example.com/query-result.jpg"}'></a></li>
+    </ul>
+    """
+
+    assert PlaywrightImagesScraper._extract_bing_urls(body) == [
+        "https://cdn.example.com/query-result.jpg"
+    ]
+
+
 def test_playwright_bing_parser_handles_html_entities_and_quote_styles():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
@@ -1071,7 +1086,8 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
                     if self.evaluate_calls == 1
                     else "https://www.bing.com/images/search?q=julia"
                 )
-                return {"result": {"value": ["complete", href]}}
+                result_count = 0 if self.evaluate_calls == 1 else 1
+                return {"result": {"value": ["complete", href, result_count]}}
             raise AssertionError(f"unexpected CDP method: {method}")
 
     class FakePage:
@@ -1082,7 +1098,8 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
 
         def content(self):
             return (
-                '<a class="iusc" m=\'{"murl":"https://cdn.example.com/a.jpg"}\'></a>'
+                '<ul class="dgControl_list"><li><a class="iusc" '
+                'm=\'{"murl":"https://cdn.example.com/a.jpg"}\'></a></li></ul>'
             )
 
         def evaluate(self, _script):
