@@ -20,11 +20,11 @@ DEFAULT_USER_AGENT = (
 
 
 class ChromiumImagesScraper:
-    """Hybrid image-search scraper using DuckDuckGo first and Bing via Chromium.
+    """Hybrid image-search scraper using Bing via Chromium, then DuckDuckGo.
 
-    DuckDuckGo's image endpoint is used first so the scraper can collect
-    candidates without starting a browser. Bing is then used through local
-    headless Chromium to fill any remaining candidate budget.
+    Bing is the primary source for this backend. DuckDuckGo is used to fill
+    any remaining candidate budget when Bing returns too few results or its
+    browser backend is unavailable.
     """
 
     BING_URL = "https://www.bing.com/images/search"
