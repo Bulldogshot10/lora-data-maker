@@ -123,10 +123,24 @@ class _BingResultParser(HTMLParser):
         return self._fallback_payloads
 
     def ordered_result_cards(self) -> list[dict[str, object]]:
-        return sorted(
-            self.result_cards,
-            key=lambda item: int(item.get("order", 0)),
+        if self.result_cards:
+            return sorted(
+                self.result_cards,
+                key=lambda item: int(item.get("order", 0)),
+            )
+
+        # Bing sometimes changes the surrounding grid/card markup while keeping
+        # the stable a.iusc metadata attribute. Fall back to those URLs, but
+        # let the title/description relevance filter decide which ones survive.
+        raw_payloads = (
+            self.payloads
+            if self._has_result_container
+            else self._fallback_payloads
         )
+        return [
+            {"payload": payload, "text": "", "order": index}
+            for index, payload in enumerate(raw_payloads, start=1)
+        ]
 
 class PlaywrightImagesScraper(Scraper):
     """Image-search scraper driven by Termux-native Chromium through Playwright.
@@ -386,9 +400,7 @@ class PlaywrightImagesScraper(Scraper):
             try:
                 expression = (
                     "[document.readyState, location.href, "
-                    "document.querySelectorAll("
-                    "'ul.dgControl_list a.iusc, #mmComponent_images_2 a.iusc'"
-                    ").length]"
+                    "document.querySelectorAll('a.iusc').length]"
                     if self.provider == "bing"
                     else "[document.readyState, location.href]"
                 )
@@ -445,7 +457,8 @@ class PlaywrightImagesScraper(Scraper):
             time.sleep(0.05)
 
         detail = (
-            " (Bing did not render image-result cards for the requested query)"
+            " (Bing did not render any a.iusc image-result anchors for the "
+            f"requested query; last URL={current_url if 'current_url' in locals() else 'unknown'})"
             if self.provider == "bing"
             else ""
         )
