@@ -240,3 +240,16 @@ def test_vlm_credential_routes_reject_cross_origin_browser_requests(
     assert mutate_key.status_code == 403
     assert calls == []
     assert load_api_keys(tmp_path / "private" / "api-keys.json") == {}
+
+def test_saving_api_keys_does_not_change_existing_parent_permissions(tmp_path: Path) -> None:
+    shared_dir = tmp_path / "shared"
+    shared_dir.mkdir()
+    if os.name == "posix":
+        os.chmod(shared_dir, 0o755)
+
+    path = shared_dir / "api-keys.json"
+    save_api_keys(path, {"GEMINI_API_KEY": "test-key"})
+
+    if os.name == "posix":
+        assert stat.S_IMODE(shared_dir.stat().st_mode) == 0o755
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
