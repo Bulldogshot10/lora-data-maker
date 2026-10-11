@@ -1669,3 +1669,41 @@ def test_chromium_uses_duckduckgo_when_bing_browser_is_unavailable(monkeypatch):
         "title": "Julia Patty portrait",
         "provider": "duckduckgo",
     }
+
+
+def test_playwright_bing_ready_page_without_result_anchors_is_not_navigation_timeout():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakeSession:
+        def send(self, method, params=None, timeout=None):
+            if method == "Page.navigate":
+                return {"loaderId": "loader-1"}
+            if method == "Runtime.evaluate":
+                assert "document.querySelectorAll('a.iusc').length" in params["expression"]
+                return {
+                    "result": {
+                        "value": [
+                            "complete",
+                            "https://www.bing.com/images/search?q=julia",
+                            0,
+                        ]
+                    }
+                }
+            raise AssertionError(f"unexpected CDP method: {method}")
+
+    class FakePage:
+        def __init__(self):
+            self.session = FakeSession()
+            self._url = "about:blank"
+
+    scraper = PlaywrightImagesScraper(
+        provider="bing",
+        timeout=1,
+        retries=0,
+        delay=0,
+    )
+    page = FakePage()
+
+    scraper._goto(page, scraper._build_url("julia"))
+
+    assert page._url == "https://www.bing.com/images/search?q=julia"
