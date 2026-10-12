@@ -253,3 +253,45 @@ def test_export_manifest_uses_raw_image_when_processing_is_bypassed(tmp_path):
     assert summary.exported == 1
     assert (destination / f"{image_id}.png").is_file()
     assert (destination / f"{image_id}.txt").read_text(encoding="utf-8") == "julia, portrait\n"
+
+
+def test_export_manifest_copies_raw_image_when_processing_is_disabled(tmp_path):
+    root = tmp_path / "project"
+    raw_dir = root / "raw"
+    captions = root / "work" / "captions"
+    raw_dir.mkdir(parents=True)
+    captions.mkdir(parents=True)
+
+    raw_image = raw_dir / "001.png"
+    Image.new("RGB", (80, 60), (20, 30, 40)).save(raw_image)
+    caption_path = captions / "abc123.txt"
+    caption_path.write_text("julia, portrait\n", encoding="utf-8")
+
+    manifest = ProjectManifest(
+        project_name="raw-export",
+        subject="julia",
+        trigger="julia",
+    )
+    record = ImageRecord(
+        image_id="abc123",
+        path="raw/001.png",
+        status="captioned",
+        caption_path="work/captions/abc123.txt",
+    )
+    manifest.add_image(record)
+
+    summary = export_manifest(
+        manifest,
+        root=root,
+        output_dir=root / "output",
+        repeats=1,
+        use_processed_images=False,
+    )
+
+    exported_image = root / "output" / "1_julia" / "abc123.png"
+    exported_caption = root / "output" / "1_julia" / "abc123.txt"
+    assert summary.exported == 1
+    assert summary.failed == 0
+    assert record.status == "exported"
+    assert exported_image.read_bytes() == raw_image.read_bytes()
+    assert exported_caption.read_text(encoding="utf-8") == "julia, portrait\n"
