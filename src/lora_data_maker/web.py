@@ -2783,10 +2783,9 @@ def create_app(
                             "label": str(item.get("displayName") or model_id)[:256],
                         })
                         if len(models) >= model_limit:
-                            page_token = ""
                             break
                     page_token = str(data.get("nextPageToken", "") or "").strip()
-                    if not page_token:
+                    if len(models) >= model_limit or not page_token:
                         break
                 models.sort(key=lambda item: item["label"].lower())
                 with model_list_cache_lock:
