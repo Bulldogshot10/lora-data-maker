@@ -1078,3 +1078,7 @@ def test_webui_process_stage_is_skipped_when_processing_disabled(
     assert job["status"] == "done"
     assert "processing bypassed" in job["message"]
     assert not (root / "work" / "processed").exists()
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    assert project.manifest.source["last_process_bypassed"] is True
+    assert project.manifest.source["last_process_processed"] == 0
