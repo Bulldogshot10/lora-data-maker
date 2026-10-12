@@ -6,7 +6,10 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
 
+from PIL import Image, UnidentifiedImageError
+
 from .exceptions import LoraDataMakerError
+from .security import MAX_IMAGE_PIXELS, MAX_IMAGE_UPLOAD_BYTES
 
 DEFAULT_VLM_PROMPT = (
     "describe this photo for a stable diffusion character lora training caption.\n"
@@ -98,13 +101,34 @@ class VlmConfig:
 
 def _data_uri(path: Path) -> str:
     try:
+        file_size = path.stat().st_size
+        if file_size < 1 or file_size > MAX_IMAGE_UPLOAD_BYTES:
+            raise VlmCaptionerError("image exceeds the 25 MiB VLM input limit")
+        with Image.open(path) as image:
+            width, height = image.size
+            if width < 1 or height < 1 or width * height > MAX_IMAGE_PIXELS:
+                raise VlmCaptionerError(
+                    f"unsafe image dimensions {width}x{height}; maximum is {MAX_IMAGE_PIXELS} pixels"
+                )
+            image_format = (image.format or "").upper()
         payload = path.read_bytes()
-    except OSError as exc:
+    except VlmCaptionerError:
+        raise
+    except (OSError, UnidentifiedImageError) as exc:
         raise VlmCaptionerError(
-            f"could not read processed image {path}: {exc}"
+            f"could not read a valid image {path}: {exc}"
         ) from exc
 
-    mime_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    mime_by_format = {
+        "JPEG": "image/jpeg",
+        "PNG": "image/png",
+        "WEBP": "image/webp",
+        "BMP": "image/bmp",
+        "GIF": "image/gif",
+        "TIFF": "image/tiff",
+        "AVIF": "image/avif",
+    }
+    mime_type = mime_by_format.get(image_format) or mimetypes.guess_type(path.name)[0] or "image/jpeg"
     encoded = base64.b64encode(payload).decode("ascii")
     return f"data:{mime_type};base64,{encoded}"
 
