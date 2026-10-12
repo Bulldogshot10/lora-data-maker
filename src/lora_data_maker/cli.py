@@ -601,6 +601,21 @@ def command_process(args: argparse.Namespace) -> int:
     processing_config = config.get("processing", {})
     if not isinstance(processing_config, dict):
         raise LoraDataMakerError("config section [processing] must be a table")
+    processing_enabled = processing_config.get("enabled", True)
+    if not isinstance(processing_enabled, bool):
+        raise LoraDataMakerError("config field processing.enabled must be a boolean")
+    if not processing_enabled:
+        project.manifest.source.update(
+            {
+                "last_process_processed": 0,
+                "last_process_failed": 0,
+                "last_process_skipped": len(project.manifest.images),
+                "last_process_bypassed": True,
+            }
+        )
+        project.save()
+        print("processing bypassed; raw images will be used")
+        return 0
 
     target_size = int(processing_config.get("target_size", 512))
     target_width = int(processing_config.get("target_width", target_size))
@@ -669,6 +684,13 @@ def command_tag(args: argparse.Namespace) -> int:
     if not isinstance(tagger_config, dict):
         raise LoraDataMakerError("config section [tagger] must be a table")
 
+    processing_config = config.get("processing", {})
+    if not isinstance(processing_config, dict):
+        raise LoraDataMakerError("config section [processing] must be a table")
+    processing_enabled = processing_config.get("enabled", True)
+    if not isinstance(processing_enabled, bool):
+        raise LoraDataMakerError("config field processing.enabled must be a boolean")
+
     selected_preset = getattr(args, "preset", None) or str(
         tagger_config.get("preset", "sweetspot")
     )
@@ -694,6 +716,7 @@ def command_tag(args: argparse.Namespace) -> int:
         project.manifest,
         root=root,
         tagger=tagger,
+        use_processed_images=processing_enabled,
     )
 
     project.manifest.source.update(
@@ -786,12 +809,19 @@ def command_caption(args: argparse.Namespace) -> int:
         raise LoraDataMakerError("config section [caption] must be a table")
 
     settings = caption_config_from_dict(caption_config, root=root)
+    processing_config = config.get("processing", {})
+    if not isinstance(processing_config, dict):
+        raise LoraDataMakerError("config section [processing] must be a table")
+    processing_enabled = processing_config.get("enabled", True)
+    if not isinstance(processing_enabled, bool):
+        raise LoraDataMakerError("config field processing.enabled must be a boolean")
 
     summary = caption_manifest(
         project.manifest,
         root=root,
         output_dir=paths.work / "captions",
         config=settings,
+        use_processed_images=processing_enabled,
     )
 
     project.manifest.source.update(
@@ -832,6 +862,13 @@ def command_export(args: argparse.Namespace) -> int:
     paths = ProjectPaths.from_root(root, config.get("paths", {}))
     project = DatasetProject.open(paths)
 
+    processing_config = config.get("processing", {})
+    if not isinstance(processing_config, dict):
+        raise LoraDataMakerError("config section [processing] must be a table")
+    processing_enabled = processing_config.get("enabled", True)
+    if not isinstance(processing_enabled, bool):
+        raise LoraDataMakerError("config field processing.enabled must be a boolean")
+
     export_config = config.get("export", {})
     if not isinstance(export_config, dict):
         raise LoraDataMakerError("config section [export] must be a table")
@@ -858,6 +895,7 @@ def command_export(args: argparse.Namespace) -> int:
         output_dir=paths.output,
         repeats=repeats,
         folder_name=folder_name,
+        use_processed_images=processing_enabled,
     )
 
     project.manifest.source.update(
