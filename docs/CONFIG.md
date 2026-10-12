@@ -87,6 +87,7 @@ When person_check is true, the quality gate runs YOLOX-Nano through ONNX Runtime
 
 ~~~toml
 [processing]
+enabled = true
 target_width = 512
 target_height = 512
 resize_mode = "cover"
