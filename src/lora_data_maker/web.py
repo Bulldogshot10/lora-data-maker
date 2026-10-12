@@ -2452,6 +2452,13 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(400, str(exc)) from exc
 
+    def _display_api_base_url(value: str) -> str:
+        # Never echo credential-bearing legacy URLs back into /api/state.
+        try:
+            return validate_api_base_url(value)
+        except ValueError:
+            return ""
+
     def set_config(section: str, values: dict[str, Any], root_path: Path | None = None) -> None:
         config_path = (root_path or active_root()) / "config.toml"
         lines = config_path.read_text(encoding="utf-8").splitlines()
@@ -2616,9 +2623,11 @@ def create_app(
                 "api_model": str(caption.get("vlm", {}).get("api_model", ""))
                 if isinstance(caption.get("vlm"), dict)
                 else "",
-                "api_base_url": str(caption.get("vlm", {}).get("api_base_url", ""))
-                if isinstance(caption.get("vlm"), dict)
-                else "",
+                "api_base_url": (
+                    _display_api_base_url(str(caption.get("vlm", {}).get("api_base_url", "")))
+                    if isinstance(caption.get("vlm"), dict)
+                    else ""
+                ),
                 "api_key_set": (
                     bool(os.environ.get(
                         "GEMINI_API_KEY"
