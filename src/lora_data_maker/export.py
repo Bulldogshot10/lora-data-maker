@@ -81,6 +81,7 @@ def export_manifest(
     output_dir: Path | str,
     repeats: int = 1,
     folder_name: str | None = None,
+    use_processed_images: bool = True,
 ) -> ExportSummary:
     """Export captioned records as Kohya-style image/.txt pairs."""
     root_path = Path(root).expanduser().resolve()
@@ -104,26 +105,48 @@ def export_manifest(
     exported = failed = 0
 
     for image in candidates:
-        if not image.processed_path or not image.caption_path:
+        if not image.caption_path:
+            failed += 1
+            image.metadata["export_stage"] = "failed"
+            image.metadata["export_error"] = "caption_path is required"
+            continue
+
+        source_image: Path | None = None
+        if use_processed_images and image.processed_path:
+            processed_candidate = (
+                root_path / image.processed_path
+            ).resolve()
+            try:
+                processed_candidate.relative_to(root_path)
+            except ValueError:
+                processed_candidate = None
+            if processed_candidate is not None and processed_candidate.is_file():
+                source_image = processed_candidate
+
+        if source_image is None:
+            raw_candidate = (root_path / image.path).resolve()
+            try:
+                raw_candidate.relative_to(root_path)
+            except ValueError:
+                raw_candidate = None
+            if raw_candidate is not None and raw_candidate.is_file():
+                source_image = raw_candidate
+
+        if source_image is None:
             failed += 1
             image.metadata["export_stage"] = "failed"
             image.metadata["export_error"] = (
-                "processed_path and caption_path are required"
+                f"neither processed nor raw image was found for {image.path}"
             )
             continue
 
-        source_image = (root_path / image.processed_path).resolve()
         source_caption = (root_path / image.caption_path).resolve()
+        try:
+            source_caption.relative_to(root_path)
+        except ValueError:
+            source_caption = None
 
-        if not source_image.is_file():
-            failed += 1
-            image.metadata["export_stage"] = "failed"
-            image.metadata["export_error"] = (
-                f"processed image not found: {source_image}"
-            )
-            continue
-
-        if not source_caption.is_file():
+        if source_caption is None or not source_caption.is_file():
             failed += 1
             image.metadata["export_stage"] = "failed"
             image.metadata["export_error"] = (
