@@ -2846,6 +2846,7 @@ def create_app(
                         timeout=12,
                         allow_redirects=False,
                         stream=True,
+                        proxies={"http": None, "https": None},
                     )
                     if 300 <= response.status_code < 400:
                         response.close()
@@ -2896,6 +2897,7 @@ def create_app(
                 timeout=12,
                 allow_redirects=False,
                 stream=True,
+                proxies={"http": None, "https": None},
             )
             if 300 <= response.status_code < 400:
                 response.close()
