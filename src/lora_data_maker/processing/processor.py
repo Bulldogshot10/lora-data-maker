@@ -139,21 +139,12 @@ def resize_and_crop(
             None,
         )
 
-    if mode == "fit":
-        fitted = ImageOps.contain(
-            image,
-            (target_width, target_height),
-            method=Image.Resampling.LANCZOS,
-        )
-        canvas = Image.new("RGB", (target_width, target_height), background)
-        left = (target_width - fitted.width) // 2
-        top = (target_height - fitted.height) // 2
-        canvas.paste(fitted, (left, top))
-        return canvas, None
-
-    if mode != "cover":
+    if mode not in {"cover", "fit"}:
         raise ValueError(f"unsupported resize mode: {mode}")
 
+    # Both modes now fill the target without adding synthetic borders.
+    # "fit" is retained for existing configs but, like "cover", it scales
+    # proportionally and center-crops any overflow rather than letterboxing.
     scale = max(
         target_width / source_width,
         target_height / source_height,
