@@ -88,6 +88,10 @@ lora-data-maker process [--path PATH]
 
 Output goes under work/processed/. Resize modes: `cover` fills the target and crops overflow; `fit` preserves the full image with no padding (so output may be smaller than the target on one axis); `stretch` uses the exact target dimensions and may distort the aspect ratio.
 
+
+
+Set `[processing].enabled = false` in `config.toml` to skip resizing/cropping entirely. Captioning, tagging, and export then use the original images in `raw/`; the `process` command exits successfully without writing `work/processed/`.
+
 ## tag
 
 Run the configured ONNX image tagger. Built-in presets are `sweetspot`, `potato`, and `joytag`.
