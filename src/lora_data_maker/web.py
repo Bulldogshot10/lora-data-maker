@@ -912,6 +912,10 @@ dialog::backdrop{background:rgba(15,20,28,.45);backdrop-filter:blur(4px)}
 
       <section class="card card-pad" style="margin-top:14px">
         <div class="card-title">processing</div>
+        <div class="field" style="margin-top:12px">
+          <label class="check"><input id="processing_enabled" type="checkbox" checked> resize/crop images before captioning</label>
+          <div class="field-note">Turn this off to bypass processing entirely. Captioning, tagging, and export will use the original raw images.</div>
+        </div>
         <div class="form-grid three" style="margin-top:13px">
           <div class="field">
             <label for="mode">resize</label>
@@ -1323,6 +1327,7 @@ function applySettings(s,force=false){
   syncCaptionRuntimeUI();
   $("caption_max_tokens").value=s.caption.max_tokens;
   $("caption_tokens_value").textContent=s.caption.max_tokens;
+  $("processing_enabled").checked=s.processing.enabled!==false;
   $("mode").value=s.processing.mode;
   $("width").value=s.processing.width;
   $("height").value=s.processing.height;
@@ -1568,6 +1573,7 @@ async function saveSettings(){
         scrape_year:scrapeDateMode==="year"?scrapeYear:0,
         scrape_date_from:scrapeDateMode==="range"?scrapeDateFrom:(scrapeDateMode==="year"?scrapeYear+"-01-01":""),
         scrape_date_to:scrapeDateMode==="range"?scrapeDateTo:(scrapeDateMode==="year"?scrapeYear+"-12-31":""),
+        processing_enabled:$("processing_enabled").checked,
         mode:$("mode").value,
         width:width,
         height:height,
@@ -2322,6 +2328,7 @@ def create_app(
             return {
                 "project": None,
                 "processing": {
+                    "enabled": True,
                     "mode": "cover",
                     "width": 512,
                     "height": 512,
@@ -2395,6 +2402,7 @@ def create_app(
                 "path": current_root.as_posix(),
             },
             "processing": {
+                "enabled": bool(processing.get("enabled", True)),
                 "mode": str(processing.get("resize_mode", "cover")),
                 "width": int(processing.get("target_width", 512)),
                 "height": int(processing.get("target_height", 512)),
@@ -2800,6 +2808,15 @@ def create_app(
         current_quality = current_config.get("quality", {})
         if not isinstance(current_quality, dict):
             current_quality = {}
+        current_processing = current_config.get("processing", {})
+        if not isinstance(current_processing, dict):
+            current_processing = {}
+        processing_enabled = payload.get(
+            "processing_enabled",
+            current_processing.get("enabled", True),
+        )
+        if not isinstance(processing_enabled, bool):
+            raise HTTPException(400, "processing_enabled must be a boolean")
         scraper_backend = str(
             payload.get("scraper_backend", current_scraper.get("backend", "duckduckgo"))
         ).lower()
@@ -2975,6 +2992,7 @@ def create_app(
         set_config(
             "processing",
             {
+                "enabled": processing_enabled,
                 "resize_mode": mode,
                 "target_width": width,
                 "target_height": height,
@@ -3345,6 +3363,13 @@ def create_app(
                 return "cleaned " + str(s.kept) + "; exact dup " + str(s.exact_duplicates) + "; perceptual dup " + str(s.perceptual_duplicates) + "; quality rejected " + str(s.quality_rejected)
             if stage == "process":
                 pc = cfg.get("processing", {})
+                if not isinstance(pc, dict):
+                    raise RuntimeError("config section [processing] must be a table")
+                processing_enabled = pc.get("enabled", True)
+                if not isinstance(processing_enabled, bool):
+                    raise RuntimeError("config field processing.enabled must be a boolean")
+                if not processing_enabled:
+                    return "processing bypassed; raw images will be used"
                 face_crop = bool(pc.get("face_crop", False))
                 face_padding = float(pc.get("face_padding", 1.75))
                 face_detector = None
@@ -3381,7 +3406,18 @@ def create_app(
                     cache_root=cache_root,
                     preset=selected.name,
                 )
-                s = tag_manifest(p.manifest, root=root_path, tagger=tagger)
+                processing_cfg = cfg.get("processing", {})
+                if not isinstance(processing_cfg, dict):
+                    raise RuntimeError("config section [processing] must be a table")
+                processing_enabled = processing_cfg.get("enabled", True)
+                if not isinstance(processing_enabled, bool):
+                    raise RuntimeError("config field processing.enabled must be a boolean")
+                s = tag_manifest(
+                    p.manifest,
+                    root=root_path,
+                    tagger=tagger,
+                    use_processed_images=processing_enabled,
+                )
                 p.save()
                 return "tagged " + str(s.tagged) + ", skipped " + str(s.skipped)
             if stage == "clean-tags":
@@ -3411,12 +3447,19 @@ def create_app(
                 if not isinstance(cc, dict):
                     raise RuntimeError("config section [caption] must be a table")
                 settings = caption_config_from_dict(cc, root=root_path)
+                processing_cfg = cfg.get("processing", {})
+                if not isinstance(processing_cfg, dict):
+                    raise RuntimeError("config section [processing] must be a table")
+                processing_enabled = processing_cfg.get("enabled", True)
+                if not isinstance(processing_enabled, bool):
+                    raise RuntimeError("config field processing.enabled must be a boolean")
                 s = caption_manifest(
                     p.manifest,
                     root=root_path,
                     output_dir=ps.work / "captions",
                     config=settings,
                     progress=progress,
+                    use_processed_images=processing_enabled,
                 )
                 p.save()
                 if s.failed:
@@ -3435,7 +3478,20 @@ def create_app(
                 )
             if stage == "export":
                 ec = cfg.get("export", {})
-                s = export_manifest(p.manifest, root=root_path, output_dir=ps.output, repeats=int(ec.get("repeats", 1)), folder_name=str(ec.get("folder_name", "") or "") or None)
+                processing_cfg = cfg.get("processing", {})
+                if not isinstance(processing_cfg, dict):
+                    raise RuntimeError("config section [processing] must be a table")
+                processing_enabled = processing_cfg.get("enabled", True)
+                if not isinstance(processing_enabled, bool):
+                    raise RuntimeError("config field processing.enabled must be a boolean")
+                s = export_manifest(
+                    p.manifest,
+                    root=root_path,
+                    output_dir=ps.output,
+                    repeats=int(ec.get("repeats", 1)),
+                    folder_name=str(ec.get("folder_name", "") or "") or None,
+                    use_processed_images=processing_enabled,
+                )
                 p.manifest.source["last_export_dir"] = manifest_path(root_path, s.output_dir); p.save()
                 if s.failed: raise RuntimeError("export failed for " + str(s.failed) + " images")
                 return "exported " + str(s.exported)
@@ -3458,6 +3514,14 @@ def create_app(
                     if caption_backend == "vlm"
                     else ("validate", "clean", "process", "tag", "clean-tags", "caption", "export", "pack")
                 )
+                processing_cfg = cfg.get("processing", {})
+                if not isinstance(processing_cfg, dict):
+                    raise RuntimeError("config section [processing] must be a table")
+                processing_enabled = processing_cfg.get("enabled", True)
+                if not isinstance(processing_enabled, bool):
+                    raise RuntimeError("config field processing.enabled must be a boolean")
+                if not processing_enabled:
+                    parts = tuple(part for part in parts if part != "process")
                 for part in parts:
                     make_job(part, root_path)(progress, cancel_event)
                 return "dataset ready"
