@@ -9,6 +9,8 @@ import time
 
 from fastapi.testclient import TestClient
 
+import pytest
+
 from lora_data_maker.config import write_default_config
 from lora_data_maker.dataset import DatasetProject
 from lora_data_maker.models import ImageRecord
@@ -392,6 +394,35 @@ def test_webui_vlm_file_uploads_store_relative_paths(tmp_path: Path) -> None:
         files={"file": ("not-model.txt", b"nope", "text/plain")},
     )
     assert rejected.status_code == 400
+
+
+def test_vlm_upload_rejects_files_without_gguf_magic(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+    response = client.post(
+        "/api/vlm/upload/model",
+        files={"file": ("fake.gguf", b"not-a-real-model", "application/octet-stream")},
+    )
+    assert response.status_code == 400
+    assert not (root / "models" / "fake.gguf").exists()
+
+
+def test_vlm_upload_refuses_models_directory_symlink(tmp_path: Path) -> None:
+    root = make_project(tmp_path / "project")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    try:
+        (root / "models").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable on this filesystem")
+
+    client = TestClient(create_app(root))
+    response = client.post(
+        "/api/vlm/upload/model",
+        files={"file": ("model.gguf", b"GGUF-model-data", "application/octet-stream")},
+    )
+    assert response.status_code == 400
+    assert list(outside.iterdir()) == []
 
 
 def test_webui_backend_switch_invalidates_vlm_captions(tmp_path: Path) -> None:
