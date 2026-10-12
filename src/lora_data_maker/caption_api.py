@@ -10,7 +10,7 @@ from PIL import Image, UnidentifiedImageError
 from pathlib import Path
 from typing import Any
 
-from .caption_vlm import VlmCaptionerError, VlmConfig, _data_uri
+from .caption_vlm import VlmCaptionerError, VlmConfig
 from .security import MAX_IMAGE_PIXELS, MAX_IMAGE_UPLOAD_BYTES, assert_safe_outbound_url, validate_api_base_url
 
 
@@ -389,7 +389,8 @@ class OpenAICompatibleVlmCaptioner(_ApiVlmCaptioner):
 
     def caption(self, image_path: Path | str) -> str:
         path = Path(image_path).expanduser().resolve()
-        image_url = _data_uri(path)
+        mime_type, encoded = _image_payload(path)
+        image_url = f"data:{mime_type};base64,{encoded}"
 
         def request_caption(prompt: str) -> str:
             payload = {
