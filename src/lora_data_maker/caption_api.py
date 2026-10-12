@@ -251,6 +251,7 @@ class _ApiVlmCaptioner:
                 raise VlmCaptionerError(f"VLM API request failed: {exc}") from exc
 
             if 300 <= response.status_code < 400:
+                _close_response(response)
                 raise VlmCaptionerError(
                     "VLM API endpoint returned a redirect; redirects are disabled to protect credentials"
                 )
