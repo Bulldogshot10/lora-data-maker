@@ -86,7 +86,7 @@ Create standardized training images.
 lora-data-maker process [--path PATH]
 ~~~
 
-Output goes under work/processed/. Supported resize modes are cover, fit, and stretch.
+Output goes under work/processed/. Resize modes: `cover` fills the target and crops overflow; `fit` preserves the full image with no padding (so output may be smaller than the target on one axis); `stretch` uses the exact target dimensions and may distort the aspect ratio.
 
 ## tag
 
