@@ -4,6 +4,7 @@ import hashlib
 import ipaddress
 import json
 import mimetypes
+import math
 from datetime import date
 import os
 import re
@@ -2317,9 +2318,21 @@ def create_app(
         return current
 
     def paths(root_path: Path | None = None) -> ProjectPaths:
-        selected_root = root_path if root_path is not None else require_active_root()
+        selected_root = (root_path if root_path is not None else require_active_root()).resolve()
         config = load_config(selected_root / "config.toml")
-        return ProjectPaths.from_root(selected_root, config.get("paths", {}))
+        project_paths = ProjectPaths.from_root(selected_root, config.get("paths", {}))
+        # WebUI writes uploaded and generated data. A project config must not
+        # redirect those writes through absolute paths or symlinks outside its root.
+        for label in ("raw", "work", "output", "cache"):
+            target = getattr(project_paths, label).resolve()
+            try:
+                target.relative_to(selected_root)
+            except ValueError as exc:
+                raise HTTPException(
+                    400,
+                    f"WebUI project path {label!r} must remain inside the project directory",
+                ) from exc
+        return project_paths
 
     def project(root_path: Path | None = None) -> DatasetProject:
         return DatasetProject.open(paths(root_path))
@@ -2909,6 +2922,8 @@ def create_app(
     @app.post("/api/settings")
     def settings(payload: dict[str, Any]):
         current_root = require_active_root()
+        if jobs.has_running_project(current_root):
+            raise HTTPException(409, "dataset has a running job; wait for it to finish before changing settings")
         name, subject = str(payload.get("name", "")).strip(), str(payload.get("subject", "")).strip()
         trigger = str(payload.get("trigger", "")).strip() or subject
         mode, preset = str(payload.get("mode", "cover")).lower(), str(payload.get("preset", "sweetspot"))
@@ -2934,9 +2949,12 @@ def create_app(
         scrape_query = str(
             payload.get("scrape_query", current_scraper.get("query", subject))
         ).strip() or subject
-        scrape_count = int(
-            payload.get("scrape_count", current_scraper.get("count", 300))
-        )
+        try:
+            scrape_count = int(
+                payload.get("scrape_count", current_scraper.get("count", 300))
+            )
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise HTTPException(400, "scrape count must be an integer") from exc
         current_scrape_year = int(current_scraper.get("year", 0) or 0)
         current_date_from = str(current_scraper.get("date_from", "") or "")
         current_date_to = str(current_scraper.get("date_to", "") or "")
@@ -2973,29 +2991,58 @@ def create_app(
         if scrape_date_mode != "any" and scraper_backend != "playwright-bing":
             raise HTTPException(400, "date filters are only supported by the Playwright Bing backend")
         preset = preset.strip().lower()
-        width, height, quality = int(payload.get("width", 512)), int(payload.get("height", 512)), int(payload.get("quality", 95))
-        face_crop = bool(payload.get("face_crop", False))
-        face_padding = float(payload.get("face_padding", 1.75))
-        person_check = bool(payload.get("person_check", current_quality.get("person_check", False)))
-        max_persons = int(payload.get("max_persons", 1))
-        person_threshold = float(payload.get("person_threshold", 0.35))
-        min_subject_area = float(payload.get("min_subject_area", 0.12))
-        min_subject_visibility = float(payload.get("min_subject_visibility", 0.35))
-        text_check = bool(payload.get("text_check", current_quality.get("text_check", True)))
-        text_confidence = float(payload.get("text_confidence", 0.5))
-        text_min_area_ratio = float(payload.get("text_min_area_ratio", 0.0004))
+        try:
+            width = int(payload.get("width", 512))
+            height = int(payload.get("height", 512))
+            quality = int(payload.get("quality", 95))
+            face_padding = float(payload.get("face_padding", 1.75))
+            max_persons = int(payload.get("max_persons", 1))
+            person_threshold = float(payload.get("person_threshold", 0.35))
+            min_subject_area = float(payload.get("min_subject_area", 0.12))
+            min_subject_visibility = float(payload.get("min_subject_visibility", 0.35))
+            text_confidence = float(payload.get("text_confidence", 0.5))
+            text_min_area_ratio = float(payload.get("text_min_area_ratio", 0.0004))
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise HTTPException(400, "numeric settings contain an invalid value") from exc
+
+        boolean_defaults = {
+            "face_crop": False,
+            "person_check": current_quality.get("person_check", False),
+            "text_check": current_quality.get("text_check", True),
+        }
+        for boolean_name, boolean_default in boolean_defaults.items():
+            boolean_value = payload.get(boolean_name, boolean_default)
+            if not isinstance(boolean_value, bool):
+                raise HTTPException(400, f"{boolean_name} must be a boolean")
+        face_crop = payload.get("face_crop", False)
+        person_check = payload.get("person_check", current_quality.get("person_check", False))
+        text_check = payload.get("text_check", current_quality.get("text_check", True))
         if (
             not name
             or not subject
             or mode not in {"cover", "fit", "stretch"}
+            or len(name) > 128
+            or len(subject) > 256
+            or len(trigger) > 256
             or width < 1
             or height < 1
+            or width > 8192
+            or height > 8192
             or scraper_backend not in SCRAPER_BACKENDS
             or not scrape_query
+            or len(scrape_query) > 2048
             or scrape_count < 1
+            or scrape_count > 10000
             or not 1 <= quality <= 100
+            or not math.isfinite(face_padding)
             or face_padding <= 0
+            or face_padding > 20
             or max_persons < 1
+            or max_persons > 100
+            or not all(math.isfinite(number) for number in (
+                person_threshold, min_subject_area, min_subject_visibility,
+                text_confidence, text_min_area_ratio
+            ))
             or not 0 < person_threshold <= 1
             or not 0 <= min_subject_area <= 1
             or not 0 <= min_subject_visibility <= 1
