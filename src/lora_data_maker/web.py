@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import ipaddress
 import json
@@ -9,6 +10,7 @@ from datetime import date
 import os
 import re
 import threading
+import tempfile
 import time
 import uuid
 from collections.abc import Callable
@@ -2260,6 +2262,10 @@ class JobStore:
                     return True
         return False
 
+    def has_running(self) -> bool:
+        with self.lock:
+            return any(job["status"] == "running" for job in self.jobs.values())
+
     def update_progress(self, job_id: str, current: int, total: int, label: str) -> None:
         current = max(0, int(current))
         total = max(0, int(total))
@@ -2311,6 +2317,7 @@ def create_app(
 ) -> FastAPI:
     app = FastAPI(title="LoRA Data Maker WebUI")
     app.add_middleware(RequestBodyLimitMiddleware)
+    mutation_request_lock = asyncio.Lock()
 
     @app.middleware("http")
     async def reject_untrusted_local_requests(request: Request, call_next):
@@ -2355,7 +2362,22 @@ def create_app(
                     status_code=403,
                     content={"detail": "cross-origin browser requests are not allowed"},
                 )
-        response = await call_next(request)
+        path = request.url.path
+        serialized_mutation = request.method in {"POST", "PUT", "PATCH", "DELETE"} and (
+            path in {
+                "/api/settings", "/api/vlm/api-key", "/api/upload",
+                "/api/projects/select", "/api/project/new",
+            }
+            or path.startswith((
+                "/api/vlm/upload/", "/api/run/", "/api/images/",
+                "/api/projects/", "/api/jobs/",
+            ))
+        )
+        if serialized_mutation:
+            async with mutation_request_lock:
+                response = await call_next(request)
+        else:
+            response = await call_next(request)
         response.headers.setdefault("X-Content-Type-Options", "nosniff")
         response.headers.setdefault("Referrer-Policy", "no-referrer")
         response.headers.setdefault("X-Frame-Options", "DENY")
@@ -2540,7 +2562,26 @@ def create_app(
                 end += 1
             else:
                 lines[found] = key + " = " + rendered
-        config_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        fd, temp_name = tempfile.mkstemp(
+            prefix=f".{config_path.name}.",
+            suffix=".tmp",
+            dir=config_path.parent,
+        )
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                fd = -1
+                handle.write("\n".join(lines) + "\n")
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temp_name, config_path)
+        except Exception:
+            if fd >= 0:
+                os.close(fd)
+            try:
+                os.unlink(temp_name)
+            except OSError:
+                pass
+            raise
 
     @app.get("/", response_class=HTMLResponse)
     def index():
@@ -2771,6 +2812,8 @@ def create_app(
 
     @app.post("/api/vlm/api-key")
     def set_vlm_api_key(payload: dict[str, Any]):
+        if jobs.has_running():
+            raise HTTPException(409, "wait for the current job to finish before changing API keys")
         runtime = str(payload.get("runtime", "")).strip().lower()
         if runtime not in {"gemini", "openai_compatible"}:
             raise HTTPException(400, "API key can only be set for an API VLM runtime")
