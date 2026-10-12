@@ -1034,3 +1034,47 @@ def test_webui_polish_has_responsive_motion_and_clear_model_loading_feedback(
     assert 'select.innerHTML=\'<option value="">loading models…</option>\'' in html
     assert 'empty.textContent="no models available"' in html
     assert ".field input,.field select,.field textarea{min-height:44px" in html
+
+
+def test_webui_process_stage_is_skipped_when_processing_disabled(
+    tmp_path: Path,
+) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    saved = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "trigger": "person",
+            "preset": "off",
+            "processing_enabled": False,
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+            "face_crop": False,
+            "face_padding": 1.75,
+            "text_check": False,
+        },
+    )
+    assert saved.status_code == 200
+    assert client.get("/api/state").json()["processing"]["enabled"] is False
+
+    started = client.post("/api/run/process")
+    assert started.status_code == 200
+    job_id = started.json()["job_id"]
+
+    deadline = time.monotonic() + 3
+    job = None
+    while time.monotonic() < deadline:
+        job = client.get(f"/api/jobs/{job_id}").json()
+        if job.get("status") != "running":
+            break
+        time.sleep(0.01)
+
+    assert job is not None
+    assert job["status"] == "done"
+    assert "processing bypassed" in job["message"]
+    assert not (root / "work" / "processed").exists()
