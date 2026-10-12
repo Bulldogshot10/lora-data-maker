@@ -187,3 +187,13 @@ def is_safe_media_path(relative: str) -> bool:
     if path.parts[0] not in {"raw", "work", "output"}:
         return False
     return path.suffix.lower() in IMAGE_SUFFIXES
+
+
+def is_safe_artifact_path(relative: str) -> bool:
+    """Allow only known dataset artifact types in managed dataset directories."""
+    path = PurePosixPath(str(relative).replace("\\", "/"))
+    if path.is_absolute() or not path.parts or any(part in {"", ".", ".."} for part in path.parts):
+        return False
+    if path.parts[0] not in {"raw", "work", "output"}:
+        return False
+    return path.suffix.lower() in (IMAGE_SUFFIXES | {".txt"})
