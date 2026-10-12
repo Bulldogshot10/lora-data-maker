@@ -44,6 +44,7 @@ min_subject_area = 0.12
 min_subject_visibility = 0.35
 
 [processing]
+enabled = true
 target_width = 512
 target_height = 512
 resize_mode = "cover"
