@@ -589,3 +589,32 @@ def test_delete_image_refuses_symlink_to_project_configuration(tmp_path: Path) -
     response = TestClient(create_app(root)).delete(f"/api/images/{record.image_id}")
     assert response.status_code == 400
     assert (root / "config.toml").is_file()
+
+
+def test_webui_rejects_symlinked_project_config_before_reading_or_writing(
+    tmp_path: Path,
+) -> None:
+    root = make_project(tmp_path / "workspace" / "dataset")
+    config_path = root / "config.toml"
+    saved_config = tmp_path / "external-config.toml"
+    saved_config.write_text(config_path.read_text(encoding="utf-8"), encoding="utf-8")
+    config_path.unlink()
+    try:
+        config_path.symlink_to(saved_config)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable on this filesystem")
+
+    response = TestClient(create_app(root)).get("/api/state")
+    assert response.status_code == 400
+    assert saved_config.read_text(encoding="utf-8").startswith("[project]")
+
+
+def test_download_route_only_serves_zip_artifacts_from_output(tmp_path: Path) -> None:
+    root = make_project(tmp_path / "workspace" / "dataset")
+    dataset = DatasetProject.open(ProjectPaths.from_root(root))
+    dataset.manifest.source["last_pack_archive"] = "config.toml"
+    dataset.save()
+
+    response = TestClient(create_app(root)).get("/api/download")
+    assert response.status_code == 400
+    assert "[project]" not in response.text
