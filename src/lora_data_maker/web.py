@@ -37,7 +37,75 @@ from .reconcile import reconcile_raw
 from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
 from .scrapers.base import ScraperCancelledError
 from .taggers import build_tagger, clean_tag_manifest, resolve_tagger_preset, tag_manifest
+MAX_PROVIDER_RESPONSE_BYTES = 5 * 1024 * 1024
+
 from .security import (MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_REQUEST_BYTES, MAX_JSON_REQUEST_BYTES, MAX_VLM_UPLOAD_BYTES, assert_safe_outbound_url, is_safe_media_path, validate_api_base_url)
+
+
+
+
+def _bounded_provider_text(response: Any, *, limit: int, secret: str = "") -> str:
+    """Read only a small error body from a streamed provider response."""
+    iterator = getattr(response, "iter_content", None)
+    if callable(iterator):
+        chunks: list[bytes] = []
+        total = 0
+        try:
+            for chunk in iterator(chunk_size=1024):
+                if not chunk:
+                    continue
+                remaining = limit - total
+                chunks.append(chunk[:remaining])
+                total += min(len(chunk), remaining)
+                if len(chunk) > remaining or total >= limit:
+                    break
+        finally:
+            close = getattr(response, "close", None)
+            if callable(close):
+                close()
+        value = b"".join(chunks).decode("utf-8", errors="replace")
+    else:
+        value = str(getattr(response, "text", "")).strip()[:limit]
+    return value.replace(secret, "[redacted]") if secret else value
+
+
+def _bounded_provider_json(response: Any) -> Any:
+    """Parse provider JSON with a decompressed response-byte ceiling."""
+    headers = getattr(response, "headers", {}) or {}
+    raw_length = headers.get("Content-Length", "") if hasattr(headers, "get") else ""
+    if raw_length:
+        try:
+            if int(raw_length) > MAX_PROVIDER_RESPONSE_BYTES:
+                close = getattr(response, "close", None)
+                if callable(close):
+                    close()
+                raise HTTPException(502, "provider response exceeds the 5 MiB limit")
+        except (TypeError, ValueError):
+            raise HTTPException(502, "provider returned an invalid Content-Length")
+
+    iterator = getattr(response, "iter_content", None)
+    if not callable(iterator):
+        # Small fake responses in unit tests expose json() only. Real Requests
+        # responses are streamed below so their body is never buffered unbounded.
+        return response.json()
+
+    body = bytearray()
+    try:
+        for chunk in iterator(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            if len(body) + len(chunk) > MAX_PROVIDER_RESPONSE_BYTES:
+                raise HTTPException(502, "provider response exceeds the 5 MiB limit")
+            body.extend(chunk)
+        return json.loads(body.decode("utf-8"))
+    except HTTPException:
+        raise
+    except (UnicodeError, ValueError) as exc:
+        raise HTTPException(502, "provider returned invalid JSON") from exc
+    finally:
+        close = getattr(response, "close", None)
+        if callable(close):
+            close()
 
 
 def _api_runtime_settings(runtime: str, base_url: str = "") -> tuple[str, str]:
@@ -2761,13 +2829,15 @@ def create_app(
                         params=params,
                         timeout=12,
                         allow_redirects=False,
+                        stream=True,
                     )
                     if 300 <= response.status_code < 400:
+                        response.close()
                         raise HTTPException(502, "Gemini model endpoint returned a redirect; redirects are disabled")
                     if not response.ok:
-                        detail = response.text.strip()[:500].replace(api_key, "[redacted]") or f"HTTP {response.status_code}"
+                        detail = _bounded_provider_text(response, limit=4096, secret=api_key) or f"HTTP {response.status_code}"
                         raise HTTPException(502, f"Gemini model list failed: {detail}")
-                    data = response.json()
+                    data = _bounded_provider_json(response)
                     for item in data.get("models", []):
                         if not isinstance(item, dict):
                             continue
@@ -2809,13 +2879,15 @@ def create_app(
                 headers={"Authorization": f"Bearer {api_key}"},
                 timeout=12,
                 allow_redirects=False,
+                stream=True,
             )
             if 300 <= response.status_code < 400:
+                response.close()
                 raise HTTPException(502, "OpenAI-compatible model endpoint returned a redirect; redirects are disabled")
             if not response.ok:
-                detail = response.text.strip()[:500].replace(api_key, "[redacted]") or f"HTTP {response.status_code}"
+                detail = _bounded_provider_text(response, limit=4096, secret=api_key) or f"HTTP {response.status_code}"
                 raise HTTPException(502, f"OpenAI-compatible model list failed: {detail}")
-            data = response.json()
+            data = _bounded_provider_json(response)
             raw_models = data.get("data", data.get("models", []))
             if not isinstance(raw_models, list):
                 raise HTTPException(502, "OpenAI-compatible model list has an invalid format")
