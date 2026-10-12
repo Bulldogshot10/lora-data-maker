@@ -20,7 +20,7 @@ _LOCAL_HOSTS = frozenset({"localhost", "ip6-localhost"})
 
 def _host_is_loopback_name(host: str) -> bool:
     normalized = host.rstrip(".").lower()
-    return normalized in _LOCAL_HOSTS or normalized.endswith(".localhost")
+    return normalized in _LOCAL_HOSTS
 
 
 def validate_api_base_url(value: str) -> str:
@@ -167,6 +167,8 @@ def assert_safe_outbound_url(
         raise ValueError(f"outbound host {normalized_host!r} has no valid IP addresses")
 
     for address in addresses:
+        if loopback_name and not address.is_loopback:
+            raise ValueError("localhost hostname resolved to a non-loopback address")
         if address.is_loopback:
             if allow_loopback and loopback_name:
                 continue
