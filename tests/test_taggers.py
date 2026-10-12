@@ -517,7 +517,7 @@ def test_command_tag_records_resolved_backend_for_explicit_preset(tmp_path, monk
     )
     monkeypatch.setattr(
         "lora_data_maker.cli.tag_manifest",
-        lambda manifest, root, tagger: type(
+        lambda manifest, root, tagger, **kwargs: type(
             "Summary",
             (),
             {"scanned": 0, "tagged": 0, "failed": 0, "skipped": 0},
@@ -536,3 +536,42 @@ def test_build_tagger_rejects_disabled_state():
 
     with pytest.raises(TaggerError, match="tagger is disabled"):
         build_tagger({"backend": "off", "preset": "off"})
+
+
+def test_tag_manifest_uses_raw_images_when_processing_is_bypassed(tmp_path):
+    raw_dir = tmp_path / "raw"
+    raw_dir.mkdir(parents=True)
+    source = raw_dir / "source.jpg"
+    source.write_bytes(b"raw-image")
+
+    manifest = ProjectManifest(
+        project_name="example",
+        subject="example",
+        trigger="example",
+    )
+    record = ImageRecord(
+        path="raw/source.jpg",
+        status="validated",
+    )
+    manifest.add_image(record)
+
+    class PathCheckingTagger:
+        def __init__(self):
+            self.paths = []
+
+        def tag_images(self, paths):
+            self.paths = list(paths)
+            return [TagResult(tags=["portrait"]) for _ in paths]
+
+    tagger = PathCheckingTagger()
+    summary = tag_manifest(
+        manifest,
+        root=tmp_path,
+        tagger=tagger,
+        use_processed_images=False,
+    )
+
+    assert summary.tagged == 1
+    assert tagger.paths == [source.resolve()]
+    assert record.status == "tagged"
+    assert record.tags == ["portrait"]
