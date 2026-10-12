@@ -8,6 +8,14 @@ from lora_data_maker.caption_vlm import VlmConfig
 from lora_data_maker.captions import CaptionConfig, caption_manifest
 from lora_data_maker.models import ImageRecord, ProjectManifest
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def mock_outbound_url_validation(monkeypatch):
+    # These tests mock provider HTTP responses; validate destinations separately in test_security.py.
+    monkeypatch.setattr("lora_data_maker.caption_api.assert_safe_outbound_url", lambda value, **kwargs: value)
+
 
 class FakeResponse:
     def __init__(self, payload, *, status_code=200, ok=True):
