@@ -88,3 +88,45 @@ def test_media_route_policy_only_allows_image_artifacts():
     assert not is_safe_media_path("work/captions/001.txt")
     assert not is_safe_media_path("raw/../config.toml")
     assert not is_safe_media_path("/etc/passwd")
+
+
+def test_downloader_stops_before_following_redirect_to_loopback(monkeypatch, tmp_path):
+    from lora_data_maker.scrapers.downloader import ImageDownloader
+    from lora_data_maker.scrapers.base import ScraperError
+
+    monkeypatch.setattr(
+        "lora_data_maker.security.socket.getaddrinfo",
+        lambda host, port, **kwargs: _dns_answer("93.184.216.34"),
+    )
+
+    class RedirectResponse:
+        status_code = 302
+        headers = {"Location": "http://127.0.0.1:8080/admin"}
+        def close(self):
+            self.closed = True
+
+    class FakeSession:
+        def __init__(self):
+            self.headers = {}
+            self.calls = []
+        def get(self, url, **kwargs):
+            self.calls.append((url, kwargs))
+            return RedirectResponse()
+
+    session = FakeSession()
+    downloader = ImageDownloader(
+        timeout=1,
+        retries=0,
+        delay=0,
+        user_agent="security-test",
+        session=session,
+    )
+    with pytest.raises(ScraperError, match="download failed"):
+        downloader.download(
+            "https://images.example.org/image.jpg",
+            tmp_path,
+            index=1,
+        )
+
+    assert len(session.calls) == 1
+    assert session.calls[0][1]["allow_redirects"] is False
