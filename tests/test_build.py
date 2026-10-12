@@ -226,7 +226,7 @@ def test_build_tag_command_namespace_works_without_preset(tmp_path, monkeypatch)
     monkeypatch.setattr("lora_data_maker.cli.build_tagger", lambda *a, **k: FakeTagger())
     monkeypatch.setattr(
         "lora_data_maker.cli.tag_manifest",
-        lambda manifest, root, tagger: type(
+        lambda manifest, root, tagger, **kwargs: type(
             "Summary",
             (),
             {"scanned": 0, "tagged": 0, "failed": 0, "skipped": 0},
