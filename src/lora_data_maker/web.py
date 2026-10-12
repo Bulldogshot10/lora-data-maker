@@ -39,7 +39,7 @@ from .scrapers.base import ScraperCancelledError
 from .taggers import build_tagger, clean_tag_manifest, resolve_tagger_preset, tag_manifest
 MAX_PROVIDER_RESPONSE_BYTES = 5 * 1024 * 1024
 
-from .security import (MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_REQUEST_BYTES, MAX_JSON_REQUEST_BYTES, MAX_VLM_UPLOAD_BYTES, assert_safe_outbound_url, is_safe_media_path, validate_api_base_url)
+from .security import (MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_REQUEST_BYTES, MAX_JSON_REQUEST_BYTES, MAX_VLM_UPLOAD_BYTES, assert_safe_outbound_url, is_safe_artifact_path, is_safe_media_path, validate_api_base_url)
 
 
 
@@ -3363,12 +3363,26 @@ def create_app(
         targets: list[Path] = []
         seen: set[Path] = set()
         for value in relative_paths:
-            target = (current_root / value).resolve()
+            raw_path = Path(value)
+            if raw_path.is_absolute() or not raw_path.parts or any(
+                part in {"", ".", ".."} for part in raw_path.parts
+            ):
+                raise HTTPException(400, "invalid image artifact path")
+            candidate = current_root / raw_path
+            # Never follow symlinks during a destructive operation. Check each
+            # component, not only the final file, to prevent deleting a target
+            # reached through a symlinked parent directory.
+            component = current_root
+            for part in raw_path.parts:
+                component = component / part
+                if component.is_symlink():
+                    raise HTTPException(400, "symlink image artifact paths are not allowed")
+            target = candidate.resolve()
             try:
-                target.relative_to(current_root)
+                target_relative = target.relative_to(current_root).as_posix()
             except ValueError as exc:
                 raise HTTPException(400, "invalid image artifact path") from exc
-            if target == current_root:
+            if target == current_root or not is_safe_artifact_path(target_relative):
                 raise HTTPException(400, "invalid image artifact path")
             if target not in seen:
                 seen.add(target)
