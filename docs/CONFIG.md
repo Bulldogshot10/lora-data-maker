@@ -96,6 +96,8 @@ face_crop = false
 face_padding = 1.75
 ~~~
 
+Set `enabled = false` to bypass resize/crop processing. The pipeline skips the process stage; VLM captioning, tagging, and export use the original files under `raw/`, with no resized copies or synthetic borders. Validation and clean/quality filtering still run. Keep `enabled = true` for the standard processed-image path.
+
 When face_crop is true, the CLI uses the built-in YuNet face detector. The detector model is cached under the configured project cache directory in cache/face/ and verified against its pinned SHA-256 checksum.
 
 cover fills the target, preserves aspect ratio, and crops overflow.
