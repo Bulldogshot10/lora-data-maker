@@ -97,9 +97,9 @@ face_padding = 1.75
 
 When face_crop is true, the CLI uses the built-in YuNet face detector. The detector model is cached under the configured project cache directory in cache/face/ and verified against its pinned SHA-256 checksum.
 
-cover fills the target and crops overflow.
-fit keeps the whole image and pads the remaining area.
-stretch resizes directly to the target dimensions.
+cover fills the target, preserves aspect ratio, and crops overflow.
+fit keeps the whole image and preserves aspect ratio without padding or synthetic border pixels; the output fits inside the target dimensions and may be smaller on one axis.
+stretch resizes directly to the exact target dimensions and can distort aspect ratio.
 
 ## dedup
 
