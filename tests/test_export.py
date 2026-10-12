@@ -213,3 +213,43 @@ def test_export_rolls_back_partial_pair_on_caption_failure(tmp_path, monkeypatch
     assert not (destination / f"{image_id}.jpg").exists()
     assert not (destination / f"{image_id}.txt").exists()
     assert manifest.images[image_id].status == "captioned"
+
+
+def test_export_manifest_uses_raw_image_when_processing_is_bypassed(tmp_path):
+    root = tmp_path / "project"
+    raw_dir = root / "raw"
+    captions = root / "work" / "captions"
+    raw_dir.mkdir(parents=True)
+    captions.mkdir(parents=True)
+
+    image_id = "raw-image"
+    source_image = raw_dir / "source.png"
+    source_caption = captions / f"{image_id}.txt"
+    Image.new("RGB", (48, 32), (30, 40, 50)).save(source_image)
+    source_caption.write_text("julia, portrait\n", encoding="utf-8")
+
+    manifest = ProjectManifest(
+        project_name="julia-set",
+        subject="julia",
+        trigger="julia",
+    )
+    record = ImageRecord(
+        image_id=image_id,
+        path="raw/source.png",
+        status="captioned",
+        caption_path=source_caption.relative_to(root).as_posix(),
+    )
+    manifest.add_image(record)
+
+    summary = export_manifest(
+        manifest,
+        root=root,
+        output_dir=root / "output",
+        repeats=1,
+        use_processed_images=False,
+    )
+
+    destination = root / "output" / "1_julia"
+    assert summary.exported == 1
+    assert (destination / f"{image_id}.png").is_file()
+    assert (destination / f"{image_id}.txt").read_text(encoding="utf-8") == "julia, portrait\n"
