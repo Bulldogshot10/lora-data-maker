@@ -210,3 +210,44 @@ def test_clean_command_applies_text_quality_gate(tmp_path, monkeypatch):
     assert record.metadata["quality_text_count"] == 1
     assert record.metadata["quality_text_confidence"] == 0.9
     assert "text detected" in record.rejection_reason
+
+
+def test_process_command_bypasses_processing_when_disabled(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="raw-dataset",
+            subject="raw-dataset",
+            trigger=None,
+            force=False,
+        )
+    )
+    source = root / "raw" / "input.png"
+    _make_image(source)
+    original_bytes = source.read_bytes()
+
+    assert command_validate(Namespace(path=str(root))) == 0
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace(
+        "[processing]\nenabled = true",
+        "[processing]\nenabled = false",
+        1,
+    )
+    config_path.write_text(config, encoding="utf-8")
+
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("processing must be bypassed")
+
+    monkeypatch.setattr("lora_data_maker.cli.process_manifest", fail_if_called)
+
+    assert command_process(Namespace(path=str(root))) == 0
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    record = next(iter(project.manifest.images.values()))
+    assert record.status == "validated"
+    assert record.processed_path is None
+    assert source.read_bytes() == original_bytes
+    assert not (root / "work" / "processed").exists()
+    assert project.manifest.source["last_process_bypassed"] is True
