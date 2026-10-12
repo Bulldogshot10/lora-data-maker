@@ -575,3 +575,38 @@ def test_tag_manifest_uses_raw_images_when_processing_is_bypassed(tmp_path):
     assert tagger.paths == [source.resolve()]
     assert record.status == "tagged"
     assert record.tags == ["portrait"]
+
+
+def test_tag_manifest_uses_raw_images_when_processing_is_disabled(tmp_path):
+    raw = tmp_path / "raw" / "source.png"
+    raw.parent.mkdir(parents=True)
+    raw.write_bytes(b"raw-image")
+
+    manifest = ProjectManifest(
+        project_name="example",
+        subject="example",
+        trigger="example",
+    )
+    record = ImageRecord(path="raw/source.png", status="validated")
+    manifest.add_image(record)
+
+    class RecordingTagger(FakeTagger):
+        def __init__(self):
+            self.paths = []
+
+        def tag_images(self, paths):
+            self.paths = [Path(path).resolve() for path in paths]
+            return super().tag_images(paths)
+
+    tagger = RecordingTagger()
+    summary = tag_manifest(
+        manifest,
+        root=tmp_path,
+        tagger=tagger,
+        use_processed_images=False,
+    )
+
+    assert tagger.paths == [raw.resolve()]
+    assert summary.scanned == 1
+    assert summary.tagged == 1
+    assert record.status == "tagged"
