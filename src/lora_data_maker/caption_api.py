@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+import json
 import mimetypes
 import os
 import time
@@ -45,9 +46,82 @@ def _image_payload(path: Path) -> tuple[str, str]:
     mime_type = mime_by_format.get(detected_format) or mimetypes.guess_type(path.name)[0] or "image/jpeg"
     return mime_type, base64.b64encode(payload).decode("ascii")
 
+
+MAX_API_RESPONSE_BYTES = 2 * 1024 * 1024
+
+
+def _close_response(response: Any) -> None:
+    close = getattr(response, "close", None)
+    if callable(close):
+        close()
+
+
+def _read_response_bytes(
+    response: Any,
+    *,
+    limit: int,
+    reject_oversized: bool,
+) -> bytes | None:
+    headers = getattr(response, "headers", {}) or {}
+    raw_length = headers.get("Content-Length", "") if hasattr(headers, "get") else ""
+    if raw_length:
+        try:
+            declared = int(raw_length)
+        except (TypeError, ValueError) as exc:
+            _close_response(response)
+            raise VlmCaptionerError("VLM API returned an invalid Content-Length") from exc
+        if declared < 0:
+            _close_response(response)
+            raise VlmCaptionerError("VLM API returned an invalid Content-Length")
+        if declared > limit and reject_oversized:
+            _close_response(response)
+            raise VlmCaptionerError("VLM API response exceeds the 2 MiB limit")
+
+    iterator = getattr(response, "iter_content", None)
+    if not callable(iterator):
+        return None
+
+    body = bytearray()
+    overflow = False
+    try:
+        for chunk in iterator(chunk_size=64 * 1024):
+            if not chunk:
+                continue
+            remaining = limit - len(body)
+            if len(chunk) > remaining:
+                body.extend(chunk[:remaining])
+                overflow = True
+                break
+            body.extend(chunk)
+        if overflow and reject_oversized:
+            raise VlmCaptionerError("VLM API response exceeds the 2 MiB limit")
+        return bytes(body)
+    finally:
+        _close_response(response)
+
+
+def _response_json(response: Any) -> Any:
+    body = _read_response_bytes(
+        response,
+        limit=MAX_API_RESPONSE_BYTES,
+        reject_oversized=True,
+    )
+    try:
+        return json.loads(body.decode("utf-8")) if body is not None else response.json()
+    except VlmCaptionerError:
+        raise
+    except Exception as exc:
+        raise VlmCaptionerError("VLM API returned invalid or oversized JSON") from exc
+
+
 def _response_error(response: Any) -> str:
     try:
-        data = response.json()
+        body = _read_response_bytes(
+            response,
+            limit=4096,
+            reject_oversized=False,
+        )
+        data = json.loads(body.decode("utf-8")) if body is not None else response.json()
     except Exception:
         text = getattr(response, "text", "")
         return str(text).strip()[:500] or f"HTTP {response.status_code}"
@@ -64,7 +138,6 @@ def _response_error(response: Any) -> str:
         if message:
             return str(message)[:500]
     return repr(data)[:500]
-
 
 def _extract_openai_text(data: dict[str, Any]) -> str:
     choices = data.get("choices")
@@ -165,6 +238,7 @@ class _ApiVlmCaptioner:
                     json=payload,
                     timeout=self.config.api_timeout,
                     allow_redirects=False,
+                    stream=True,
                 )
             except ValueError as exc:
                 raise VlmCaptionerError(f"VLM API destination rejected: {exc}") from exc
@@ -177,12 +251,7 @@ class _ApiVlmCaptioner:
                 )
 
             if getattr(response, "ok", False):
-                try:
-                    return response.json()
-                except Exception as exc:
-                    raise VlmCaptionerError(
-                        "VLM API returned invalid JSON"
-                    ) from exc
+                return _response_json(response)
 
             if response.status_code not in retryable_statuses or attempt == 2:
                 detail = _response_error(response).replace(self._api_key, "[redacted]")
