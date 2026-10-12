@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .caption_vlm import VlmCaptionerError, VlmConfig, _data_uri
+from .security import assert_safe_outbound_url, validate_api_base_url
 
 
 def _image_payload(path: Path) -> tuple[str, str]:
@@ -121,6 +122,8 @@ class _ApiVlmCaptioner:
             import requests
 
             self._session = requests.Session()
+            # Environment-configured proxies must not silently reroute credentialed requests.
+            self._session.trust_env = False
         except ImportError as exc:
             raise VlmCaptionerError(
                 "API VLM captions require the requests package"
@@ -132,14 +135,23 @@ class _ApiVlmCaptioner:
 
         for attempt in range(3):
             try:
+                safe_url = assert_safe_outbound_url(url, allow_loopback=True)
                 response = self._session.post(
-                    url,
+                    safe_url,
                     headers=headers,
                     json=payload,
                     timeout=self.config.api_timeout,
+                    allow_redirects=False,
                 )
+            except ValueError as exc:
+                raise VlmCaptionerError(f"VLM API destination rejected: {exc}") from exc
             except Exception as exc:
                 raise VlmCaptionerError(f"VLM API request failed: {exc}") from exc
+
+            if 300 <= response.status_code < 400:
+                raise VlmCaptionerError(
+                    "VLM API endpoint returned a redirect; redirects are disabled to protect credentials"
+                )
 
             if getattr(response, "ok", False):
                 try:
@@ -150,7 +162,7 @@ class _ApiVlmCaptioner:
                     ) from exc
 
             if response.status_code not in retryable_statuses or attempt == 2:
-                detail = _response_error(response)
+                detail = _response_error(response).replace(self._api_key, "[redacted]")
                 raise VlmCaptionerError(
                     f"VLM API returned HTTP {response.status_code}: {detail}"
                 )
@@ -184,10 +196,14 @@ class GeminiVlmCaptioner(_ApiVlmCaptioner):
                 "caption.vlm.api_model is required for the Gemini runtime"
             )
         self._model = config.api_model.strip().removeprefix("models/")
-        self._base_url = (
+        raw_base_url = (
             config.api_base_url.strip()
             or "https://generativelanguage.googleapis.com/v1beta"
         ).rstrip("/")
+        try:
+            self._base_url = validate_api_base_url(raw_base_url)
+        except ValueError as exc:
+            raise VlmCaptionerError(f"invalid Gemini API base URL: {exc}") from exc
 
     def caption(self, image_path: Path | str) -> str:
         path = Path(image_path).expanduser().resolve()
@@ -260,10 +276,14 @@ class OpenAICompatibleVlmCaptioner(_ApiVlmCaptioner):
                 "caption.vlm.api_model is required for the OpenAI-compatible runtime"
             )
         self._model = config.api_model.strip()
-        base_url = (
+        raw_base_url = (
             config.api_base_url.strip()
             or "https://api.openai.com/v1"
         ).rstrip("/")
+        try:
+            base_url = validate_api_base_url(raw_base_url)
+        except ValueError as exc:
+            raise VlmCaptionerError(f"invalid OpenAI-compatible API base URL: {exc}") from exc
         self._url = (
             base_url
             if base_url.endswith("/chat/completions")
