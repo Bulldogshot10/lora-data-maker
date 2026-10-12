@@ -917,7 +917,7 @@ dialog::backdrop{background:rgba(15,20,28,.45);backdrop-filter:blur(4px)}
             <label for="mode">resize</label>
             <select id="mode">
               <option value="cover">cover</option>
-              <option value="fit">fit</option>
+              <option value="fit">fit · no border</option>
               <option value="stretch">stretch</option>
             </select>
           </div>
