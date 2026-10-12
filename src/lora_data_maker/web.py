@@ -2434,6 +2434,19 @@ def create_app(
     def project(root_path: Path | None = None) -> DatasetProject:
         return DatasetProject.open(paths(root_path))
 
+    def reject_project_symlinks(root_path: Path) -> None:
+        """Disallow symlinks in a project before WebUI operations that read/write artifacts."""
+        root_path = root_path.resolve()
+        for directory, directories, files in os.walk(root_path, followlinks=False):
+            for name in (*directories, *files):
+                candidate = Path(directory) / name
+                if candidate.is_symlink():
+                    relative = candidate.relative_to(root_path).as_posix()
+                    raise HTTPException(
+                        400,
+                        f"project contains a symlinked artifact: {relative}",
+                    )
+
     def list_projects() -> list[dict[str, Any]]:
         projects: list[dict[str, Any]] = []
         active = active_root()
@@ -3060,6 +3073,7 @@ def create_app(
     @app.post("/api/settings")
     def settings(payload: dict[str, Any]):
         current_root = require_active_root()
+        reject_project_symlinks(current_root)
         if jobs.has_running_project(current_root):
             raise HTTPException(409, "dataset has a running job; wait for it to finish before changing settings")
         name, subject = str(payload.get("name", "")).strip(), str(payload.get("subject", "")).strip()
@@ -3440,6 +3454,7 @@ def create_app(
     @app.post("/api/vlm/upload/{kind}")
     async def upload_vlm(kind: str, file: Annotated[UploadFile, File()]):
         current_root = require_active_root()
+        reject_project_symlinks(current_root)
         if jobs.has_running_project(current_root):
             raise HTTPException(409, "this dataset is busy. wait for the current job to finish")
         if kind not in {"model", "mmproj"}:
@@ -3503,6 +3518,7 @@ def create_app(
     @app.post("/api/upload")
     async def upload(files: Annotated[list[UploadFile], File()]):
         current_root = require_active_root()
+        reject_project_symlinks(current_root)
         if jobs.has_running_project(current_root):
             raise HTTPException(409, "this dataset is busy. wait for the current job to finish")
         if len(files) > 500:
@@ -3914,6 +3930,7 @@ def create_app(
         allowed = {"scrape", "prepare", "validate", "clean", "process", "tag", "clean-tags", "caption", "export", "pack"}
         if stage not in allowed: raise HTTPException(404, "unknown stage")
         current_root = require_active_root()
+        reject_project_symlinks(current_root)
         try: job_id = jobs.start(
             "running " + stage + "...",
             make_job(stage, current_root),
