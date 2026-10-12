@@ -335,3 +335,40 @@ def test_api_vlm_caption_injects_trigger_from_four_fields(monkeypatch, tmp_path)
     record = next(iter(manifest.images.values()))
     caption = (root / record.caption_path).read_text(encoding="utf-8")
     assert caption == "julia, standing straight-on, wearing a white spandex top, neutral expression, indoors with soft lighting\n"
+
+
+def test_api_redirect_is_not_followed_with_the_provider_key(monkeypatch, tmp_path):
+    from lora_data_maker.caption_vlm import VlmCaptionerError
+
+    monkeypatch.setattr(requests, "Session", FakeSession)
+    FakeSession.payloads.clear()
+    FakeSession.responses[:] = [
+        FakeResponse(
+            {"location": "https://attacker.example/collect"},
+            status_code=302,
+            ok=True,
+        )
+    ]
+    monkeypatch.setenv("TEST_OPENAI_KEY", "highly-sensitive-key")
+    image = tmp_path / "image.jpg"
+    Image.new("RGB", (16, 16), "white").save(image)
+
+    runtime = OpenAICompatibleVlmCaptioner(
+        VlmConfig(
+            runtime="openai_compatible",
+            api_key_env="TEST_OPENAI_KEY",
+            api_model="vision-model",
+            api_base_url="https://example.test/v1",
+        )
+    )
+    try:
+        with pytest.raises(VlmCaptionerError, match="redirects are disabled"):
+            runtime.caption(image)
+    finally:
+        runtime.close()
+
+    assert len(FakeSession.payloads) == 1
+    url, kwargs = FakeSession.payloads[0]
+    assert url == "https://example.test/v1/chat/completions"
+    assert kwargs["allow_redirects"] is False
+    assert kwargs["headers"]["Authorization"] == "Bearer highly-sensitive-key"
