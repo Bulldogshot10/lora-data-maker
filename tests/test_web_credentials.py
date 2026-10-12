@@ -424,3 +424,87 @@ def test_gemini_model_discovery_follows_all_pages(tmp_path: Path, monkeypatch) -
     ]
     assert len(calls) == 3
     assert all(call[1]["params"]["pageSize"] == "1000" for call in calls)
+
+
+def test_webui_rejects_untrusted_host_and_non_loopback_clients(tmp_path: Path) -> None:
+    root = make_project(tmp_path / "workspace" / "dataset")
+    client = TestClient(create_app(root))
+
+    bad_host = client.get("/api/state", headers={"host": "attacker.example"})
+    assert bad_host.status_code == 421
+
+    remote_client = TestClient(
+        create_app(root),
+        client=("192.0.2.45", 54321),
+    )
+    remote_response = remote_client.get("/api/state")
+    assert remote_response.status_code == 403
+
+
+def test_webui_limits_request_bodies_and_does_not_serve_project_secrets(
+    tmp_path: Path,
+) -> None:
+    root = make_project(tmp_path / "workspace" / "dataset")
+    client = TestClient(create_app(root))
+
+    oversized = client.post(
+        "/api/vlm/api-key",
+        content=b"x" * (2 * 1024 * 1024 + 1),
+        headers={"content-type": "application/json"},
+    )
+    assert oversized.status_code == 413
+
+    config_response = client.get("/media/config.toml")
+    manifest_response = client.get("/media/manifest.json")
+    assert config_response.status_code == 403
+    assert manifest_response.status_code == 403
+
+
+def test_webui_rejects_invalid_boolean_and_base_url_before_writing_config(
+    tmp_path: Path,
+) -> None:
+    root = make_project(tmp_path / "workspace" / "dataset")
+    client = TestClient(create_app(root))
+    config_path = root / "config.toml"
+    before = config_path.read_text(encoding="utf-8")
+
+    invalid_bool = client.post(
+        "/api/settings",
+        json={"name": "test", "subject": "person", "face_crop": "false"},
+    )
+    assert invalid_bool.status_code == 400
+    assert config_path.read_text(encoding="utf-8") == before
+
+    invalid_url = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "caption_backend": "vlm",
+            "caption_runtime": "openai_compatible",
+            "caption_api_model": "vision-model",
+            "caption_api_base_url": "https://user:secret@attacker.example/v1?token=secret",
+        },
+    )
+    assert invalid_url.status_code == 400
+    after = config_path.read_text(encoding="utf-8")
+    assert "secret" not in after
+
+
+def test_webui_refuses_upload_paths_outside_project_root(tmp_path: Path) -> None:
+    root = make_project(tmp_path / "workspace" / "dataset")
+    outside = tmp_path / "outside"
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config_path.write_text(
+        config.replace('raw = "raw"', f'raw = "{outside.as_posix()}"', 1),
+        encoding="utf-8",
+    )
+
+    client = TestClient(create_app(root))
+    response = client.post(
+        "/api/upload",
+        files={"files": ("evil.png", b"not-an-image", "image/png")},
+    )
+    assert response.status_code == 400
+    assert not outside.exists()
