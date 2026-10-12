@@ -2721,8 +2721,15 @@ def create_app(
             raise HTTPException(400, "API key can only be set for an API VLM runtime")
         env_name, _ = _api_runtime_settings(runtime)
         saved_keys = load_api_keys(credential_path)
-        clear_requested = bool(payload.get("clear", False))
-        value = str(payload.get("api_key", "")).strip()
+        clear_requested = payload.get("clear", False)
+        if not isinstance(clear_requested, bool):
+            raise HTTPException(400, "clear must be a boolean")
+        raw_key = payload.get("api_key", "")
+        if not isinstance(raw_key, str):
+            raise HTTPException(400, "api_key must be a string")
+        value = raw_key.strip()
+        if len(value) > 4096 or any(ord(char) < 32 or ord(char) == 127 for char in value):
+            raise HTTPException(400, "API key is too long or contains control characters")
 
         if clear_requested:
             saved_keys.pop(env_name, None)
@@ -2828,7 +2835,7 @@ def create_app(
                 # Follow every nextPageToken (with a defensive ceiling) so larger
                 # catalogs are not silently truncated after only a few pages.
                 model_limit = 5000
-                for _ in range(100):
+                for _ in range(10):
                     params = {"pageSize": "1000"}
                     if page_token:
                         params["pageToken"] = page_token
@@ -2975,7 +2982,10 @@ def create_app(
 
         if selected == "openai_compatible":
             base_url = str(payload.get("base_url", "")).strip()
-            parts = urlsplit(base_url)
+            try:
+                parts = urlsplit(base_url)
+            except ValueError as exc:
+                raise HTTPException(400, "invalid API base URL") from exc
             if (
                 parts.scheme not in {"http", "https"}
                 or not parts.hostname
@@ -3035,7 +3045,10 @@ def create_app(
             )
         except (TypeError, ValueError, OverflowError) as exc:
             raise HTTPException(400, "scrape count must be an integer") from exc
-        current_scrape_year = int(current_scraper.get("year", 0) or 0)
+        try:
+            current_scrape_year = int(current_scraper.get("year", 0) or 0)
+        except (TypeError, ValueError, OverflowError) as exc:
+            raise HTTPException(400, "existing scraper year setting is invalid") from exc
         current_date_from = str(current_scraper.get("date_from", "") or "")
         current_date_to = str(current_scraper.get("date_to", "") or "")
         inferred_date_mode = "year" if current_scrape_year else (
