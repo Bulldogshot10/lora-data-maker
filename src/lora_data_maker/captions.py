@@ -739,6 +739,7 @@ def caption_manifest(
         total_candidates = len(candidates)
         for index, image in enumerate(candidates, start=1):
             caption = ""
+            original_status = image.status
             if progress is not None:
                 progress(
                     index - 1,
@@ -789,7 +790,12 @@ def caption_manifest(
                             except OSError:
                                 pass
                     image.caption_path = None
-                    image.set_status("processed" if use_processed_images and image.processed_path else "validated")
+                    retry_status = (
+                        original_status
+                        if original_status in {"validated", "processed", "tagged"}
+                        else ("tagged" if image.tags else "validated")
+                    )
+                    image.set_status(retry_status)
                     continue
 
                 try:
@@ -839,7 +845,13 @@ def caption_manifest(
                             except OSError:
                                 pass
                     image.caption_path = None
-                    image.set_status("processed" if source_kind == "processed" else "validated")
+                    if source_kind == "processed":
+                        retry_status = "processed"
+                    elif original_status in {"validated", "processed", "tagged"}:
+                        retry_status = original_status
+                    else:
+                        retry_status = "tagged" if image.tags else "validated"
+                    image.set_status(retry_status)
                     if progress is not None:
                         progress(
                             index,
