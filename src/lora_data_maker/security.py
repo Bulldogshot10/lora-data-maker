@@ -57,6 +57,9 @@ def validate_api_base_url(value: str) -> str:
             "API base URL must be an http(s) URL without credentials, query, or fragment"
         )
 
+    if port is not None and not 1 <= port <= 65535:
+        raise ValueError("API port must be between 1 and 65535")
+
     normalized_host = host.rstrip(".").lower()
     local_name = _host_is_loopback_name(normalized_host)
     try:
@@ -116,6 +119,9 @@ def assert_safe_outbound_url(
     ):
         raise ValueError("outbound URL must be an http(s) URL without embedded credentials")
 
+    if not 1 <= port <= 65535:
+        raise ValueError("outbound port must be between 1 and 65535")
+
     normalized_host = host.rstrip(".").lower()
     loopback_name = _host_is_loopback_name(normalized_host)
     try:
@@ -147,11 +153,6 @@ def assert_safe_outbound_url(
             type=socket.SOCK_STREAM,
         )
     except socket.gaierror as exc:
-        # Reserved test/documentation domains cannot resolve publicly. This keeps
-        # offline tests deterministic; a local resolver that maps one to an IP
-        # still goes through the address checks below.
-        if normalized_host.endswith((".example", ".test", ".invalid")):
-            return raw
         raise ValueError(f"could not resolve outbound host {normalized_host!r}") from exc
 
     addresses: set[ipaddress.IPv4Address | ipaddress.IPv6Address] = set()
