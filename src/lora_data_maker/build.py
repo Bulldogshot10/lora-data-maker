@@ -211,6 +211,15 @@ def run_build(
             ],
         }
     )
+    if not processing_enabled:
+        project.manifest.source.update(
+            {
+                "last_process_processed": 0,
+                "last_process_failed": 0,
+                "last_process_skipped": len(project.manifest.images),
+                "last_process_bypassed": True,
+            }
+        )
     project.save()
 
     for index, stage in enumerate(selected, start=1):
