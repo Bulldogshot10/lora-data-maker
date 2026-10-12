@@ -263,7 +263,15 @@ def test_parse_vlm_caption_accepts_longer_fields_without_failing():
 
 
 def test_build_api_vlm_caption_injects_trigger_from_five_fields():
-    config = CaptionConfig(backend="vlm")
+    config = CaptionConfig(
+        backend="vlm",
+        vlm=VlmConfig(
+            runtime="openai_compatible",
+            api_key_env="OPENAI_API_KEY",
+            api_model="vision-model",
+            api_base_url="https://api.openai.com/v1",
+        ),
+    )
     assert build_api_vlm_caption(
         "pose: standing in place\n"
         "angle camera: straight-on\n"
@@ -278,7 +286,15 @@ def test_build_api_vlm_caption_injects_trigger_from_five_fields():
 
 
 def test_build_api_vlm_caption_keeps_unstructured_output_for_audit():
-    config = CaptionConfig(backend="vlm")
+    config = CaptionConfig(
+        backend="vlm",
+        vlm=VlmConfig(
+            runtime="openai_compatible",
+            api_key_env="OPENAI_API_KEY",
+            api_model="vision-model",
+            api_base_url="https://api.openai.com/v1",
+        ),
+    )
     assert build_api_vlm_caption(
         "A woman standing in a black dress indoors.",
         subject="Julia",
