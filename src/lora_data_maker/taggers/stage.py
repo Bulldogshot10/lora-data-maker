@@ -26,14 +26,18 @@ def tag_manifest(
     use_processed_images: bool = True,
 ) -> TagSummary:
     root_path = Path(root).expanduser().resolve()
+    eligible_statuses = (
+        {"processed"} if use_processed_images else {"validated", "processed"}
+    )
     candidates = sorted(
         (
             image
             for image in manifest.images.values()
-            if image.status in {"validated", "processed"} and image.path
+            if image.status in eligible_statuses and image.path
         ),
         key=lambda image: image.path,
     )
+    candidate_ids = {image.image_id for image in candidates}
 
     if not candidates:
         return TagSummary()
@@ -93,6 +97,6 @@ def tag_manifest(
         skipped=sum(
             1
             for image in manifest.images.values()
-            if image.status != "processed"
+            if image.image_id not in candidate_ids
         ),
     )
