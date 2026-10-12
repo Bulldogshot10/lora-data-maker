@@ -3544,6 +3544,15 @@ def create_app(
                     raise RuntimeError("config field processing.enabled must be a boolean")
                 if not processing_enabled:
                     parts = tuple(part for part in parts if part != "process")
+                    p.manifest.source.update(
+                        {
+                            "last_process_processed": 0,
+                            "last_process_failed": 0,
+                            "last_process_skipped": len(p.manifest.images),
+                            "last_process_bypassed": True,
+                        }
+                    )
+                    p.save()
                 for part in parts:
                     make_job(part, root_path)(progress, cancel_event)
                 return "dataset ready"
