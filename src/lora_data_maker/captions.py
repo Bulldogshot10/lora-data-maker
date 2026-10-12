@@ -665,6 +665,7 @@ def caption_manifest(
     config: CaptionConfig | None = None,
     captioner: Captioner | None = None,
     progress: Callable[[int, int, str], None] | None = None,
+    use_processed_images: bool = True,
 ) -> CaptionSummary:
     """Write deterministic or local-VLM captions for eligible records."""
     root_path = Path(root).expanduser().resolve()
@@ -675,7 +676,7 @@ def caption_manifest(
         reset_vlm_captions_for_deterministic(manifest, root=root_path)
 
     eligible_statuses = (
-        {"processed", "tagged", "captioned"}
+        {"validated", "processed", "tagged", "captioned"}
         if settings.backend == "vlm"
         else {"tagged", "captioned"}
     )
@@ -741,16 +742,36 @@ def caption_manifest(
                     f"captioning {index}/{total_candidates}: {image.path}",
                 )
             if settings.backend == "vlm":
-                processed_path = (
-                    root_path / str(image.processed_path)
-                    if image.processed_path
-                    else None
-                )
-                if processed_path is None or not processed_path.is_file():
+                source_image: Path | None = None
+                source_kind = "raw"
+
+                if use_processed_images and image.processed_path:
+                    processed_candidate = (
+                        root_path / str(image.processed_path)
+                    ).resolve()
+                    try:
+                        processed_candidate.relative_to(root_path)
+                    except ValueError:
+                        processed_candidate = None
+                    if processed_candidate is not None and processed_candidate.is_file():
+                        source_image = processed_candidate
+                        source_kind = "processed"
+
+                if source_image is None:
+                    raw_candidate = (root_path / image.path).resolve()
+                    try:
+                        raw_candidate.relative_to(root_path)
+                    except ValueError:
+                        raw_candidate = None
+                    if raw_candidate is not None and raw_candidate.is_file():
+                        source_image = raw_candidate
+                        source_kind = "raw"
+
+                if source_image is None:
                     failed_count += 1
                     image.metadata["caption_stage"] = "failed"
                     image.metadata["caption_vlm_error"] = (
-                        "processed image was not found"
+                        "neither a usable processed image nor the raw source image was found"
                     )
                     if image.caption_path:
                         stale_caption = (root_path / image.caption_path).resolve()
@@ -764,12 +785,12 @@ def caption_manifest(
                             except OSError:
                                 pass
                     image.caption_path = None
-                    image.set_status("processed")
+                    image.set_status("processed" if use_processed_images and image.processed_path else "validated")
                     continue
 
                 try:
                     assert runtime is not None
-                    raw_caption = runtime.caption(processed_path)
+                    raw_caption = runtime.caption(source_image)
                     if settings.vlm.runtime in {"gemini", "openai_compatible"}:
                         try:
                             parse_vlm_fields(raw_caption)
@@ -814,7 +835,7 @@ def caption_manifest(
                             except OSError:
                                 pass
                     image.caption_path = None
-                    image.set_status("processed")
+                    image.set_status("processed" if source_kind == "processed" else "validated")
                     if progress is not None:
                         progress(
                             index,
@@ -863,6 +884,7 @@ def caption_manifest(
                     )
                 )
                 image.metadata["caption_vlm_runtime"] = settings.vlm.runtime
+                image.metadata["caption_vlm_image_source"] = source_kind
                 image.metadata["caption_vlm_chat_format"] = (
                     settings.vlm.chat_format
                 )
@@ -885,6 +907,7 @@ def caption_manifest(
                     "caption_vlm_model",
                     "caption_vlm_runtime",
                     "caption_vlm_chat_format",
+                    "caption_vlm_image_source",
                 ):
                     image.metadata.pop(key, None)
 
