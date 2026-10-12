@@ -508,3 +508,39 @@ def test_webui_refuses_upload_paths_outside_project_root(tmp_path: Path) -> None
     )
     assert response.status_code == 400
     assert not outside.exists()
+
+
+def test_api_key_clear_flag_requires_a_boolean(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("GEMINI_API_KEY", "keep-this-key")
+    root = make_project(tmp_path / "workspace" / "dataset")
+    client = TestClient(
+        create_app(root, api_key_store_path=tmp_path / "private" / "api-keys.json")
+    )
+
+    response = client.post(
+        "/api/vlm/api-key",
+        json={"runtime": "gemini", "clear": "false"},
+    )
+    assert response.status_code == 400
+    assert os.environ["GEMINI_API_KEY"] == "keep-this-key"
+
+
+def test_legacy_credential_bearing_api_url_is_not_returned_by_state(
+    tmp_path: Path,
+) -> None:
+    root = make_project(tmp_path / "workspace" / "dataset")
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config_path.write_text(
+        config.replace(
+            'api_base_url = ""',
+            'api_base_url = "https://user:secret@provider.example/v1?token=secret"',
+            1,
+        ),
+        encoding="utf-8",
+    )
+
+    state = TestClient(create_app(root)).get("/api/state")
+    assert state.status_code == 200
+    assert state.json()["caption"]["api_base_url"] == ""
+    assert "secret" not in state.text
