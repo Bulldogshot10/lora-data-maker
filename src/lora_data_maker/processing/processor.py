@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 from PIL import Image, ImageOps
 
 from ..paths import manifest_path
+from ..security import MAX_IMAGE_PIXELS
 from .faces import FaceDetector, largest_face, square_crop_around_face
 
 if TYPE_CHECKING:
@@ -71,6 +72,15 @@ def process_image(
 
     with Image.open(source) as opened:
         source_size = opened.size
+        if (
+            source_size[0] < 1
+            or source_size[1] < 1
+            or source_size[0] * source_size[1] > MAX_IMAGE_PIXELS
+        ):
+            raise ValueError(
+                f"unsafe image dimensions {source_size[0]}x{source_size[1]}; "
+                f"maximum is {MAX_IMAGE_PIXELS} pixels"
+            )
         exif = opened.getexif()
         orientation = exif.get(274)
         image = ImageOps.exif_transpose(opened)
