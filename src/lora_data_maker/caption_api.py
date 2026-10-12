@@ -121,10 +121,15 @@ def _response_error(response: Any) -> str:
             limit=4096,
             reject_oversized=False,
         )
-        data = json.loads(body.decode("utf-8")) if body is not None else response.json()
+        if body is not None:
+            try:
+                data = json.loads(body.decode("utf-8"))
+            except (UnicodeError, ValueError):
+                return body.decode("utf-8", errors="replace").strip()[:500] or f"HTTP {response.status_code}"
+        else:
+            data = response.json()
     except Exception:
-        text = getattr(response, "text", "")
-        return str(text).strip()[:500] or f"HTTP {response.status_code}"
+        return str(getattr(response, "text", "")).strip()[:500] or f"HTTP {response.status_code}"
 
     if isinstance(data, dict):
         error = data.get("error")
