@@ -107,7 +107,8 @@ def assert_safe_outbound_url(
     try:
         parts = urlsplit(raw)
         host = parts.hostname
-        port = parts.port or (443 if parts.scheme.lower() == "https" else 80)
+        explicit_port = parts.port
+        port = explicit_port if explicit_port is not None else (443 if parts.scheme.lower() == "https" else 80)
     except ValueError as exc:
         raise ValueError("invalid outbound URL") from exc
 
