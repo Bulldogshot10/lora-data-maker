@@ -2133,10 +2133,6 @@ setInterval(updateAxisClock,1000);
 </html>
 """
 
-class _RequestBodyTooLarge(Exception):
-    pass
-
-
 class RequestBodyLimitMiddleware:
     """Bound request bytes, including chunked bodies without Content-Length."""
 
@@ -2322,12 +2318,22 @@ def create_app(
         # including DNS-rebinding hosts, before dispatching any route.
         host_header = request.headers.get("host", "")
         try:
-            host_name = urlsplit("//" + host_header).hostname
+            host_parts = urlsplit("//" + host_header)
+            host_name = host_parts.hostname
+            host_port = host_parts.port
         except ValueError:
-            host_name = None
-        if (host_name or "").rstrip(".").lower() not in {
-            "localhost", "127.0.0.1", "::1", "testserver", "testclient"
-        }:
+            host_parts, host_name, host_port = None, None, None
+        if (
+            host_parts is None
+            or host_parts.username is not None
+            or host_parts.password is not None
+            or host_parts.path
+            or host_parts.query
+            or host_parts.fragment
+            or (host_port is not None and not 1 <= host_port <= 65535)
+            or (host_name or "").rstrip(".").lower()
+            not in {"localhost", "127.0.0.1", "::1", "testserver", "testclient"}
+        ):
             return JSONResponse(status_code=421, content={"detail": "untrusted Host header"})
         peer = request.client.host if request.client is not None else ""
         if peer not in {"testclient", "testserver"}:
@@ -2349,7 +2355,17 @@ def create_app(
                     status_code=403,
                     content={"detail": "cross-origin browser requests are not allowed"},
                 )
-        return await call_next(request)
+        response = await call_next(request)
+        response.headers.setdefault("X-Content-Type-Options", "nosniff")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
+        response.headers.setdefault("X-Frame-Options", "DENY")
+        response.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; "
+            "script-src 'self' 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'; "
+            "base-uri 'self'; form-action 'self'",
+        )
+        return response
 
     credential_path = (
         Path(api_key_store_path).expanduser().resolve()
@@ -3918,9 +3934,13 @@ def create_app(
             raise HTTPException(403, "media route only serves images from raw/work/output")
         target = (current_root / relative).resolve()
         try:
-            target.relative_to(current_root)
+            actual_relative = target.relative_to(current_root).as_posix()
         except ValueError as exc:
             raise HTTPException(403, "invalid media path") from exc
+        # Check the resolved target too, not just the requested alias. Otherwise
+        # raw/cover.jpg -> models/model.gguf could bypass the extension allowlist.
+        if not is_safe_media_path(actual_relative):
+            raise HTTPException(403, "resolved media target is not an allowed image file")
         if not target.is_file():
             raise HTTPException(404, "image not found")
         return FileResponse(
