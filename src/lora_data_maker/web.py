@@ -2906,7 +2906,7 @@ def create_app(
                         name = str(item.get("name", "")).strip()
                         if not name:
                             continue
-                        model_id = name.removeprefix("models/")
+                        model_id = name.removeprefix("models/")[:512]
                         models.append({
                             "id": model_id,
                             "label": str(item.get("displayName") or model_id)[:256],
@@ -2951,13 +2951,17 @@ def create_app(
             raw_models = data.get("data", data.get("models", []))
             if not isinstance(raw_models, list):
                 raise HTTPException(502, "OpenAI-compatible model list has an invalid format")
+            model_limit = 5000
             for item in raw_models:
                 if isinstance(item, dict):
                     model_id = str(item.get("id") or item.get("name") or "").strip()
                 else:
                     model_id = str(item).strip()
                 if model_id:
+                    model_id = model_id[:512]
                     models.append({"id": model_id, "label": model_id})
+                    if len(models) >= model_limit:
+                        break
             models.sort(key=lambda item: item["label"].lower())
             with model_list_cache_lock:
                 model_list_cache[cache_key] = (
