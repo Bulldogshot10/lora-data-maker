@@ -3369,6 +3369,15 @@ def create_app(
                 if not isinstance(processing_enabled, bool):
                     raise RuntimeError("config field processing.enabled must be a boolean")
                 if not processing_enabled:
+                    p.manifest.source.update(
+                        {
+                            "last_process_processed": 0,
+                            "last_process_failed": 0,
+                            "last_process_skipped": len(p.manifest.images),
+                            "last_process_bypassed": True,
+                        }
+                    )
+                    p.save()
                     return "processing bypassed; raw images will be used"
                 face_crop = bool(pc.get("face_crop", False))
                 face_padding = float(pc.get("face_padding", 1.75))
@@ -3377,6 +3386,19 @@ def create_app(
                     face_detector = YuNetFaceDetector(cache_dir=ps.cache / "face")
                 settings = ProcessConfig(target_width=int(pc.get("target_width", 512)), target_height=int(pc.get("target_height", 512)), resize_mode=str(pc.get("resize_mode", "cover")), jpeg_quality=int(pc.get("jpeg_quality", 95)), face_crop=face_crop, face_padding=face_padding)
                 done, failed, skipped = process_manifest(p.manifest, root=root_path, output_dir=ps.work, config=settings, face_detector=face_detector)
+                p.manifest.source.update(
+                    {
+                        "last_process_processed": done,
+                        "last_process_failed": failed,
+                        "last_process_skipped": skipped,
+                        "last_process_target": [
+                            settings.target_width,
+                            settings.target_height,
+                        ],
+                        "last_process_resize_mode": settings.resize_mode,
+                        "last_process_bypassed": False,
+                    }
+                )
                 p.save()
                 return "staged " + str(done) + ", failed " + str(failed) + ", skipped " + str(skipped)
             if stage == "tag":
