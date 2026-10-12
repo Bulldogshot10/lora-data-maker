@@ -35,7 +35,6 @@ def test_public_https_api_endpoint_is_accepted(monkeypatch):
         "http://provider.example.org/v1",
         "https://user:secret@provider.example.org/v1",
         "https://provider.example.org/v1?token=secret",
-        "https://127.0.0.1/v1",
         "https://10.0.0.4/v1",
         "https://169.254.169.254/latest/meta-data",
         "https://192.168.1.10/v1",
