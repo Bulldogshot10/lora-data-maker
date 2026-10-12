@@ -215,6 +215,7 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
             "height": 512,
             "quality": 92,
             "caption_backend": "vlm",
+            "caption_runtime": "llama_cpp",
             "caption_chat_format": "qwen3.5",
             "caption_model_path": "models/model.gguf",
             "caption_mmproj_path": "models/mmproj.gguf",
@@ -540,7 +541,7 @@ def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: P
     html = client.get("/").text
     assert 'data-view="overview"' in html
     assert 'data-view="collect"' in html
-    assert 'data-view="prepare"' in html
+    assert 'data-run-stage="prepare"' in html
     assert 'data-view="settings"' in html
     assert 'id="new-modal"' in html
     assert 'id="confirm-modal"' in html
@@ -581,7 +582,7 @@ def test_webui_preserves_saved_api_model_when_provider_omits_it(tmp_path: Path) 
 def test_webui_skips_api_model_lookup_when_key_is_missing(tmp_path: Path) -> None:
     html = TestClient(create_app(make_project(tmp_path))).get("/").text
     assert "if(!appState.apiKeysSet[runtime]){" in html
-    assert 'enter your API key and click Set.' in html
+    assert 'enter it once and click Save / reuse.' in html
 
 
 def test_webui_javascript_syntax_when_node_is_available(tmp_path: Path) -> None:
