@@ -2400,8 +2400,22 @@ def create_app(
             raise HTTPException(409, "create or open a dataset first")
         return current
 
+    def validate_project_files(root_path: Path) -> Path:
+        selected_root = root_path.expanduser().resolve()
+        for name in ("config.toml", "manifest.json"):
+            candidate = selected_root / name
+            if candidate.is_symlink() or not candidate.is_file():
+                raise HTTPException(400, f"project {name} must be a regular file, not a symlink")
+            try:
+                candidate.resolve().relative_to(selected_root)
+            except ValueError as exc:
+                raise HTTPException(400, f"project {name} must remain inside the project directory") from exc
+        return selected_root
+
     def paths(root_path: Path | None = None) -> ProjectPaths:
-        selected_root = (root_path if root_path is not None else require_active_root()).resolve()
+        selected_root = validate_project_files(
+            (root_path if root_path is not None else require_active_root()).resolve()
+        )
         config = load_config(selected_root / "config.toml")
         project_paths = ProjectPaths.from_root(selected_root, config.get("paths", {}))
         # WebUI writes uploaded and generated data. A project config must not
@@ -2426,10 +2440,18 @@ def create_app(
         if not workspace_root.is_dir():
             return projects
         for candidate in sorted(
-            (item for item in workspace_root.iterdir() if item.is_dir()),
+            (
+                item for item in workspace_root.iterdir()
+                if item.is_dir() and not item.is_symlink()
+            ),
             key=lambda item: item.name.casefold(),
         ):
-            if not (candidate / "config.toml").is_file() or not (candidate / "manifest.json").is_file():
+            if (
+                (candidate / "config.toml").is_symlink()
+                or (candidate / "manifest.json").is_symlink()
+                or not (candidate / "config.toml").is_file()
+                or not (candidate / "manifest.json").is_file()
+            ):
                 continue
             try:
                 candidate_project = DatasetProject.open(ProjectPaths.from_root(candidate))
@@ -2456,7 +2478,12 @@ def create_app(
             raise HTTPException(400, "project is outside workspace") from exc
         if target.parent != workspace_root:
             raise HTTPException(400, "project must be a direct workspace child")
-        if not (target / "config.toml").is_file() or not (target / "manifest.json").is_file():
+        if (
+            (target / "config.toml").is_symlink()
+            or (target / "manifest.json").is_symlink()
+            or not (target / "config.toml").is_file()
+            or not (target / "manifest.json").is_file()
+        ):
             raise HTTPException(404, "dataset project not found")
         with project_root_lock:
             project_root = target
@@ -3929,11 +3956,16 @@ def create_app(
         rel = project(job_root).manifest.source.get("last_pack_archive")
         if not isinstance(rel, str) or not rel:
             raise HTTPException(404, "no ZIP available for this job")
-        target = (job_root / rel).resolve()
+        archive_value = Path(rel)
+        if archive_value.is_absolute() or archive_value.suffix.lower() != ".zip":
+            raise HTTPException(400, "invalid archive path")
+        target = (job_root / archive_value).resolve()
         try:
-            target.relative_to(job_root)
+            target.relative_to(paths(job_root).output.resolve())
         except ValueError as exc:
-            raise HTTPException(400, "invalid archive path") from exc
+            raise HTTPException(400, "archive must be inside the project output directory") from exc
+        if (job_root / archive_value).is_symlink():
+            raise HTTPException(400, "archive symlinks are not allowed")
         if not target.is_file():
             raise HTTPException(404, "ZIP not found")
         return FileResponse(target, filename=target.name, media_type="application/zip")
@@ -3943,10 +3975,18 @@ def create_app(
         current_root = require_active_root()
         rel = project(current_root).manifest.source.get("last_pack_archive")
         if not isinstance(rel, str) or not rel: raise HTTPException(404, "no ZIP available")
-        target = (current_root / rel).resolve()
-        try: target.relative_to(current_root)
-        except ValueError: raise HTTPException(400, "invalid archive path")
-        if not target.is_file(): raise HTTPException(404, "ZIP not found")
+        archive_value = Path(rel)
+        if archive_value.is_absolute() or archive_value.suffix.lower() != ".zip":
+            raise HTTPException(400, "invalid archive path")
+        target = (current_root / archive_value).resolve()
+        try:
+            target.relative_to(paths(current_root).output.resolve())
+        except ValueError as exc:
+            raise HTTPException(400, "archive must be inside the project output directory") from exc
+        if (current_root / archive_value).is_symlink():
+            raise HTTPException(400, "archive symlinks are not allowed")
+        if not target.is_file():
+            raise HTTPException(404, "ZIP not found")
         return FileResponse(target, filename=target.name, media_type="application/zip")
 
     @app.get("/media/{relative:path}")
