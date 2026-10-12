@@ -3405,7 +3405,12 @@ def create_app(
             raise HTTPException(400, "VLM uploads must be .gguf files")
 
         models_dir = current_root / "models"
+        if models_dir.is_symlink():
+            raise HTTPException(400, "models directory must not be a symlink")
         models_dir.mkdir(parents=True, exist_ok=True)
+        models_root = models_dir.resolve()
+        if models_root.parent != current_root.resolve() or models_root != current_root.resolve() / "models":
+            raise HTTPException(400, "models directory must remain inside the dataset project")
         base = safe_component(Path(filename).stem) or kind
         target = models_dir / f"{base}.gguf"
         counter = 1
@@ -3424,6 +3429,9 @@ def create_app(
                     out.write(chunk)
                 out.flush()
                 os.fsync(out.fileno())
+            with temp.open("rb") as uploaded_model:
+                if uploaded_model.read(4) != b"GGUF":
+                    raise HTTPException(400, "uploaded file does not have GGUF magic bytes")
             os.replace(temp, target)
         except HTTPException:
             try:
