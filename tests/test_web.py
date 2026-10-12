@@ -557,7 +557,8 @@ def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: P
     assert 'id="caption_max_tokens"' in html
     assert 'max="77"' in html
     assert "local VLM · VLM only" in html
-    assert "VLM mode skips WD14/JoyTag completely" in html
+    assert "button.disabled=busy||vlmOnly||taggerOff;" in html
+    assert 'button.title=vlmOnly?"not used with VLM captions":taggerOff?"tagger disabled":"";' in html
     assert 'id="preview-modal"' in html
     assert 'rel="icon" href="/favicon.ico"' in html
     assert 'sizes="32x32"' in html
