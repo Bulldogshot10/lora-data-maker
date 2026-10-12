@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import ipaddress
 import json
 import mimetypes
 from datetime import date
@@ -35,6 +36,7 @@ from .reconcile import reconcile_raw
 from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
 from .scrapers.base import ScraperCancelledError
 from .taggers import build_tagger, clean_tag_manifest, resolve_tagger_preset, tag_manifest
+from .security import (MAX_IMAGE_UPLOAD_BYTES, MAX_IMAGE_UPLOAD_REQUEST_BYTES, MAX_JSON_REQUEST_BYTES, MAX_VLM_UPLOAD_BYTES, assert_safe_outbound_url, is_safe_media_path, validate_api_base_url)
 
 
 def _api_runtime_settings(runtime: str, base_url: str = "") -> tuple[str, str]:
@@ -2061,6 +2063,76 @@ setInterval(updateAxisClock,1000);
 </body>
 </html>
 """
+
+class _RequestBodyTooLarge(Exception):
+    pass
+
+
+class RequestBodyLimitMiddleware:
+    """Bound request bytes, including chunked bodies without Content-Length."""
+
+    def __init__(self, app) -> None:
+        self.app = app
+
+    @staticmethod
+    def _limit_for(scope) -> int:
+        path = str(scope.get("path", ""))
+        if path == "/api/upload":
+            return MAX_IMAGE_UPLOAD_REQUEST_BYTES
+        if path.startswith("/api/vlm/upload/"):
+            return MAX_VLM_UPLOAD_BYTES
+        return MAX_JSON_REQUEST_BYTES
+
+    async def __call__(self, scope, receive, send) -> None:
+        if scope.get("type") != "http" or scope.get("method") not in {"POST", "PUT", "PATCH", "DELETE"}:
+            await self.app(scope, receive, send)
+            return
+        limit = self._limit_for(scope)
+        headers = {key.lower(): value for key, value in scope.get("headers", [])}
+        raw_length = headers.get(b"content-length")
+        if raw_length:
+            try:
+                declared_length = int(raw_length)
+            except (TypeError, ValueError):
+                await self._send_too_large(send, "invalid Content-Length")
+                return
+            if declared_length < 0 or declared_length > limit:
+                await self._send_too_large(send, "request body exceeds the configured size limit")
+                return
+        total = 0
+        response_started = False
+
+        async def limited_receive():
+            nonlocal total
+            message = await receive()
+            if message.get("type") == "http.request":
+                total += len(message.get("body", b""))
+                if total > limit:
+                    raise _RequestBodyTooLarge
+            return message
+
+        async def tracked_send(message):
+            nonlocal response_started
+            if message.get("type") == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, tracked_send)
+        except _RequestBodyTooLarge:
+            if not response_started:
+                await self._send_too_large(send, "request body exceeds the configured size limit")
+
+    @staticmethod
+    async def _send_too_large(send, detail: str) -> None:
+        body = json.dumps({"detail": detail}).encode("utf-8")
+        await send({"type": "http.response.start", "status": 413, "headers": [
+            (b"content-type", b"application/json"),
+            (b"content-length", str(len(body)).encode("ascii")),
+        ]})
+        await send({"type": "http.response.body", "body": body})
+
+
 class JobCancelledError(Exception):
     """Raised when a running WebUI job observes a cancellation request."""
 
@@ -2174,16 +2246,33 @@ def create_app(
     api_key_store_path: Path | str | None = None,
 ) -> FastAPI:
     app = FastAPI(title="LoRA Data Maker WebUI")
+    app.add_middleware(RequestBodyLimitMiddleware)
 
     @app.middleware("http")
-    async def reject_cross_origin_browser_requests(request: Request, call_next):
-        # The local UI has no login. Block cross-site browser requests globally so
-        # websites cannot trigger jobs, mutate projects, upload files, or probe
-        # provider APIs through the user's loopback service.
+    async def reject_untrusted_local_requests(request: Request, call_next):
+        # The UI is local-only. Reject remote peers and unexpected Host headers,
+        # including DNS-rebinding hosts, before dispatching any route.
+        host_header = request.headers.get("host", "")
+        try:
+            host_name = urlsplit("//" + host_header).hostname
+        except ValueError:
+            host_name = None
+        if (host_name or "").rstrip(".").lower() not in {
+            "localhost", "127.0.0.1", "::1", "testserver", "testclient"
+        }:
+            return JSONResponse(status_code=421, content={"detail": "untrusted Host header"})
+        peer = request.client.host if request.client is not None else ""
+        if peer not in {"testclient", "testserver"}:
+            try:
+                peer_address = ipaddress.ip_address(peer.split("%", 1)[0])
+            except ValueError:
+                return JSONResponse(status_code=403, content={"detail": "local access only"})
+            if not peer_address.is_loopback:
+                return JSONResponse(status_code=403, content={"detail": "local access only"})
         if request.url.path.startswith("/api/"):
             fetch_site = request.headers.get("sec-fetch-site", "").strip().lower()
             origin = request.headers.get("origin", "").strip()
-            expected = f"{request.url.scheme}://{request.headers.get('host', '')}"
+            expected = f"{request.url.scheme}://{host_header}"
             if (
                 (fetch_site and fetch_site not in {"same-origin", "none"})
                 or (origin and origin.rstrip("/").lower() != expected.rstrip("/").lower())
@@ -2275,6 +2364,12 @@ def create_app(
             raise HTTPException(404, "dataset project not found")
         with project_root_lock:
             project_root = target
+
+    def validate_outbound_api_url(value: str) -> str:
+        try:
+            return assert_safe_outbound_url(value, allow_loopback=True, api_base=True)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
 
     def set_config(section: str, values: dict[str, Any], root_path: Path | None = None) -> None:
         config_path = (root_path or active_root()) / "config.toml"
@@ -2603,6 +2698,7 @@ def create_app(
 
     def _fetch_vlm_models(selected: str, env_name: str, api_base: str) -> dict[str, Any]:
         api_key = os.environ.get(env_name, "").strip()
+        api_base = validate_outbound_api_url(api_base)
         if not api_key:
             raise HTTPException(
                 400,
@@ -2641,6 +2737,7 @@ def create_app(
                 # Gemini's ListModels supports up to 1,000 entries per page.
                 # Follow every nextPageToken (with a defensive ceiling) so larger
                 # catalogs are not silently truncated after only a few pages.
+                model_limit = 5000
                 for _ in range(100):
                     params = {"pageSize": "1000"}
                     if page_token:
@@ -2650,9 +2747,12 @@ def create_app(
                         headers={"x-goog-api-key": api_key},
                         params=params,
                         timeout=12,
+                        allow_redirects=False,
                     )
+                    if 300 <= response.status_code < 400:
+                        raise HTTPException(502, "Gemini model endpoint returned a redirect; redirects are disabled")
                     if not response.ok:
-                        detail = response.text.strip()[:500] or f"HTTP {response.status_code}"
+                        detail = response.text.strip()[:500].replace(api_key, "[redacted]") or f"HTTP {response.status_code}"
                         raise HTTPException(502, f"Gemini model list failed: {detail}")
                     data = response.json()
                     for item in data.get("models", []):
@@ -2667,8 +2767,11 @@ def create_app(
                         model_id = name.removeprefix("models/")
                         models.append({
                             "id": model_id,
-                            "label": str(item.get("displayName") or model_id),
+                            "label": str(item.get("displayName") or model_id)[:256],
                         })
+                        if len(models) >= model_limit:
+                            page_token = ""
+                            break
                     page_token = str(data.get("nextPageToken", "") or "").strip()
                     if not page_token:
                         break
@@ -2693,9 +2796,12 @@ def create_app(
                 else f"{api_base}/models",
                 headers={"Authorization": f"Bearer {api_key}"},
                 timeout=12,
+                allow_redirects=False,
             )
+            if 300 <= response.status_code < 400:
+                raise HTTPException(502, "OpenAI-compatible model endpoint returned a redirect; redirects are disabled")
             if not response.ok:
-                detail = response.text.strip()[:500] or f"HTTP {response.status_code}"
+                detail = response.text.strip()[:500].replace(api_key, "[redacted]") or f"HTTP {response.status_code}"
                 raise HTTPException(502, f"OpenAI-compatible model list failed: {detail}")
             data = response.json()
             raw_models = data.get("data", data.get("models", []))
@@ -2789,10 +2895,15 @@ def create_app(
                     400,
                     "custom API base URL must be an http(s) URL without embedded credentials, query, or fragment",
                 )
+            try:
+                base_url = validate_api_base_url(base_url)
+            except ValueError as exc:
+                raise HTTPException(400, str(exc)) from exc
             env_name, api_base = _api_runtime_settings(selected, base_url)
         else:
             env_name, api_base = _api_runtime_settings(selected)
 
+        validate_outbound_api_url(api_base)
         return _fetch_vlm_models(selected, env_name, api_base)
 
     @app.post("/api/settings")
@@ -2939,6 +3050,10 @@ def create_app(
         caption_api_base_url = str(
             payload.get("caption_api_base_url", current_vlm.get("api_base_url", ""))
         ).strip()
+        try:
+            caption_api_base_url = validate_api_base_url(caption_api_base_url)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
         if caption_backend not in {"deterministic", "vlm"}:
             raise HTTPException(400, "caption backend must be deterministic or vlm")
         if caption_runtime not in {"llama_cpp", "onnx", "gemini", "openai_compatible"}:
@@ -3143,12 +3258,22 @@ def create_app(
 
         temp = target.with_name(f".{target.name}.{uuid.uuid4().hex}.part")
         try:
-            with temp.open("wb") as out:
-                while chunk := await file.read(4 * 1024 * 1024):
+            total = 0
+            with temp.open("xb") as out:
+                while chunk := await file.read(1024 * 1024):
+                    total += len(chunk)
+                    if total > MAX_VLM_UPLOAD_BYTES:
+                        raise HTTPException(413, "VLM model file exceeds the 2 GiB upload limit")
                     out.write(chunk)
                 out.flush()
                 os.fsync(out.fileno())
             os.replace(temp, target)
+        except HTTPException:
+            try:
+                temp.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise
         except OSError as exc:
             try:
                 temp.unlink(missing_ok=True)
@@ -3168,6 +3293,10 @@ def create_app(
     @app.post("/api/upload")
     async def upload(files: Annotated[list[UploadFile], File()]):
         current_root = require_active_root()
+        if jobs.has_running_project(current_root):
+            raise HTTPException(409, "this dataset is busy. wait for the current job to finish")
+        if len(files) > 500:
+            raise HTTPException(413, "at most 500 images may be uploaded per request")
         p, ps = project(current_root), paths(current_root)
         ps.raw.mkdir(parents=True, exist_ok=True)
         allowed = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
@@ -3184,9 +3313,20 @@ def create_app(
             while target.exists():
                 target = ps.raw / (base + "_" + str(counter) + suffix)
                 counter += 1
-            with target.open("wb") as out:
-                while chunk := await file.read(1024 * 1024):
-                    out.write(chunk)
+            total = 0
+            try:
+                with target.open("xb") as out:
+                    while chunk := await file.read(1024 * 1024):
+                        total += len(chunk)
+                        if total > MAX_IMAGE_UPLOAD_BYTES:
+                            raise HTTPException(413, "each uploaded image must be 25 MiB or smaller")
+                        out.write(chunk)
+            except HTTPException:
+                target.unlink(missing_ok=True)
+                await file.close()
+                raise
+            finally:
+                await file.close()
             rel = manifest_path(current_root, target)
             if rel in existing:
                 target.unlink(missing_ok=True); skipped += 1; continue
@@ -3633,14 +3773,20 @@ def create_app(
     @app.get("/media/{relative:path}")
     def media(relative: str, download: bool = False):
         current_root = require_active_root()
+        if not is_safe_media_path(relative):
+            raise HTTPException(403, "media route only serves images from raw/work/output")
         target = (current_root / relative).resolve()
-        try: target.relative_to(current_root)
-        except ValueError: raise HTTPException(403, "invalid media path")
-        if not target.is_file(): raise HTTPException(404, "image not found")
+        try:
+            target.relative_to(current_root)
+        except ValueError as exc:
+            raise HTTPException(403, "invalid media path") from exc
+        if not target.is_file():
+            raise HTTPException(404, "image not found")
         return FileResponse(
             target,
             media_type=mimetypes.guess_type(target.name)[0] or "application/octet-stream",
             filename=target.name if download else None,
+            headers={"X-Content-Type-Options": "nosniff", "Content-Security-Policy": "sandbox"},
         )
 
     @app.post("/api/project/new")
@@ -3663,5 +3809,13 @@ def create_app(
 
 
 def serve(root: Path | str = ".", host: str = "127.0.0.1", port: int = 8787) -> None:
+    normalized_host = str(host).strip().strip("[]").lower()
+    if normalized_host not in {"localhost", "ip6-localhost"}:
+        try:
+            address = ipaddress.ip_address(normalized_host.split("%", 1)[0])
+        except ValueError as exc:
+            raise ValueError("the WebUI only supports loopback binding (localhost, 127.0.0.1, or ::1)") from exc
+        if not address.is_loopback:
+            raise ValueError("the WebUI only supports loopback binding (localhost, 127.0.0.1, or ::1)")
     import uvicorn
     uvicorn.run(create_app(root), host=host, port=port, log_level="info")
