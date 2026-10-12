@@ -709,3 +709,61 @@ def test_vlm_caption_can_use_raw_image_when_processing_is_bypassed(tmp_path):
     assert image.status == "captioned"
     assert image.metadata["caption_vlm_image_source"] == "raw"
     assert (root / image.caption_path).is_file()
+
+
+def test_vlm_caption_uses_raw_image_when_processing_is_disabled(tmp_path):
+    from PIL import Image
+
+    root = tmp_path / "project"
+    raw = root / "raw" / "001.png"
+    raw.parent.mkdir(parents=True)
+    Image.new("RGB", (80, 60), (20, 30, 40)).save(raw)
+
+    manifest = ProjectManifest(
+        project_name="raw-caption",
+        subject="julia",
+        trigger="julia",
+    )
+    record = ImageRecord(path="raw/001.png", status="validated")
+    manifest.add_image(record)
+
+    class RecordingCaptioner:
+        def __init__(self):
+            self.paths = []
+
+        def caption(self, image_path):
+            self.paths.append(Path(image_path).resolve())
+            return (
+                "pose: standing\n"
+                "angle camera: straight-on\n"
+                "clothing: black shirt\n"
+                "expression: neutral\n"
+                "background: indoors"
+            )
+
+    captioner = RecordingCaptioner()
+    config = CaptionConfig(
+        backend="vlm",
+        vlm=VlmConfig(
+            runtime="openai_compatible",
+            api_key_env="OPENAI_API_KEY",
+            api_model="vision-model",
+            api_base_url="https://example.com/v1",
+        ),
+    )
+
+    summary = caption_manifest(
+        manifest,
+        root=root,
+        output_dir=root / "work" / "captions",
+        config=config,
+        captioner=captioner,
+        use_processed_images=False,
+    )
+
+    assert summary.captioned == 1
+    assert summary.failed == 0
+    assert captioner.paths == [raw.resolve()]
+    assert record.status == "captioned"
+    assert record.metadata["caption_vlm_image_source"] == "raw"
+    assert (root / record.caption_path).is_file()
