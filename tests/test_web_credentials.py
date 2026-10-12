@@ -13,6 +13,14 @@ from lora_data_maker.dataset import DatasetProject
 from lora_data_maker.paths import ProjectPaths
 from lora_data_maker.web import create_app
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def mock_model_discovery_destinations(monkeypatch):
+    # Provider HTTP is mocked here; DNS/public-IP policy is tested independently.
+    monkeypatch.setattr("lora_data_maker.web.assert_safe_outbound_url", lambda value, **kwargs: value)
+
 
 def make_project(root: Path) -> Path:
     paths = ProjectPaths.from_root(root)
