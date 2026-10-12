@@ -129,6 +129,10 @@ def _response_error(response: Any) -> str:
         else:
             data = response.json()
     except Exception:
+        # Requests responses are streamed; never fall back to response.text,
+        # which would materialize an unbounded provider error body.
+        if callable(getattr(response, "iter_content", None)):
+            return f"HTTP {response.status_code}"
         return str(getattr(response, "text", "")).strip()[:500] or f"HTTP {response.status_code}"
 
     if isinstance(data, dict):
@@ -273,6 +277,7 @@ class _ApiVlmCaptioner:
                 delay = min(float(retry_after), 10.0) if retry_after else 1.0 * (attempt + 1)
             except (TypeError, ValueError):
                 delay = 1.0 * (attempt + 1)
+            _close_response(response)
             time.sleep(max(0.0, delay))
 
     def close(self) -> None:
