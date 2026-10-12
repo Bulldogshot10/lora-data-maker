@@ -135,6 +135,15 @@ def run_build(
         skip=skip,
     )
 
+    processing_config = config.get("processing", {})
+    if not isinstance(processing_config, dict):
+        raise ValueError("config section [processing] must be a table")
+    processing_enabled = processing_config.get("enabled", True)
+    if not isinstance(processing_enabled, bool):
+        raise ValueError("config field processing.enabled must be a boolean")
+    if not processing_enabled:
+        selected = tuple(stage for stage in selected if stage != "process")
+
     caption_config = config.get("caption", {})
     if not isinstance(caption_config, dict):
         raise ValueError("config section [caption] must be a table")
