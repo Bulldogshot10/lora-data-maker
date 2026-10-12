@@ -401,6 +401,7 @@ def test_run_build_bypasses_process_when_processing_is_disabled(tmp_path, monkey
 
     project = DatasetProject.open(ProjectPaths.from_root(root))
     assert "process" in project.manifest.source["last_build_skipped_stages"]
+    assert project.manifest.source["last_process_bypassed"] is True
 
 
 def test_run_build_skips_processing_when_disabled(tmp_path, monkeypatch):
