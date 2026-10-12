@@ -1,6 +1,14 @@
 from lora_data_maker.scrapers.archive import DownloadArchive
 from lora_data_maker.scrapers.google import GoogleImagesScraper
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def mock_downloader_url_validation(monkeypatch):
+    # Downloader tests use fake HTTP sessions and reserved example hosts.
+    monkeypatch.setattr("lora_data_maker.scrapers.downloader.assert_safe_outbound_url", lambda value, **kwargs: value)
+
 
 def test_download_archive_deduplicates(tmp_path):
     archive = DownloadArchive(tmp_path / "downloads.txt")
