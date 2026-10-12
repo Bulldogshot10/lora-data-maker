@@ -9,6 +9,7 @@ import numpy as np
 from PIL import Image
 
 from .caption_vlm import VlmCaptionerError, VlmConfig
+from .security import MAX_IMAGE_PIXELS
 
 
 def _numpy_dtype(ort_type: str) -> np.dtype:
@@ -589,6 +590,11 @@ class SmolVlmOnnxCaptioner:
         path = Path(image_path).expanduser().resolve()
         try:
             with Image.open(path) as source:
+                width, height = source.size
+                if width < 1 or height < 1 or width * height > MAX_IMAGE_PIXELS:
+                    raise VlmCaptionerError(
+                        f"unsafe image dimensions {width}x{height}; maximum is {MAX_IMAGE_PIXELS} pixels"
+                    )
                 image = source.convert("RGB")
         except OSError as exc:
             raise VlmCaptionerError(
