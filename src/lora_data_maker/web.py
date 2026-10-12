@@ -2177,7 +2177,10 @@ class RequestBodyLimitMiddleware:
             if message.get("type") == "http.request":
                 total += len(message.get("body", b""))
                 if total > limit:
-                    raise _RequestBodyTooLarge
+                    raise HTTPException(
+                        status_code=413,
+                        detail="request body exceeds the configured size limit",
+                    )
             return message
 
         async def tracked_send(message):
@@ -2186,11 +2189,7 @@ class RequestBodyLimitMiddleware:
                 response_started = True
             await send(message)
 
-        try:
-            await self.app(scope, limited_receive, tracked_send)
-        except _RequestBodyTooLarge:
-            if not response_started:
-                await self._send_too_large(send, "request body exceeds the configured size limit")
+        await self.app(scope, limited_receive, tracked_send)
 
     @staticmethod
     async def _send_too_large(send, detail: str) -> None:
