@@ -314,7 +314,7 @@ def _strip_vlm_wrappers(text: str) -> str:
     value = str(text).replace("\r\n", "\n").replace("\r", "\n").strip()
     value = re.sub(r"^\s*\x60\x60\x60(?:json|text|plaintext)?\s*", "", value, flags=re.IGNORECASE)
     value = re.sub(r"\s*\x60\x60\x60\s*$", "", value)
-    value = re.sub(r"^\s*(?:[-*•]|\d+[.)])\s*", "", value)
+    value = re.sub(r"(?m)^[ \t]*(?:[-*•]|\d+[.)])[ \t]+", "", value)
     return value.strip()
 
 
@@ -517,7 +517,7 @@ def build_api_vlm_caption(
                 re.IGNORECASE,
             )
             value = pattern.sub("", value)
-            value = re.sub(r"\s+", " ", value).strip(" ,.;:")
+            value = re.sub(r"\s+", " ", value).strip(" ,;:")
         if value:
             cleaned_fields.append(value)
 
@@ -537,6 +537,8 @@ def build_vlm_caption(
 ) -> str:
     """Build a VLM caption from strict fields."""
     fields = parse_vlm_fields(raw_caption)
+    # Keep the local training caption focused on pose, clothing, expression, and background.
+    fields = [fields[0], *fields[2:]]
     resolved_trigger = resolve_trigger(
         subject=subject,
         trigger=trigger,
@@ -552,7 +554,7 @@ def build_vlm_caption(
                 re.IGNORECASE,
             )
             value = pattern.sub("", value)
-            value = re.sub(r"\s+", " ", value).strip(" ,.;:")
+            value = re.sub(r"\s+", " ", value).strip(" ,;:")
         if value:
             cleaned_fields.append(value)
 
