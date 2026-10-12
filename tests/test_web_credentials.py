@@ -544,3 +544,28 @@ def test_legacy_credential_bearing_api_url_is_not_returned_by_state(
     assert state.status_code == 200
     assert state.json()["caption"]["api_base_url"] == ""
     assert "secret" not in state.text
+
+
+def test_media_route_rejects_symlinks_to_non_image_project_files(tmp_path: Path) -> None:
+    root = make_project(tmp_path / "workspace" / "dataset")
+    alias = root / "raw" / "config-alias.jpg"
+    try:
+        alias.symlink_to(root / "config.toml")
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable on this filesystem")
+
+    client = TestClient(create_app(root))
+    response = client.get("/media/raw/config-alias.jpg")
+    assert response.status_code == 403
+
+
+def test_webui_sets_browser_security_headers(tmp_path: Path) -> None:
+    root = make_project(tmp_path / "workspace" / "dataset")
+    client = TestClient(create_app(root))
+    response = client.get("/")
+
+    assert response.status_code == 200
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["referrer-policy"] == "no-referrer"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
