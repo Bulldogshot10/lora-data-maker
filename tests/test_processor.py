@@ -20,7 +20,7 @@ def test_cover_crop_hits_target_size():
     assert crop_box is not None
 
 
-def test_fit_crops_to_target_without_padding_borders():
+def test_fit_preserves_full_image_without_padding_borders():
     image = Image.new("RGB", (800, 400), (10, 20, 30))
 
     processed, crop_box = resize_and_crop(
@@ -30,12 +30,12 @@ def test_fit_crops_to_target_without_padding_borders():
         mode="fit",
     )
 
-    assert processed.size == (512, 512)
-    assert crop_box is not None
-    # A former fit implementation padded the top/bottom with white pixels.
-    # The borderless fit mode must keep edge pixels from the source image.
+    # Fit stays proportional and keeps the entire source image. With a
+    # 2:1 input and square target box, output is 512x256, not padded 512x512.
+    assert processed.size == (512, 256)
+    assert crop_box is None
     assert processed.getpixel((0, 0)) == (10, 20, 30)
-    assert processed.getpixel((511, 511)) == (10, 20, 30)
+    assert processed.getpixel((511, 255)) == (10, 20, 30)
 
 
 def test_stretch_has_no_crop():
