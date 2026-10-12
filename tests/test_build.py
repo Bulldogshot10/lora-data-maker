@@ -401,3 +401,64 @@ def test_run_build_bypasses_process_when_processing_is_disabled(tmp_path, monkey
 
     project = DatasetProject.open(ProjectPaths.from_root(root))
     assert "process" in project.manifest.source["last_build_skipped_stages"]
+
+
+def test_run_build_skips_processing_when_disabled(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia-set",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace(
+        "[processing]\nenabled = true",
+        "[processing]\nenabled = false",
+        1,
+    )
+    config_path.write_text(config, encoding="utf-8")
+
+    import lora_data_maker.cli as cli
+
+    calls = []
+
+    def fake_command(name):
+        def runner(args):
+            calls.append(name)
+            return 0
+        return runner
+
+    for stage in BUILD_STAGES:
+        monkeypatch.setattr(
+            cli,
+            f"command_{stage.replace('-', '_')}",
+            fake_command(stage),
+        )
+
+    summary = run_build(
+        path=root,
+        from_stage="validate",
+        to_stage="pack",
+    )
+
+    expected = [
+        "validate",
+        "clean",
+        "tag",
+        "clean-tags",
+        "caption",
+        "export",
+        "pack",
+    ]
+    assert summary.success is True
+    assert [item.name for item in summary.stages] == expected
+    assert calls == expected
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    assert "process" in project.manifest.source["last_build_skipped_stages"]
