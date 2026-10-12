@@ -281,7 +281,7 @@ def test_build_api_vlm_caption_injects_trigger_from_five_fields():
         subject="Julia",
         trigger="ignored",
         config=config,
-    ) == "julia, standing in place, white top, smiling, indoors with soft lighting"
+    ) == "julia, standing in place straight-on, wearing a white top, smiling expression, indoors with soft lighting"
 
 
 
