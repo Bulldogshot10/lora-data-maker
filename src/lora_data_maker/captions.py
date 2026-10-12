@@ -676,7 +676,11 @@ def caption_manifest(
         reset_vlm_captions_for_deterministic(manifest, root=root_path)
 
     eligible_statuses = (
-        {"validated", "processed", "tagged", "captioned"}
+        (
+            {"processed", "tagged", "captioned"}
+            if use_processed_images
+            else {"validated", "processed", "tagged", "captioned"}
+        )
         if settings.backend == "vlm"
         else {"tagged", "captioned"}
     )
