@@ -652,3 +652,60 @@ def test_vlm_caption_ignores_tagger_tags_and_max_token_setting():
         config=config,
     )
     assert caption == "julia, standing, black dress, smiling, indoors soft lighting"
+
+
+def test_vlm_caption_can_use_raw_image_when_processing_is_bypassed(tmp_path):
+    from PIL import Image
+
+    root = tmp_path / "project"
+    raw_path = root / "raw" / "001.jpg"
+    raw_path.parent.mkdir(parents=True)
+    Image.new("RGB", (48, 32), (80, 90, 100)).save(raw_path)
+
+    manifest = ProjectManifest(
+        project_name="julia-set",
+        subject="julia",
+        trigger="julia",
+    )
+    image = ImageRecord(path="raw/001.jpg", status="validated")
+    manifest.add_image(image)
+
+    class RawImageCaptioner:
+        def __init__(self):
+            self.image_path = None
+
+        def caption(self, image_path):
+            self.image_path = Path(image_path)
+            return (
+                "pose: standing\n"
+                "angle camera: straight-on\n"
+                "clothing: white top\n"
+                "expression: neutral\n"
+                "background: indoors"
+            )
+
+    captioner = RawImageCaptioner()
+    settings = CaptionConfig(
+        backend="vlm",
+        vlm=VlmConfig(
+            runtime="llama_cpp",
+            model_path="model.gguf",
+            mmproj_path="mmproj.gguf",
+        ),
+    )
+
+    summary = caption_manifest(
+        manifest,
+        root=root,
+        output_dir=root / "work" / "captions",
+        config=settings,
+        captioner=captioner,
+        use_processed_images=False,
+    )
+
+    assert summary.captioned == 1
+    assert summary.failed == 0
+    assert captioner.image_path == raw_path.resolve()
+    assert image.status == "captioned"
+    assert image.metadata["caption_vlm_image_source"] == "raw"
+    assert (root / image.caption_path).is_file()
