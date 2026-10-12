@@ -45,6 +45,7 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
             "subject": "new_person",
             "trigger": "new_person",
             "preset": "sweetspot",
+            "processing_enabled": False,
             "mode": "cover",
             "width": 768,
             "height": 512,
@@ -60,6 +61,7 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert updated["processing"]["width"] == 768
     assert updated["processing"]["height"] == 512
     assert updated["processing"]["quality"] == 92
+    assert updated["processing"]["enabled"] is False
 
     assert updated["caption"]["max_tokens"] == 77
 
@@ -546,6 +548,8 @@ def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: P
     assert 'id="project_explorer"' in html
     assert 'id="progress-fill"' in html
     assert 'id="caption_backend"' in html
+    assert 'id="processing_enabled"' in html
+    assert "raw images" in html
     assert 'id="caption_chat_format"' in html
     assert 'id="caption_model_path"' in html
     assert 'id="caption_mmproj_path"' in html
