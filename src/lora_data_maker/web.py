@@ -1462,7 +1462,7 @@ function renderDownload(name,url,job){
     actions.push('<button type="button" data-job-cancel="'+esc(appState.jobId)+'"'+(cancelling?" disabled":"")+'>'
       +(cancelling?"cancelling…":"cancel scrape")+"</button>");
   }
-  if(url)actions.push('<a href="'+esc(url)+'">download ZIP</a>');
+  if(typeof url==="string"&&/^\/api\/jobs\/[a-f0-9]+\/download$/.test(url))actions.push('<a href="'+esc(url)+'">download ZIP</a>');
   $("job-footer").innerHTML=actions.join("");
   if(name){
     $("job-footer").dataset.archive=name;
