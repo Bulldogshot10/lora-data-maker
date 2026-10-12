@@ -662,6 +662,7 @@ def command_process(args: argparse.Namespace) -> int:
             "last_process_skipped": skipped,
             "last_process_target": [target_width, target_height],
             "last_process_resize_mode": resize_mode,
+            "last_process_bypassed": False,
         }
     )
     project.save()
