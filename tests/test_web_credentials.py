@@ -569,3 +569,23 @@ def test_webui_sets_browser_security_headers(tmp_path: Path) -> None:
     assert response.headers["referrer-policy"] == "no-referrer"
     assert response.headers["x-frame-options"] == "DENY"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+
+
+def test_delete_image_refuses_symlink_to_project_configuration(tmp_path: Path) -> None:
+    from lora_data_maker.models import ImageRecord
+
+    root = make_project(tmp_path / "workspace" / "dataset")
+    alias = root / "raw" / "alias.jpg"
+    try:
+        alias.symlink_to(root / "config.toml")
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable on this filesystem")
+
+    dataset = DatasetProject.open(ProjectPaths.from_root(root))
+    record = ImageRecord(path="raw/alias.jpg", status="processed")
+    dataset.manifest.add_image(record)
+    dataset.save()
+
+    response = TestClient(create_app(root)).delete(f"/api/images/{record.image_id}")
+    assert response.status_code == 400
+    assert (root / "config.toml").is_file()
