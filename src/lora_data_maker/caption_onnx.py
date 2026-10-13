@@ -302,6 +302,19 @@ class SmolVlmOnnxCaptioner:
                 "SmolVLM2 decoder ONNX does not expose inputs_embeds"
             )
 
+    @staticmethod
+    def _position_ids(
+        attention_mask: np.ndarray,
+        *,
+        last_only: bool = False,
+    ) -> np.ndarray:
+        mask = np.asarray(attention_mask)
+        position_ids = np.cumsum(mask, axis=-1, dtype=np.int64) - 1
+        position_ids = np.where(mask == 0, 0, position_ids)
+        if last_only:
+            return position_ids[:, -1:]
+        return position_ids
+
     def _processor_prompt(self, image: Image.Image) -> dict[str, np.ndarray]:
         messages = [
             {
@@ -629,14 +642,7 @@ class SmolVlmOnnxCaptioner:
             generated: list[int] = []
             current_input_ids = token_ids
             current_attention_mask = np.asarray(attention_mask, dtype=np.int64)
-            current_position_ids = (
-                np.cumsum(current_attention_mask, axis=-1, dtype=np.int64) - 1
-            )
-            current_position_ids = np.where(
-                current_attention_mask == 0,
-                0,
-                current_position_ids,
-            )
+            current_position_ids = self._position_ids(current_attention_mask)
             image_features = None
 
             for step in range(self._max_new_tokens):
