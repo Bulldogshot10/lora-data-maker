@@ -176,8 +176,10 @@ def test_caption_config_accepts_smolvlm_chat_format(tmp_path):
 
 
 def test_blank_vlm_completion_includes_generation_diagnostics(tmp_path):
+    from PIL import Image
+
     image = tmp_path / "image.jpg"
-    image.write_bytes(b"image-data")
+    Image.new("RGB", (8, 8), "white").save(image, format="JPEG")
 
     class FakeLlm:
         def create_chat_completion(self, **kwargs):
@@ -346,6 +348,7 @@ def test_onnx_caption_end_to_end_uses_prefill_and_kv_cache(tmp_path):
     import numpy as np
     from PIL import Image
 
+    from lora_data_maker import caption_onnx as onnx_module
     from lora_data_maker.caption_onnx import SmolVlmOnnxCaptioner
     from lora_data_maker.caption_vlm import VlmConfig
 
@@ -456,9 +459,9 @@ def test_onnx_caption_end_to_end_uses_prefill_and_kv_cache(tmp_path):
     runtime._vision = FakeVision()
     runtime._embed = FakeEmbed()
     runtime._decoder = FakeDecoder()
-    runtime._vision_inputs = _session_inputs(runtime._vision)
-    runtime._decoder_inputs = _session_inputs(runtime._decoder)
-    runtime._decoder_outputs = _session_outputs(runtime._decoder)
+    runtime._vision_inputs = onnx_module._session_inputs(runtime._vision)
+    runtime._decoder_inputs = onnx_module._session_inputs(runtime._decoder)
+    runtime._decoder_outputs = onnx_module._session_outputs(runtime._decoder)
     runtime._embed_input_name = "input_ids"
     runtime._embed_output_name = "inputs_embeds"
     runtime._image_token_id = 49190
