@@ -300,7 +300,7 @@ class LlamaCppVlmCaptioner:
         if isinstance(raw_content, str):
             # Reasoning-only completions are not usable captions.
             caption_content = re.sub(
-                r"<think\\b[^>]*>.*?</think\\s*>",
+                r"<think\b[^>]*>.*?</think\s*>",
                 "",
                 raw_content,
                 flags=re.IGNORECASE | re.DOTALL,
