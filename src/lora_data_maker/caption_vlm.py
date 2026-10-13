@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import mimetypes
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -295,7 +296,17 @@ class LlamaCppVlmCaptioner:
                 f"VLM returned an invalid chat completion for {path.name}"
             ) from exc
 
-        if not isinstance(raw_content, str) or not raw_content.strip():
+        caption_content = ""
+        if isinstance(raw_content, str):
+            # Reasoning-only completions are not usable captions.
+            caption_content = re.sub(
+                r"<think\\b[^>]*>.*?</think\\s*>",
+                "",
+                raw_content,
+                flags=re.IGNORECASE | re.DOTALL,
+            ).strip()
+
+        if not caption_content:
             raw_preview = repr(raw_content)
             if len(raw_preview) > 300:
                 raw_preview = raw_preview[:297] + "..."
@@ -306,7 +317,7 @@ class LlamaCppVlmCaptioner:
                 f"raw_content={raw_preview}"
             )
 
-        return raw_content
+        return caption_content
 
     def close(self) -> None:
         llm = getattr(self, "_llm", None)
