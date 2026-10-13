@@ -488,7 +488,7 @@ def test_webui_rejects_invalid_boolean_and_base_url_before_writing_config(
     )
     assert invalid_url.status_code == 400
     after = config_path.read_text(encoding="utf-8")
-    assert "secret" not in after
+    assert after == before
 
 
 def test_webui_refuses_upload_paths_outside_project_root(tmp_path: Path) -> None:
