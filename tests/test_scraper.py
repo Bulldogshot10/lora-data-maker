@@ -1654,6 +1654,8 @@ def test_chromium_uses_duckduckgo_when_bing_browser_is_unavailable(monkeypatch):
     from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
 
     class FakeDuckDuckGo:
+        SITE_URL = "https://duckduckgo.com/"
+
         def __init__(self, **kwargs):
             pass
 
