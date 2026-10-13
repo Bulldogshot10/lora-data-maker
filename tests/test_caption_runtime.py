@@ -464,6 +464,8 @@ def test_onnx_caption_end_to_end_uses_prefill_and_kv_cache(tmp_path):
     runtime._decoder_outputs = onnx_module._session_outputs(runtime._decoder)
     runtime._embed_input_name = "input_ids"
     runtime._embed_output_name = "inputs_embeds"
+    runtime._num_kv_heads = 1
+    runtime._head_dim = 2
     runtime._image_token_id = 49190
     runtime._eos_token_id = 49279
 
