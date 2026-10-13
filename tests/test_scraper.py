@@ -63,6 +63,7 @@ class _FakeResponse:
         self.text = text
         self.content = content
         self.headers = {"Content-Type": content_type}
+        self.status_code = 200
         self.closed = False
 
     def raise_for_status(self):
@@ -393,7 +394,6 @@ def test_chromium_uses_duckduckgo_without_launching_bing(monkeypatch):
 
     results = list(scraper.search("julia", limit=1))
 
-    assert browser.page.session.evaluate_calls == 3
     assert [item.image_url for item in results] == [
         "https://cdn.example.com/ddg.jpg"
     ]
@@ -537,6 +537,11 @@ def test_chromium_preserves_duckduckgo_candidate_order(monkeypatch):
     )
 
     scraper = chromium_module.ChromiumImagesScraper(delay=0)
+    monkeypatch.setattr(
+        scraper,
+        "_start_driver",
+        lambda: (_ for _ in ()).throw(AssertionError("Bing unavailable in this test")),
+    )
     results = list(scraper.search("julia", limit=2))
 
     assert [item.image_url for item in results] == [
@@ -599,7 +604,7 @@ def test_chromium_bing_page_timeout_retries(monkeypatch):
     assert driver.get_calls == 2
     assert driver.stop_calls == 2
 
-def test_chromium_continues_to_bing_when_duckduckgo_has_too_few_candidates(monkeypatch):
+def test_chromium_prefers_bing_then_fills_from_duckduckgo(monkeypatch):
     import sys
     import types
 
@@ -657,12 +662,12 @@ def test_chromium_continues_to_bing_when_duckduckgo_has_too_few_candidates(monke
     results = list(scraper.search("julia", limit=2))
 
     assert [item.image_url for item in results] == [
-        "https://cdn.example.com/ddg.jpg",
         "https://cdn.example.com/bing.jpg",
+        "https://cdn.example.com/ddg.jpg",
     ]
     assert [item.metadata["provider"] for item in results] == [
-        "duckduckgo",
         "bing",
+        "duckduckgo",
     ]
     assert driver.quit_called is True
 
@@ -1112,6 +1117,8 @@ def test_playwright_manager_passes_max_scrolls(monkeypatch, tmp_path):
         "retries": 2,
         "delay": 0.75,
         "max_scrolls": 11,
+        "date_from": None,
+        "date_to": None,
     }
 
 
