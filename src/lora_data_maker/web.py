@@ -2436,6 +2436,11 @@ def create_app(
                 peer_address = ipaddress.ip_address(peer.split("%", 1)[0])
             except ValueError:
                 return JSONResponse(status_code=403, content={"detail": "local access only"})
+            # Dual-stack IPv6 listeners may report a loopback IPv4 peer in
+            # IPv4-mapped IPv6 form (::ffff:127.0.0.1). Normalize it before
+            # the loopback check rather than rejecting legitimate local use.
+            if isinstance(peer_address, ipaddress.IPv6Address) and peer_address.ipv4_mapped:
+                peer_address = peer_address.ipv4_mapped
             if not peer_address.is_loopback:
                 return JSONResponse(status_code=403, content={"detail": "local access only"})
 
