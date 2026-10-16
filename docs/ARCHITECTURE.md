@@ -105,7 +105,7 @@ Captions are written as UTF-8 `.txt` files under `work/captions/`, one file per 
 
 
 
-The export stage consumes `captioned` records and writes matched image + caption files into `output/<repeats>_<subject>/` by default. Each pair shares the same image-record basename, so a file such as `abc123.jpg` is paired with `abc123.txt`. The directory naming convention follows the legacy Kohya-style repeat/identifier layout; current sd-scripts also supports image directories with same-basename `.txt` captions and explicit repeat counts. citeturn825645search0turn825645search2 Export copies from `work/` and never rewrites `raw/` or the processed/caption source files.
+The export stage consumes `captioned` records and writes matched image + caption files into `output/<repeats>_<subject>/` by default. Each pair shares the same image-record basename, so a file such as `abc123.jpg` is paired with `abc123.txt`. The directory naming convention follows the legacy Kohya-style repeat/identifier layout; current sd-scripts also supports image directories with same-basename `.txt` captions and explicit repeat counts. See the [sd-scripts project](https://github.com/kohya-ss/sd-scripts) for downstream training details. Export copies from `work/` and never rewrites `raw/` or the processed/caption source files.
 
 
 
@@ -134,6 +134,12 @@ The quality gate runs during the clean stage. When person_check is enabled it us
 Scrapers implement a common interface and produce download records plus source metadata.
 
 Google Images is its own backend. External downloaders such as gallery-dl may be integrated as optional backends for sources they support, but the Google backend must not depend on them.
+
+## Local WebUI and credential boundary
+
+The optional WebUI is intended for a single local user and defaults to loopback. It has no user authentication. Middleware validates the Host header and loopback peer and rejects browser requests that declare a cross-origin Origin or Fetch Metadata context. These checks reduce common browser-based cross-origin attacks; they do not turn the WebUI into a network-facing multi-user service. Keep it bound to localhost and do not expose it through a tunnel, reverse proxy, or port forwarding.
+
+API provider keys are persisted separately from dataset configuration in a per-user JSON file. They are plaintext protected by owner-only file permissions, not encrypted, and are loaded into the running WebUI process environment. Authenticated Google scraping may attach to an existing Chromium session via local CDP. The CDP endpoint is a privileged browser-control interface, so the profile should be dedicated to scraping and its debug port must stay on loopback. See the repository's [Security Policy](../SECURITY.md) for operational guidance and known limits of outbound URL checks.
 
 ## Non-goals
 
