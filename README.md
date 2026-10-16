@@ -313,7 +313,7 @@ Raw files stay immutable. Processing stages write derived files under `work/`, w
 
 ## Documentation
 
-More detailed docs live in `docs/`:
+More detailed docs live in `docs/` (the security policy is in the repository root at [SECURITY.md](SECURITY.md)):
 
 ~~~text
 INSTALL_TERMUX.md
@@ -324,7 +324,6 @@ TROUBLESHOOTING.md
 ARCHITECTURE.md
 ROADMAP.md
 RESPONSIBLE_USE.md
-SECURITY.md
 ~~~
 
 ## Development
@@ -344,7 +343,7 @@ Licensed under the Apache License 2.0. See `LICENSE` and `NOTICE`.
 
 ## WebUI
 
-The project includes an optional localhost WebUI. It is designed for local dataset work from a phone or desktop browser. The scraper is intentionally outside the WebUI pipeline.
+The project includes an optional localhost WebUI. It is designed for local dataset work from a phone or desktop browser. The scraper is intentionally outside the WebUI pipeline. The WebUI has no user login and is not designed for multi-user/network exposure; keep it bound to loopback. See [SECURITY.md](SECURITY.md).
 
 Install the WebUI and tagger extras:
 
