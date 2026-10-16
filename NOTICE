@@ -3,68 +3,133 @@ Copyright 2026 lora-data-maker contributors
 
 THIRD-PARTY SOFTWARE AND MODEL NOTICES
 
-This project uses or offers the following third-party components and model
-artifacts. They are not relicensed by this project. Each remains subject to
-its own license terms.
+lora-data-maker is licensed under the Apache License, Version 2.0. Third-party
+dependencies and downloaded model artifacts are not relicensed by this project.
+Each component remains subject to its own license, attribution, and usage terms.
+The following list identifies key direct optional dependencies and model
+artifacts; it is not a complete inventory of all transitive packages installed
+by pip or native packages installed by Termux/Linux.
+
+PYTHON PACKAGES
 
 1. Pillow
    Purpose: image loading, validation, orientation handling, resizing,
    cropping, and JPEG output.
-   License: MIT-CMU
+   License: MIT-CMU.
    Project: https://python-pillow.org/
 
 2. Requests
-   Purpose: HTTP requests for scraping and image downloads.
-   License: Apache License 2.0
+   Purpose: HTTP requests for search and image downloads.
+   License: Apache License 2.0.
    Project: https://requests.readthedocs.io/
 
 3. NumPy
-   Purpose: numerical arrays used by optional ONNX-backed tagger and quality
+   Purpose: numerical arrays for optional ONNX-backed tagger and quality
    runtimes.
-   License: bundled component licenses; see the NumPy distribution.
+   License: BSD 3-Clause.
    Project: https://numpy.org/
 
 4. ONNX Runtime
    Purpose: inference runtime for optional WD14, JoyTag, and YOLOX quality
    backends.
-   License: MIT
+   License: MIT.
    Project: https://onnxruntime.ai/
 
-5. OpenCV / YuNet
-   Purpose: optional face-crop detector and model runtime.
-   Model artifact license: MIT.
-   Project: https://github.com/opencv/opencv_zoo
+5. OpenCV
+   Purpose: optional YuNet face and PP-OCR text detection runtimes.
+   License: Apache License 2.0 for current OpenCV releases; consult the exact
+   installed distribution and included third-party notices.
+   Project: https://github.com/opencv/opencv
 
-6. SmilingWolf/wd-vit-tagger-v3
-   Purpose: default WD14-compatible image tagging model.
-   License: Apache License 2.0
-   Project: https://huggingface.co/SmilingWolf/wd-vit-tagger-v3
+6. FastAPI, Starlette, and Uvicorn
+   Purpose: optional local WebUI and HTTP server.
+   Licenses: MIT (FastAPI and Starlette); BSD 3-Clause (Uvicorn).
+   Projects: https://github.com/fastapi/fastapi
+             https://github.com/encode/starlette
+             https://github.com/encode/uvicorn
 
-7. Smashinfries/wd-swinv2-tagger-v3-onnx-mobile
-   Purpose: optional mobile WD14-compatible tagging model.
-   License: Apache License 2.0
-   Project: https://huggingface.co/Smashinfries/wd-swinv2-tagger-v3-onnx-mobile
+7. HTTPX
+   Purpose: HTTP client used by WebUI tests and related optional web tooling.
+   License: BSD 3-Clause.
+   Project: https://github.com/encode/httpx
 
-8. fancyfeast/joytag
-   Purpose: optional JoyTag image tagging model.
-   License: Apache License 2.0
-   Project: https://huggingface.co/fancyfeast/joytag
+8. python-multipart
+   Purpose: streaming multipart request parsing for WebUI uploads.
+   License: Apache License 2.0.
+   Project: https://github.com/Kludex/python-multipart
 
-9. hr16/yolox-onnx / YOLOX-Nano
-   Purpose: optional person-quality detector.
-   License: Apache License 2.0
-   Project: https://huggingface.co/hr16/yolox-onnx
+9. Selenium
+   Purpose: optional Chromium browser automation backend.
+   License: Apache License 2.0.
+   Project: https://github.com/SeleniumHQ/selenium
 
-TRANSITIVE DEPENDENCIES
+10. playwright-termux
+    Purpose: optional Termux-native Chromium/CDP automation adapter.
+    License: MIT.
+    Project: https://github.com/HOLYMFBULL/playwright-termux
+
+11. llama-cpp-python and llama.cpp
+    Purpose: optional local GGUF vision-language model inference.
+    License: MIT.
+    Projects: https://github.com/abetlen/llama-cpp-python
+              https://github.com/ggml-org/llama.cpp
+
+12. Hugging Face Transformers and huggingface-hub
+    Purpose: optional model loading and download support for ONNX captioning.
+    License: Apache License 2.0.
+    Projects: https://github.com/huggingface/transformers
+              https://github.com/huggingface/huggingface_hub
+
+MODEL ARTIFACTS
+
+13. SmilingWolf/wd-vit-tagger-v3
+    Purpose: default WD14-compatible image tagging model.
+    License: Apache License 2.0 as published by the model repository.
+    Project: https://huggingface.co/SmilingWolf/wd-vit-tagger-v3
+
+14. Smashinfries/wd-swinv2-tagger-v3-onnx-mobile
+    Purpose: optional mobile WD14-compatible tagging model.
+    License: Apache License 2.0 as published by the model repository.
+    Project: https://huggingface.co/Smashinfries/wd-swinv2-tagger-v3-onnx-mobile
+
+15. fancyfeast/joytag
+    Purpose: optional JoyTag image tagging model.
+    License: Apache License 2.0 as published by the model repository.
+    Project: https://huggingface.co/fancyfeast/joytag
+
+16. hr16/yolox-onnx / YOLOX-Nano
+    Purpose: optional person-quality detector.
+    License: Apache License 2.0 as published by the model repository.
+    Project: https://huggingface.co/hr16/yolox-onnx
+
+17. OpenCV Zoo YuNet and PP-OCR text-detection artifacts
+    Purpose: optional face detection and text quality filtering.
+    License: retain the license and attribution terms published with each
+    exact model revision and any bundled third-party files.
+    Project: https://github.com/opencv/opencv_zoo
+             https://huggingface.co/opencv/text_detection_ppocr
+
+TRANSITIVE DEPENDENCIES AND MODEL TERMS
 
 Installing optional packages may also install additional third-party
-dependencies and platform libraries. Their respective license and notice
-files remain applicable in the installed environment.
+dependencies and platform libraries. Their respective license and notice files
+remain applicable in the installed environment. Model checkpoints may have
+terms that differ from the Python package used to load them. Review the license
+and model card for the exact artifact and revision before redistribution or
+commercial use; no model license is granted by this repository.
+
+GOOGLE AND OTHER SERVICE NAMES
+
+Google, Chromium, Microsoft Bing, Hugging Face, and other product names are
+trademarks of their respective owners. This project is independent and is not
+affiliated with or endorsed by those organizations. Authenticated Google
+scraping reuses a browser profile supplied by the user; it does not grant or
+transfer ownership of that account or Google's services.
 
 CI TOOLING
 
-GitHub Actions used for CI are development infrastructure and are not part
-of the runtime package distributed by this repository.
+GitHub Actions and other build/test services are development infrastructure
+and are not part of the runtime package distributed by this repository.
 
 NOTICE STATUS
 
