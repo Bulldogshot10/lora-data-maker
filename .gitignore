@@ -26,3 +26,11 @@ dataset/
 # Local model/cache data
 .lora-data-maker/
 models/
+
+# Local credentials and authenticated browser profiles
+api-keys.json
+.api-keys-*.tmp
+credentials.json
+google-profile/
+chrome-profile/
+chromium-profile/
