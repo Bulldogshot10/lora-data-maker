@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from http.client import HTTPConnection, HTTPException
 import json
 import os
+from http.client import HTTPConnection, HTTPException
 from pathlib import Path
 from urllib.parse import urlsplit
 
