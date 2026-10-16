@@ -6,7 +6,7 @@ Termux-first toolkit for building clean, train-ready image datasets for LoRA tra
 
 The project handles dataset preparation only:
 
-scrape → validate → deduplicate → quality filter → crop/resize → tag → filter tags → inject subject/trigger → write captions → export/pack.
+scrape → validate → deduplicate → quality filter → crop/resize → deterministic tags OR local VLM captions → write captions → export/pack.
 
 Model training and image generation are outside the scope of this project.
 
@@ -90,6 +90,52 @@ download_timeout = 60
 
 **joytag** downloads the pinned JoyTag `model.onnx` (about 366 MB) plus `top_tags.txt`. JoyTag uses 448×448 input, 5813 labels, and a default threshold of 0.4. The official model is Apache-2.0 licensed and is trained for a mix of illustrated and photographic images.
 
+## VLM captions
+
+The caption stage supports local `llama-cpp-python` plus API runtimes for Google Gemini and OpenAI-compatible multimodal endpoints. The existing deterministic tag-based captioner remains the default.
+
+For local GGUF captioning:
+
+~~~bash
+python -m pip install ".[caption-vlm]"
+~~~
+
+Configure a local runtime with:
+
+~~~toml
+[caption]
+backend = "vlm"
+
+[caption.vlm]
+runtime = "llama_cpp"
+model_path = "/path/to/model.gguf"
+mmproj_path = "/path/to/mmproj.gguf"
+chat_format = "mtmd"
+max_tokens = 64
+temperature = 0.1
+top_p = 0.95
+top_k = 40
+n_ctx = 4096
+n_threads = 4
+n_gpu_layers = 0
+seed = 42
+~~~
+
+In the WebUI, choose the Gemini or OpenAI-compatible runtime, paste the API key into the password field, and use **Set / Save / Reuse**. The key is saved in a per-user credential file outside dataset projects and loaded into the server process environment. It is never written to `config.toml`. The file is plaintext protected by filesystem permissions, not encrypted; see [SECURITY.md](SECURITY.md) before using API credentials. After the key is set, the WebUI discovers available models and fills the model selector.
+
+Gemini model discovery calls the provider's model-list endpoint and keeps models that advertise `generateContent` support. The WebUI therefore does not require a model-name textbox. For OpenAI-compatible runtimes, the WebUI reads the standard `/models` response from the configured base URL and exposes the returned model IDs in the selector. OpenAI-compatible endpoints use `/chat/completions` for image-to-text captioning.
+
+For an OpenAI-compatible custom provider, only the API base URL may need to be changed in Settings. The model is always selected from the discovered dropdown. Providers that do not expose a compatible /models endpoint may need model configuration outside the current WebUI discovery flow.
+
+The selected model is stored in the dataset config so the next caption job uses the same model. API keys entered in the WebUI are saved per provider in a per-user credential file outside dataset folders (`~/.config/lora-data-maker/api-keys.json`, or under `$XDG_CONFIG_HOME` when set). The file and its containing directory are restricted to the current OS user; the keys are plaintext at rest, not encrypted. Keys are never written into a dataset `config.toml`, are restored when the WebUI server starts, and stay available when switching dataset projects. Use **clear** to remove the selected provider key.
+
+The WebUI caches provider model discovery for ten minutes. The model selector shows known Gemini choices immediately while refreshing the provider's model list in the background.
+
+Every VLM runtime receives the same fixed caption constraint. The model must return exactly four fields in order: `pose`, `clothing`, `expression`, and `background`. Each field is limited to five words. Pose includes one camera-view term when visible, background includes lighting, and hair color, eye color, face, age, and gender are excluded. The parser rejects malformed output.
+
+After parsing, the code always injects the resolved dataset trigger as the first caption token and removes duplicate trigger mentions from the four generated fields. The final order is trigger → pose → clothing → expression → background. WD14/JoyTag tags are not merged into VLM prose and `caption.max_tokens` does not limit VLM output. API or formatting failures mark that image failed instead of falling back to deterministic tags.
+
+
 Tagger models are cached under:
 
 ~~~text
@@ -126,12 +172,23 @@ python -m pip install ".[playwright]"
 
 The Playwright backend uses the native Termux Chromium package through the
 Termux-specific Playwright/CDP adapter. It does not run `playwright install`
-or download a glibc browser bundle.
+or download a glibc browser bundle. For authenticated Google searches, the
+backend can attach to an already-running Chromium using `CHROME_USER_DATA_DIR`
+and the local CDP port (9222 by default); see [Termux installation notes](docs/INSTALL_TERMUX.md).
+A CDP endpoint grants powerful control over the browser and its signed-in accounts.
+Use a dedicated profile, bind debugging to `127.0.0.1`, and never expose the port
+through a LAN address, tunnel, or reverse proxy. Read [SECURITY.md](SECURITY.md).
 
 For tagging support:
 
 ~~~bash
 python -m pip install ".[tagger]"
+~~~
+
+For local VLM captioning:
+
+~~~bash
+python -m pip install ".[caption-vlm]"
 ~~~
 
 For face cropping on regular Linux/Python environments:
@@ -191,12 +248,9 @@ validate
 clean
   ↓
 process
-  ↓
-tag
-  ↓
-clean-tags
-  ↓
-caption
+  ├────────────→ tag → clean-tags ───→ deterministic caption → trigger → .txt
+  │
+  └────────────→ local VLM → strict fields → trigger → .txt
   ↓
 export
   ↓
@@ -229,13 +283,15 @@ Termux-native Chromium and extract original image URLs from the rendered
 Google or Bing Images pages. The Playwright navigation layer uses direct CDP navigation
 because the Termux adapter's stock navigation waiter can race lifecycle events.
 
-Example:
+Examples:
 
 ~~~bash
 lora-data-maker scrape duckduckgo "julia subject" --count 200
+lora-data-maker scrape playwright-bing "julia portrait" --year 2019 --count 100
+lora-data-maker scrape playwright-bing "julia portrait" --date-from 2019-04-01 --date-to 2019-09-30 --count 100
 ~~~
 
-The scraper is add-only and uses the manifest to avoid re-downloading known source URLs. A running WebUI scrape can be cancelled, and downloads completed before cancellation are preserved.
+Bing date filters are also available in the WebUI as **any date**, **specific year**, or **custom range**. The date filter controls appear when `playwright-bing` is selected. The scraper is add-only and uses the manifest to avoid re-downloading known source URLs. A running WebUI scrape can be cancelled, and downloads completed before cancellation are preserved.
 
 ## Dataset layout
 
@@ -257,7 +313,7 @@ Raw files stay immutable. Processing stages write derived files under `work/`, w
 
 ## Documentation
 
-More detailed docs live in `docs/`:
+More detailed docs live in `docs/` (the security policy is in the repository root at [SECURITY.md](SECURITY.md)):
 
 ~~~text
 INSTALL_TERMUX.md
@@ -279,7 +335,7 @@ python -m pip install ".[dev]"
 pytest -q
 ~~~
 
-The project CI smoke-tests Python 3.12, 3.13, and 3.14, including package installation, compilation, tests, CLI entry points, documentation files, and project initialization.
+The core and WebUI smoke workflows are currently manual (`workflow_dispatch`) to avoid automatic GitHub Actions runs. Run the test commands locally before publishing a release; a successful prior workflow run is not evidence that the current branch passes.
 
 ## License
 
@@ -287,11 +343,11 @@ Licensed under the Apache License 2.0. See `LICENSE` and `NOTICE`.
 
 ## WebUI
 
-The project includes an optional localhost WebUI. It is designed for local dataset work from a phone or desktop browser. The scraper is intentionally outside the WebUI pipeline.
+The project includes an optional localhost WebUI. It is designed for local dataset work from a phone or desktop browser. The scraper is intentionally outside the WebUI pipeline. The WebUI has no user login and is not designed for multi-user/network exposure; keep it bound to loopback. See [SECURITY.md](SECURITY.md).
 
 Install the WebUI and tagger extras:
 
-    pip install -e ".[web,tagger,quality]"
+    pip install -e ".[web,tagger,quality,caption-vlm]"
 
 Start the WebUI from a dataset workspace:
 
@@ -300,11 +356,12 @@ Start the WebUI from a dataset workspace:
 
 Then open http://127.0.0.1:8787 in the browser. The WebUI can create a new dataset project from the workspace, open existing projects, and switch between them without using the CLI init command.
 
-The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection, validation, staging, tagging, tag cleaning, caption generation, Kohya export, ZIP packaging, gallery preview, manual image removal for cherry-picking, scraper cancellation, and ZIP download.
+The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection for deterministic captions, local VLM model/mmproj paths and chat format, the final caption token budget, validation, staging, caption generation, Kohya export, ZIP packaging, gallery preview, manual image removal for cherry-picking, scraper cancellation, and ZIP download. VLM mode skips WD14/JoyTag and generates captions as trigger → pose → clothing → expression → background.
 
 The one-click Prepare Dataset flow runs:
 
-    validate -> clean / dedup -> stage -> tag -> clean tags -> caption -> export -> ZIP
+    validate -> clean / dedup -> stage -> caption -> export -> ZIP (VLM mode)
+    validate -> clean / dedup -> stage -> tag -> clean tags -> caption -> export -> ZIP (deterministic mode)
 
 The clean stage includes the default PP-OCRv3 text gate. Install the quality extra before using the full pipeline: python -m pip install ".[quality]". The bundled detector is the upstream English PP-OCRv3 model, so non-English text can be less reliable.
 

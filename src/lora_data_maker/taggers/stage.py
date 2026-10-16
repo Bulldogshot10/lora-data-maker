@@ -23,24 +23,51 @@ def tag_manifest(
     *,
     root: Path | str,
     tagger: Tagger,
+    use_processed_images: bool = True,
 ) -> TagSummary:
     root_path = Path(root).expanduser().resolve()
+    eligible_statuses = (
+        {"processed"} if use_processed_images else {"validated", "processed"}
+    )
     candidates = sorted(
         (
             image
             for image in manifest.images.values()
-            if image.status == "processed" and image.processed_path
+            if image.status in eligible_statuses and image.path
         ),
         key=lambda image: image.path,
     )
+    candidate_ids = {image.image_id for image in candidates}
 
     if not candidates:
         return TagSummary()
 
-    processed_paths = [
-        root_path / str(image.processed_path)
-        for image in candidates
-    ]
+    processed_paths: list[Path] = []
+    for image in candidates:
+        source_path: Path | None = None
+        if use_processed_images and image.processed_path:
+            candidate = (root_path / str(image.processed_path)).resolve()
+            try:
+                candidate.relative_to(root_path)
+            except ValueError:
+                candidate = None
+            if candidate is not None and candidate.is_file():
+                source_path = candidate
+
+        if source_path is None:
+            candidate = (root_path / image.path).resolve()
+            try:
+                candidate.relative_to(root_path)
+            except ValueError:
+                candidate = None
+            if candidate is not None and candidate.is_file():
+                source_path = candidate
+
+        if source_path is None:
+            raise TaggerError(
+                f"could not find raw or processed image for tagging: {image.path}"
+            )
+        processed_paths.append(source_path)
 
     try:
         results = tagger.tag_images(processed_paths)
@@ -70,6 +97,6 @@ def tag_manifest(
         skipped=sum(
             1
             for image in manifest.images.values()
-            if image.status != "processed"
+            if image.image_id not in candidate_ids
         ),
     )

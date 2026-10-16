@@ -50,9 +50,23 @@ face = [
   "numpy>=1.26,<3",
   "opencv-python-headless>=4.10,<5",
 ]
+caption-vlm = [
+  "llama-cpp-python>=0.3.36,<0.4",
+]
+caption-onnx = [
+  "numpy>=1.26,<3",
+  "onnxruntime>=1.17,<2",
+  "huggingface-hub>=0.30,<1",
+  "transformers>=4.57,<5",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.package-data]
 lora_data_maker = ["static/*"]
+
+[tool.pytest.ini_options]
+markers = [
+  "real_caption_runtime: tests requiring the optional caption-vlm runtime stack",
+]

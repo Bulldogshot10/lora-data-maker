@@ -9,8 +9,11 @@ import time
 
 from fastapi.testclient import TestClient
 
+import pytest
+
 from lora_data_maker.config import write_default_config
 from lora_data_maker.dataset import DatasetProject
+from lora_data_maker.models import ImageRecord
 from lora_data_maker.paths import ProjectPaths
 from lora_data_maker.scrapers.downloader import DownloadResult
 from lora_data_maker.web import create_app
@@ -44,6 +47,7 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
             "subject": "new_person",
             "trigger": "new_person",
             "preset": "sweetspot",
+            "processing_enabled": False,
             "mode": "cover",
             "width": 768,
             "height": 512,
@@ -59,6 +63,172 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert updated["processing"]["width"] == 768
     assert updated["processing"]["height"] == 512
     assert updated["processing"]["quality"] == 92
+    assert updated["processing"]["enabled"] is False
+
+    assert updated["caption"]["max_tokens"] == 77
+
+    caption_budget = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "new_person",
+            "trigger": "new_person",
+            "preset": "joytag",
+            "mode": "cover",
+            "width": 768,
+            "height": 512,
+            "quality": 92,
+            "caption_max_tokens": 64,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert caption_budget.status_code == 200
+    budget_state = client.get("/api/state").json()
+    assert budget_state["caption"]["max_tokens"] == 64
+
+    invalid_budget = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "new_person",
+            "trigger": "new_person",
+            "preset": "joytag",
+            "mode": "cover",
+            "width": 768,
+            "height": 512,
+            "quality": 92,
+            "caption_max_tokens": "not-a-number",
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert invalid_budget.status_code == 400
+
+    unchanged_after_invalid = client.get("/api/state").json()
+    assert unchanged_after_invalid["project"]["subject"] == "new_person"
+    assert unchanged_after_invalid["processing"]["width"] == 768
+    assert unchanged_after_invalid["processing"]["height"] == 512
+    assert unchanged_after_invalid["tagger"]["preset"] == "joytag"
+
+    partial_write = client.post(
+        "/api/settings",
+        json={
+            "name": "mutated",
+            "subject": "mutated_subject",
+            "trigger": "mutated_subject",
+            "preset": "joytag",
+            "mode": "stretch",
+            "width": 640,
+            "height": 640,
+            "quality": 80,
+            "caption_max_tokens": "not-a-number",
+            "face_crop": True,
+            "face_padding": 2.0,
+        },
+    )
+    assert partial_write.status_code == 400
+
+    after_rejected_update = client.get("/api/state").json()
+    assert after_rejected_update["project"]["name"] == "test"
+    assert after_rejected_update["project"]["subject"] == "new_person"
+    assert after_rejected_update["project"]["trigger"] == "new_person"
+    assert after_rejected_update["processing"]["mode"] == "cover"
+    assert after_rejected_update["processing"]["width"] == 768
+    assert after_rejected_update["processing"]["height"] == 512
+    assert after_rejected_update["processing"]["quality"] == 92
+    assert after_rejected_update["processing"]["face_crop"] is False
+    assert after_rejected_update["processing"]["face_padding"] == 1.75
+    assert after_rejected_update["tagger"]["preset"] == "joytag"
+
+    vlm = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "new_person",
+            "trigger": "new_person",
+            "preset": "joytag",
+            "mode": "cover",
+            "width": 768,
+            "height": 512,
+            "quality": 92,
+            "caption_backend": "vlm",
+            "caption_chat_format": "qwen2.5-vl",
+            "caption_model_path": "models/model.gguf",
+            "caption_mmproj_path": "models/mmproj.gguf",
+            "caption_max_tokens": 77,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert vlm.status_code == 200
+    vlm_state = client.get("/api/state").json()
+    assert vlm_state["caption"]["backend"] == "vlm"
+    assert vlm_state["caption"]["chat_format"] == "qwen2.5-vl"
+    assert vlm_state["caption"]["model_path"] == "models/model.gguf"
+    assert vlm_state["caption"]["mmproj_path"] == "models/mmproj.gguf"
+
+    config = (root / "config.toml").read_text(encoding="utf-8")
+    assert 'backend = "vlm"' in config
+    assert 'model_path = "models/model.gguf"' in config
+    assert 'mmproj_path = "models/mmproj.gguf"' in config
+    assert 'chat_format = "qwen2.5-vl"' in config
+
+    onnx = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "new_person",
+            "trigger": "new_person",
+            "preset": "joytag",
+            "mode": "cover",
+            "width": 768,
+            "height": 512,
+            "quality": 92,
+            "caption_backend": "vlm",
+            "caption_runtime": "onnx",
+            "caption_chat_format": "mtmd",
+            "caption_model_path": "",
+            "caption_mmproj_path": "",
+            "caption_max_tokens": 77,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert onnx.status_code == 200
+    onnx_state = client.get("/api/state").json()
+    assert onnx_state["caption"]["backend"] == "vlm"
+    assert onnx_state["caption"]["runtime"] == "onnx"
+    assert onnx_state["caption"]["chat_format"] == "smolvlm"
+
+    onnx_config = (root / "config.toml").read_text(encoding="utf-8")
+    assert 'runtime = "onnx"' in onnx_config
+    assert 'chat_format = "smolvlm"' in onnx_config
+
+    qwen35 = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "new_person",
+            "trigger": "new_person",
+            "preset": "joytag",
+            "mode": "cover",
+            "width": 768,
+            "height": 512,
+            "quality": 92,
+            "caption_backend": "vlm",
+            "caption_runtime": "llama_cpp",
+            "caption_chat_format": "qwen3.5",
+            "caption_model_path": "models/model.gguf",
+            "caption_mmproj_path": "models/mmproj.gguf",
+            "caption_max_tokens": 77,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert qwen35.status_code == 200
+    qwen35_state = client.get("/api/state").json()
+    assert qwen35_state["caption"]["chat_format"] == "qwen3.5"
 
     joytag = client.post(
         "/api/settings",
@@ -81,6 +251,319 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert joytag_state["tagger"]["backend"] == "joytag"
     assert joytag_state["tagger"]["preset"] == "joytag"
 
+    off = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "new_person",
+            "trigger": "new_person",
+            "preset": "off",
+            "mode": "cover",
+            "width": 768,
+            "height": 512,
+            "quality": 92,
+            "caption_backend": "vlm",
+            "caption_chat_format": "qwen2.5-vl",
+            "caption_model_path": "models/model.gguf",
+            "caption_mmproj_path": "models/mmproj.gguf",
+            "caption_max_tokens": 77,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert off.status_code == 200
+    off_state = client.get("/api/state").json()
+    assert off_state["tagger"]["backend"] == "off"
+    assert off_state["tagger"]["preset"] == "off"
+
+
+def test_webui_api_runtime_switch_uses_matching_api_key_env(tmp_path: Path, monkeypatch) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    monkeypatch.setenv("GEMINI_API_KEY", "gemini-secret")
+    monkeypatch.setenv("OPENAI_API_KEY", "openai-secret")
+
+    common = {
+        "name": "test",
+        "subject": "person",
+        "trigger": "person",
+        "preset": "off",
+        "mode": "cover",
+        "width": 512,
+        "height": 512,
+        "quality": 95,
+        "caption_backend": "vlm",
+        "caption_max_tokens": 77,
+        "face_crop": False,
+        "face_padding": 1.75,
+    }
+
+    gemini = client.post(
+        "/api/settings",
+        json={
+            **common,
+            "caption_runtime": "gemini",
+            "caption_api_model": "gemini-3.5-flash-lite",
+        },
+    )
+    assert gemini.status_code == 200
+    config = (root / "config.toml").read_text(encoding="utf-8")
+    assert 'api_key_env = "GEMINI_API_KEY"' in config
+
+    openai = client.post(
+        "/api/settings",
+        json={
+            **common,
+            "caption_runtime": "openai_compatible",
+            "caption_api_model": "vision-model",
+            "caption_api_base_url": "https://example.test/v1",
+        },
+    )
+    assert openai.status_code == 200
+    config = (root / "config.toml").read_text(encoding="utf-8")
+    assert 'api_key_env = "OPENAI_API_KEY"' in config
+
+
+def test_webui_state_handles_missing_api_key_for_api_runtime(tmp_path: Path, monkeypatch) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+
+    saved = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "trigger": "person",
+            "preset": "off",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+            "caption_backend": "vlm",
+            "caption_runtime": "gemini",
+            "caption_api_model": "gemini-3.5-flash-lite",
+            "caption_max_tokens": 77,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert saved.status_code == 200
+
+    state = client.get("/api/state")
+    assert state.status_code == 200
+    assert state.json()["caption"]["api_key_set"] is False
+    assert state.json()["caption"]["api_keys_set"] == {
+        "gemini": False,
+        "openai_compatible": False,
+    }
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    refreshed = client.get("/api/state").json()
+    assert refreshed["caption"]["api_keys_set"] == {
+        "gemini": True,
+        "openai_compatible": False,
+    }
+
+
+def test_webui_vlm_file_uploads_store_relative_paths(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    model = client.post(
+        "/api/vlm/upload/model",
+        files={"file": ("my-model.gguf", b"GGUF-MODEL", "application/octet-stream")},
+    )
+    assert model.status_code == 200
+    assert model.json()["kind"] == "model"
+    assert model.json()["path"] == "models/my-model.gguf"
+    assert (root / "models" / "my-model.gguf").read_bytes() == b"GGUF-MODEL"
+
+    mmproj = client.post(
+        "/api/vlm/upload/mmproj",
+        files={"file": ("vision.mmproj.gguf", b"GGUF-MMPROJ", "application/octet-stream")},
+    )
+    assert mmproj.status_code == 200
+    assert mmproj.json()["path"] == "models/vision.mmproj.gguf"
+    assert (root / "models" / "vision.mmproj.gguf").read_bytes() == b"GGUF-MMPROJ"
+
+    rejected = client.post(
+        "/api/vlm/upload/model",
+        files={"file": ("not-model.txt", b"nope", "text/plain")},
+    )
+    assert rejected.status_code == 400
+
+
+def test_vlm_upload_rejects_files_without_gguf_magic(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+    response = client.post(
+        "/api/vlm/upload/model",
+        files={"file": ("fake.gguf", b"not-a-real-model", "application/octet-stream")},
+    )
+    assert response.status_code == 400
+    assert not (root / "models" / "fake.gguf").exists()
+
+
+def test_vlm_upload_refuses_models_directory_symlink(tmp_path: Path) -> None:
+    root = make_project(tmp_path / "project")
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    try:
+        (root / "models").symlink_to(outside, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable on this filesystem")
+
+    client = TestClient(create_app(root))
+    response = client.post(
+        "/api/vlm/upload/model",
+        files={"file": ("model.gguf", b"GGUF-model-data", "application/octet-stream")},
+    )
+    assert response.status_code == 400
+    assert list(outside.iterdir()) == []
+
+
+def test_webui_backend_switch_invalidates_vlm_captions(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    base = {
+        "name": "test",
+        "subject": "person",
+        "trigger": "person",
+        "preset": "joytag",
+        "mode": "cover",
+        "width": 512,
+        "height": 512,
+        "quality": 95,
+        "face_crop": False,
+        "face_padding": 1.75,
+    }
+
+    vlm = client.post(
+        "/api/settings",
+        json={
+            **base,
+            "caption_backend": "vlm",
+            "caption_chat_format": "mtmd",
+            "caption_model_path": "models/model.gguf",
+            "caption_mmproj_path": "models/mmproj.gguf",
+            "caption_max_tokens": 77,
+        },
+    )
+    assert vlm.status_code == 200
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    image = ImageRecord(
+        path="raw/001.jpg",
+        status="captioned",
+        processed_path="work/processed/001.jpg",
+        caption_path="work/captions/001.txt",
+        metadata={"caption_backend": "vlm", "caption_stage": "captioned"},
+    )
+    project.manifest.add_image(image)
+    stale = root / image.caption_path
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text("person, standing, stale\n", encoding="utf-8")
+    project.save()
+
+    deterministic = client.post(
+        "/api/settings",
+        json={
+            **base,
+            "caption_backend": "deterministic",
+        },
+    )
+    assert deterministic.status_code == 200
+
+    refreshed = DatasetProject.open(ProjectPaths.from_root(root))
+    record = refreshed.manifest.get_image(image.image_id)
+    assert record.status == "processed"
+    assert record.caption_path is None
+    assert not stale.exists()
+
+
+def test_webui_tag_stage_is_skipped_in_vlm_mode(tmp_path: Path, monkeypatch) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    response = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "trigger": "person",
+            "preset": "joytag",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+            "caption_backend": "vlm",
+            "caption_chat_format": "mtmd",
+            "caption_model_path": "models/model.gguf",
+            "caption_mmproj_path": "models/mmproj.gguf",
+            "caption_max_tokens": 77,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert response.status_code == 200
+
+    def fail_if_built(*args, **kwargs):
+        raise AssertionError("tagger must not be built in VLM mode")
+
+    monkeypatch.setattr("lora_data_maker.web.build_tagger", fail_if_built)
+
+    started = client.post("/api/run/tag")
+    assert started.status_code == 200
+    job_id = started.json()["job_id"]
+
+    for _ in range(100):
+        job = client.get(f"/api/jobs/{job_id}").json()
+        if job.get("status") != "running":
+            break
+        time.sleep(0.01)
+
+    assert job["status"] == "done"
+
+
+def test_webui_tag_stage_is_skipped_when_tagger_is_off(tmp_path: Path, monkeypatch) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    response = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "trigger": "person",
+            "preset": "off",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert response.status_code == 200
+
+    def fail_if_built(*args, **kwargs):
+        raise AssertionError("disabled tagger must not be built")
+
+    monkeypatch.setattr("lora_data_maker.web.build_tagger", fail_if_built)
+    started = client.post("/api/run/tag")
+    assert started.status_code == 200
+    job_id = started.json()["job_id"]
+    for _ in range(100):
+        job = client.get(f"/api/jobs/{job_id}").json()
+        if job.get("status") != "running":
+            break
+        time.sleep(0.01)
+    assert job["status"] == "done"
+
 
 def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: Path) -> None:
     root = make_project(tmp_path)
@@ -89,13 +572,24 @@ def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: P
     html = client.get("/").text
     assert 'data-view="overview"' in html
     assert 'data-view="collect"' in html
-    assert 'data-view="prepare"' in html
+    assert 'data-run-stage="prepare"' in html
     assert 'data-view="settings"' in html
     assert 'id="new-modal"' in html
     assert 'id="confirm-modal"' in html
     assert 'aria-live="polite"' in html
     assert 'id="project_explorer"' in html
     assert 'id="progress-fill"' in html
+    assert 'id="caption_backend"' in html
+    assert 'id="processing_enabled"' in html
+    assert "raw images" in html
+    assert 'id="caption_chat_format"' in html
+    assert 'id="caption_model_path"' in html
+    assert 'id="caption_mmproj_path"' in html
+    assert 'id="caption_max_tokens"' in html
+    assert 'max="77"' in html
+    assert "local VLM · VLM only" in html
+    assert "button.disabled=busy||vlmOnly||taggerOff;" in html
+    assert 'button.title=vlmOnly?"not used with VLM captions":taggerOff?"tagger disabled":"";' in html
     assert 'id="preview-modal"' in html
     assert 'rel="icon" href="/favicon.ico"' in html
     assert 'sizes="32x32"' in html
@@ -109,6 +603,18 @@ def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: P
         response = TestClient(create_app(make_project(tmp_path))).get(path)
         assert response.status_code == 200
         assert response.content
+
+
+def test_webui_preserves_saved_api_model_when_provider_omits_it(tmp_path: Path) -> None:
+    html = TestClient(create_app(make_project(tmp_path))).get("/").text
+    assert 'option.textContent=selected+" (saved, not currently listed by API)"' in html
+    assert 'if(selected)select.value=selected;' in html
+
+
+def test_webui_skips_api_model_lookup_when_key_is_missing(tmp_path: Path) -> None:
+    html = TestClient(create_app(make_project(tmp_path))).get("/").text
+    assert "if(!appState.apiKeysSet[runtime]){" in html
+    assert 'enter it once and click Save / reuse.' in html
 
 
 def test_webui_javascript_syntax_when_node_is_available(tmp_path: Path) -> None:
@@ -458,4 +964,154 @@ def test_webui_shell_exposes_curation_controls(tmp_path: Path) -> None:
     html = TestClient(create_app(make_project(tmp_path))).get("/").text
     assert 'data-job-cancel=' in html
     assert 'data-image-delete=' in html
+    assert 'data-image-save=' in html
+    assert 'url.searchParams.set("download","true")' in html
+    assert "navigator.share" not in html
     assert '/api/images/' in html
+
+
+def test_media_download_sets_attachment_filename(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    image = root / "raw" / "000001.jpg"
+    image.write_bytes(b"fake image")
+    client = TestClient(create_app(root))
+
+    preview = client.get("/media/raw/000001.jpg")
+    assert preview.status_code == 200
+    assert "content-disposition" not in preview.headers
+
+    download = client.get("/media/raw/000001.jpg?download=true")
+    assert download.status_code == 200
+    assert download.content == b"fake image"
+    disposition = download.headers["content-disposition"]
+    assert disposition.startswith("attachment;")
+    assert "000001.jpg" in disposition
+
+
+def test_web_saves_playwright_bing_custom_date_range(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    response = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "preset": "sweetspot",
+            "scraper_backend": "playwright-bing",
+            "scrape_query": "julia russian woman",
+            "scrape_count": 10,
+            "scrape_date_mode": "range",
+            "scrape_year": 0,
+            "scrape_date_from": "2019-01-01",
+            "scrape_date_to": "2019-12-31",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+        },
+    )
+
+    assert response.status_code == 200
+    scraper = client.get("/api/state").json()["scraper"]
+    assert scraper["backend"] == "playwright-bing"
+    assert scraper["year"] == 0
+    assert scraper["date_from"] == "2019-01-01"
+    assert scraper["date_to"] == "2019-12-31"
+
+
+def test_web_rejects_date_filter_for_non_bing_backend(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    response = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "preset": "sweetspot",
+            "scraper_backend": "duckduckgo",
+            "scrape_query": "julia",
+            "scrape_count": 10,
+            "scrape_date_mode": "year",
+            "scrape_year": 2019,
+            "scrape_date_from": "2019-01-01",
+            "scrape_date_to": "2019-12-31",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "Playwright Bing backend" in response.json()["detail"]
+
+
+
+def test_webui_polish_has_responsive_motion_and_clear_model_loading_feedback(
+    tmp_path: Path,
+) -> None:
+    client = TestClient(create_app(make_project(tmp_path)))
+    html = client.get("/").text
+
+    # Keep the UX improvements native/lightweight rather than adding a JS framework.
+    assert "LDM app polish" in html
+    assert "@media(prefers-reduced-motion:reduce)" in html
+    assert "@keyframes ldm-view-enter" in html
+    assert "@keyframes ldm-spin" in html
+    assert 'aria-current","page"' in html
+    assert 'loadButton.setAttribute("aria-busy","true")' in html
+    assert 'loadButton.removeAttribute("aria-busy")' in html
+    assert "Save / reuse your API key, load the provider's model list, then choose a model." in html
+    assert 'select.innerHTML=\'<option value="">loading models…</option>\'' in html
+    assert 'empty.textContent="no models available"' in html
+    assert ".field input,.field select,.field textarea{min-height:44px" in html
+
+
+def test_webui_process_stage_is_skipped_when_processing_disabled(
+    tmp_path: Path,
+) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    saved = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "trigger": "person",
+            "preset": "off",
+            "processing_enabled": False,
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+            "face_crop": False,
+            "face_padding": 1.75,
+            "text_check": False,
+        },
+    )
+    assert saved.status_code == 200
+    assert client.get("/api/state").json()["processing"]["enabled"] is False
+
+    started = client.post("/api/run/process")
+    assert started.status_code == 200
+    job_id = started.json()["job_id"]
+
+    deadline = time.monotonic() + 3
+    job = None
+    while time.monotonic() < deadline:
+        job = client.get(f"/api/jobs/{job_id}").json()
+        if job.get("status") != "running":
+            break
+        time.sleep(0.01)
+
+    assert job is not None
+    assert job["status"] == "done"
+    assert "processing bypassed" in job["message"]
+    assert not (root / "work" / "processed").exists()
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    assert project.manifest.source["last_process_bypassed"] is True
+    assert project.manifest.source["last_process_processed"] == 0

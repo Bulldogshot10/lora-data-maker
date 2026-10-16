@@ -97,6 +97,70 @@ def test_run_build_runs_stages_in_order_and_records_summary(tmp_path, monkeypatc
     )
 
 
+def test_run_build_skips_tag_stages_for_vlm_backend(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia-set",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace(
+        '[caption]\nbackend = "deterministic"',
+        '[caption]\nbackend = "vlm"',
+        1,
+    )
+    config_path.write_text(config, encoding="utf-8")
+
+    import lora_data_maker.cli as cli
+
+    calls = []
+
+    def fake_command(name):
+        def runner(args):
+            calls.append(name)
+            return 0
+
+        return runner
+
+    for stage in BUILD_STAGES:
+        monkeypatch.setattr(
+            cli,
+            f"command_{stage.replace('-', '_')}",
+            fake_command(stage),
+        )
+
+    summary = run_build(
+        path=root,
+        from_stage="validate",
+        to_stage="pack",
+    )
+
+    assert summary.success is True
+    assert [item.name for item in summary.stages] == [
+        "validate",
+        "clean",
+        "process",
+        "caption",
+        "export",
+        "pack",
+    ]
+    assert calls == [
+        "validate",
+        "clean",
+        "process",
+        "caption",
+        "export",
+        "pack",
+    ]
+
+
 def test_run_build_stops_on_failure_and_records_failed_stage(tmp_path, monkeypatch):
     root = tmp_path / "project"
     command_init(
@@ -162,7 +226,7 @@ def test_build_tag_command_namespace_works_without_preset(tmp_path, monkeypatch)
     monkeypatch.setattr("lora_data_maker.cli.build_tagger", lambda *a, **k: FakeTagger())
     monkeypatch.setattr(
         "lora_data_maker.cli.tag_manifest",
-        lambda manifest, root, tagger: type(
+        lambda manifest, root, tagger, **kwargs: type(
             "Summary",
             (),
             {"scanned": 0, "tagged": 0, "failed": 0, "skipped": 0},
@@ -211,3 +275,191 @@ def test_run_build_ignores_invalid_scraper_when_scrape_not_selected(tmp_path, mo
 
     assert summary.success is True
     assert calls == [str(root)]
+
+def test_run_build_skips_tag_stages_when_tagger_is_off(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia-set",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace('backend = "wd14"\npreset = "sweetspot"', 'backend = "off"\npreset = "off"', 1)
+    config_path.write_text(config, encoding="utf-8")
+
+    import lora_data_maker.cli as cli
+    calls = []
+
+    def fake_command(name):
+        def runner(args):
+            calls.append(name)
+            return 0
+        return runner
+
+    for stage in BUILD_STAGES:
+        monkeypatch.setattr(cli, f"command_{stage.replace('-', '_')}", fake_command(stage))
+
+    summary = run_build(path=root, from_stage="validate", to_stage="pack")
+
+    assert summary.success is True
+    assert [item.name for item in summary.stages] == [
+        "validate", "clean", "process", "caption", "export", "pack"
+    ]
+    assert calls == [
+        "validate", "clean", "process", "caption", "export", "pack"
+    ]
+
+def test_command_tag_skips_when_tagger_is_off(tmp_path, monkeypatch):
+    from lora_data_maker.cli import command_tag
+
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace('backend = "wd14"\npreset = "sweetspot"', 'backend = "off"\npreset = "off"', 1)
+    config_path.write_text(config, encoding="utf-8")
+
+    def fail_if_built(*args, **kwargs):
+        raise AssertionError("disabled tagger must not be built")
+
+    monkeypatch.setattr("lora_data_maker.cli.build_tagger", fail_if_built)
+    assert command_tag(Namespace(path=str(root), preset=None)) == 0
+
+
+def test_run_build_bypasses_process_when_processing_is_disabled(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia-set",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace(
+        "[processing]\nenabled = true",
+        "[processing]\nenabled = false",
+        1,
+    )
+    config = config.replace(
+        '[caption]\nbackend = "deterministic"',
+        '[caption]\nbackend = "vlm"',
+        1,
+    )
+    config_path.write_text(config, encoding="utf-8")
+
+    import lora_data_maker.cli as cli
+
+    calls = []
+
+    def fake_command(name):
+        def runner(args):
+            calls.append(name)
+            return 0
+        return runner
+
+    for stage in BUILD_STAGES:
+        monkeypatch.setattr(
+            cli,
+            f"command_{stage.replace('-', '_')}",
+            fake_command(stage),
+        )
+
+    summary = run_build(
+        path=root,
+        from_stage="validate",
+        to_stage="pack",
+    )
+
+    assert summary.success is True
+    assert [item.name for item in summary.stages] == [
+        "validate",
+        "clean",
+        "caption",
+        "export",
+        "pack",
+    ]
+    assert calls == ["validate", "clean", "caption", "export", "pack"]
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    assert "process" in project.manifest.source["last_build_skipped_stages"]
+    assert project.manifest.source["last_process_bypassed"] is True
+
+
+def test_run_build_skips_processing_when_disabled(tmp_path, monkeypatch):
+    root = tmp_path / "project"
+    command_init(
+        Namespace(
+            path=str(root),
+            name="julia-set",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    )
+
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace(
+        "[processing]\nenabled = true",
+        "[processing]\nenabled = false",
+        1,
+    )
+    config_path.write_text(config, encoding="utf-8")
+
+    import lora_data_maker.cli as cli
+
+    calls = []
+
+    def fake_command(name):
+        def runner(args):
+            calls.append(name)
+            return 0
+        return runner
+
+    for stage in BUILD_STAGES:
+        monkeypatch.setattr(
+            cli,
+            f"command_{stage.replace('-', '_')}",
+            fake_command(stage),
+        )
+
+    summary = run_build(
+        path=root,
+        from_stage="validate",
+        to_stage="pack",
+    )
+
+    expected = [
+        "validate",
+        "clean",
+        "tag",
+        "clean-tags",
+        "caption",
+        "export",
+        "pack",
+    ]
+    assert summary.success is True
+    assert [item.name for item in summary.stages] == expected
+    assert calls == expected
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    assert "process" in project.manifest.source["last_build_skipped_stages"]

@@ -17,14 +17,9 @@ deduplicate
 quality filter
   ↓
 process / crop / resize
-  ↓
-tag
-  ↓
-tag filtering
-  ↓
-subject / trigger injection
-  ↓
-caption write
+  ├──→ tag → tag filtering → deterministic caption → trigger → .txt
+  │
+  └──→ local VLM → structured fields → trigger → .txt
   ↓
 export
   ↓
@@ -102,13 +97,15 @@ Tagger output is treated as visual metadata. General tags, character tags, confi
 
 ## Caption boundary
 
-Caption generation consumes tagged records after tag cleaning and writes deterministic UTF-8 `.txt` files under `work/captions/`, one file per image record. Caption text is built from normalized, deduplicated tags using the configured separator. The resolved trigger is derived from `subject` when `caption.trigger_from_subject = true`; otherwise the manifest trigger is used. The trigger is removed from its previous position before being prepended, making re-runs idempotent. Captioned records retain their caption path and caption metadata in the manifest.
+Caption generation branches by backend. With `caption.backend = "deterministic"`, the final caption is built from normalized, deduplicated tags on tagged records. With `caption.backend = "vlm"`, the local llama-cpp-python runtime reads processed records directly and generates a strict four-field response: pose, clothing, expression, and background with lighting. WD14 and JoyTag are completely bypassed in VLM mode. The parser strips field labels and validates the response shape and five-word-per-field limit. The resolved trigger is placed first, followed by the four ordered fields. VLM output is written directly after strict field validation; the deterministic `caption.max_tokens` budget is not applied to VLM captions. VLM inference or formatting failures mark the image failed instead of falling back to deterministic tags.
+
+Captions are written as UTF-8 `.txt` files under `work/captions/`, one file per image record. The resolved trigger is derived from `subject` when `caption.trigger_from_subject = true`; otherwise the manifest trigger is used. Trigger injection is idempotent. Caption backend/model/fallback metadata is retained in the manifest for audit and resume.
 
 ## Export boundary
 
 
 
-The export stage consumes `captioned` records and writes matched image + caption files into `output/<repeats>_<subject>/` by default. Each pair shares the same image-record basename, so a file such as `abc123.jpg` is paired with `abc123.txt`. The directory naming convention follows the legacy Kohya-style repeat/identifier layout; current sd-scripts also supports image directories with same-basename `.txt` captions and explicit repeat counts. citeturn825645search0turn825645search2 Export copies from `work/` and never rewrites `raw/` or the processed/caption source files.
+The export stage consumes `captioned` records and writes matched image + caption files into `output/<repeats>_<subject>/` by default. Each pair shares the same image-record basename, so a file such as `abc123.jpg` is paired with `abc123.txt`. The directory naming convention follows the legacy Kohya-style repeat/identifier layout; current sd-scripts also supports image directories with same-basename `.txt` captions and explicit repeat counts. See the [sd-scripts project](https://github.com/kohya-ss/sd-scripts) for downstream training details. Export copies from `work/` and never rewrites `raw/` or the processed/caption source files.
 
 
 
@@ -138,19 +135,24 @@ Scrapers implement a common interface and produce download records plus source m
 
 Google Images is its own backend. External downloaders such as gallery-dl may be integrated as optional backends for sources they support, but the Google backend must not depend on them.
 
+## Local WebUI and credential boundary
+
+The optional WebUI is intended for a single local user and defaults to loopback. It has no user authentication. Middleware validates the Host header and loopback peer and rejects browser requests that declare a cross-origin Origin or Fetch Metadata context. These checks reduce common browser-based cross-origin attacks; they do not turn the WebUI into a network-facing multi-user service. Keep it bound to localhost and do not expose it through a tunnel, reverse proxy, or port forwarding.
+
+API provider keys are persisted separately from dataset configuration in a per-user JSON file. They are plaintext protected by owner-only file permissions, not encrypted, and are loaded into the running WebUI process environment. Authenticated Google scraping may attach to an existing Chromium session via local CDP. The CDP endpoint is a privileged browser-control interface, so the profile should be dedicated to scraping and its debug port must stay on loopback. See the repository's [Security Policy](../SECURITY.md) for operational guidance and known limits of outbound URL checks.
+
 ## Non-goals
 
 The following are out of scope for v1:
 
 - PyTorch
 - Diffusers
-- Transformers
 - PEFT
 - Accelerate
 - Gradio UI
 - LoRA training
 - Stable Diffusion inference
-- local LLM captioning
+- networked captioning services
 - GPU-specific inference stacks
 
 ## Dependency tiers
@@ -167,6 +169,7 @@ The following are out of scope for v1:
 - ONNX Runtime and NumPy for taggers and the optional person-quality gate
 - gallery-dl for optional external download backends
 - pytest for development
+- llama-cpp-python for optional local VLM captioning
 
 Optional features must never make the basic CLI import fail. The `tagger` and `quality` extras provide NumPy and ONNX Runtime without adding them to the core dependency set.
 

@@ -37,11 +37,14 @@ timeout = 20
 retries = 3
 delay = 1.0
 max_scrolls = 30
+year = 0
+date_from = ""
+date_to = ""
 ~~~
 
 Built-in backends are google, duckduckgo, chromium, playwright-bing, playwright-google, and direct.
 
-The existing `chromium` backend uses Selenium, DuckDuckGo first, and Bing Images as its browser fallback. The Playwright backends use Termux-native Chromium through the `playwright-termux` CDP adapter.
+The existing `chromium` backend uses Selenium, DuckDuckGo first, and Bing Images as its browser fallback. The Playwright backends use Termux-native Chromium through the `playwright-termux` CDP adapter. Bing's optional `year` or `date_from` + `date_to` fields filter results by date; use `year = 0` and blank date strings for any date. Date filtering is only supported with `playwright-bing`.
 
 ## validation
 
@@ -84,6 +87,7 @@ When person_check is true, the quality gate runs YOLOX-Nano through ONNX Runtime
 
 ~~~toml
 [processing]
+enabled = true
 target_width = 512
 target_height = 512
 resize_mode = "cover"
@@ -92,11 +96,13 @@ face_crop = false
 face_padding = 1.75
 ~~~
 
+Set `enabled = false` to bypass resize/crop processing. The pipeline skips the process stage; VLM captioning, tagging, and export use the original files under `raw/`, with no resized copies or synthetic borders. Validation and clean/quality filtering still run. Keep `enabled = true` for the standard processed-image path.
+
 When face_crop is true, the CLI uses the built-in YuNet face detector. The detector model is cached under the configured project cache directory in cache/face/ and verified against its pinned SHA-256 checksum.
 
-cover fills the target and crops overflow.
-fit keeps the whole image and pads the remaining area.
-stretch resizes directly to the target dimensions.
+cover fills the target, preserves aspect ratio, and crops overflow.
+fit keeps the whole image and preserves aspect ratio without padding or synthetic border pixels; the output fits inside the target dimensions and may be smaller on one axis.
+stretch resizes directly to the exact target dimensions and can distort aspect ratio.
 
 ## dedup
 
@@ -158,15 +164,48 @@ Rules are normalized before matching. Underscores become spaces, whitespace is c
 
 ~~~toml
 [caption]
+backend = "deterministic"
 separator = ", "
 subject_position = "first"
 trigger_from_subject = true
+max_tokens = 77
+
+[caption.vlm]
+runtime = "llama_cpp"
+model_path = ""
+mmproj_path = ""
+chat_format = "mtmd"
+api_key_env = ""
+api_model = ""
+api_base_url = ""
+api_timeout = 120.0
+max_tokens = 64
+temperature = 0.1
+top_p = 0.95
+top_k = 40
+n_ctx = 4096
+n_threads = 4
+n_gpu_layers = 0
+seed = 42
 ~~~
 
-separator joins caption tags.
-subject_position currently supports first.
-When trigger_from_subject is true, the effective trigger comes from project.subject. Otherwise project.trigger is used.
+backend = "deterministic" keeps the existing tag-based captioner. Set runtime to "llama_cpp" for local GGUF inference. Set runtime to "gemini" for the Google Gemini REST API. Set runtime to "openai_compatible" for a vision-capable OpenAI-compatible Chat Completions endpoint.
 
+For API runtimes, api_key_env names the environment variable holding the API key. The secret itself is never stored in config.toml. The WebUI stores provider keys separately from dataset configuration in `~/.config/lora-data-maker/api-keys.json` (or `$XDG_CONFIG_HOME/lora-data-maker/api-keys.json` when `XDG_CONFIG_HOME` is set). Set `LORA_DATA_MAKER_API_KEY_FILE` to override the path. The credential file is plaintext protected by owner-only filesystem permissions (file `0600`; the app-created configuration directory is `0700`); it is not encrypted. An existing caller-supplied parent directory is not forcibly chmodded. Keys load automatically on WebUI startup and are shared across dataset projects, and are present in the running WebUI process environment. The WebUI's **clear** action removes that provider's saved key. See the repository's [Security Policy](../SECURITY.md) for the local-only threat model and authenticated Chromium/CDP warnings. api_model selects the model; Gemini accepts either the bare model ID or the provider's models/ prefix. api_base_url defaults to https://generativelanguage.googleapis.com/v1beta for Gemini and https://api.openai.com/v1 for OpenAI-compatible mode. The built-in Gemini example uses gemini-3.5-flash-lite. api_timeout controls the HTTP request timeout in seconds. Transient API responses (429, 500, 502, 503, and 504) are retried up to two times before the image is marked failed.
+
+The WebUI caches provider model discovery for ten minutes. The model selector shows known Gemini choices immediately while refreshing the provider's model list in the background.
+
+Local VLM runtimes use the structured four-field caption contract: pose, clothing, expression, background; pose includes a camera view term when visible; background includes lighting; hair color, eye color, face, age, and gender are excluded. Local parsing keeps this structure because local runtimes need an explicit output contract.
+
+API VLM runtimes use a separate thin contract. The API receives the image plus a built-in four-field caption prompt and returns exactly four fields: pose, clothing, expression, background. API requests do not expose local sampling/runtime settings such as temperature, top-p, top-k, seed, context size, or chat format. The API adapter sends only the image, the fixed prompt, and the selected API model. The backend parses the four fields, tolerates harmless formatting differences, and injects the resolved dataset trigger first.
+
+Install the local runtime with:
+
+~~~bash
+python -m pip install ".[caption-vlm]"
+~~~
+
+The API runtimes need no extra Python package beyond the project's existing requests dependency.
 ## export
 
 ~~~toml

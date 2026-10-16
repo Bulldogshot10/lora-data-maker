@@ -8,6 +8,8 @@ from typing import Any
 from PIL import Image, UnidentifiedImageError
 from PIL.Image import DecompressionBombError
 
+from ..security import MAX_IMAGE_PIXELS
+
 
 SUPPORTED_MIME_BY_FORMAT = {
     "JPEG": "image/jpeg",
@@ -97,6 +99,16 @@ def validate_image(
         with Image.open(image_path) as image:
             image_format = (image.format or "").upper() or None
             width, height = image.size
+            if width < 1 or height < 1 or width * height > MAX_IMAGE_PIXELS:
+                return ImageValidationResult(
+                    path=image_path,
+                    valid=False,
+                    width=width,
+                    height=height,
+                    file_size=file_size,
+                    format=image_format,
+                    reason=f"unsafe image dimensions: {width}x{height} exceeds {MAX_IMAGE_PIXELS} pixels",
+                )
             info = dict(image.info)
 
             exif = image.getexif()

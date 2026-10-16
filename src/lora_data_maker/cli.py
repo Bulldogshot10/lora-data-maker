@@ -7,7 +7,7 @@ from typing import Sequence
 
 from . import __version__
 from .build import BUILD_STAGES, run_build
-from .captions import CaptionConfig, caption_manifest
+from .captions import caption_config_from_dict, caption_manifest
 from .export import export_manifest, kohya_folder_name, safe_component
 from .config import load_config, write_default_config
 from .dataset import DatasetProject
@@ -29,6 +29,7 @@ from .processing import (
 from .processing.text import PPOCRTextDetector
 from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
 from .taggers import (
+    TAGGER_OFF,
     TAGGER_PRESETS,
     TaggerError,
     build_tagger,
@@ -100,6 +101,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="number of successfully downloaded images (default: config)",
     )
     scrape_parser.add_argument(
+        "--year",
+        type=int,
+        default=None,
+        help="filter Playwright Bing results to a calendar year, e.g. 2019",
+    )
+    scrape_parser.add_argument(
+        "--date-from",
+        default=None,
+        help="start date for Playwright Bing filter (YYYY-MM-DD; requires --date-to)",
+    )
+    scrape_parser.add_argument(
+        "--date-to",
+        default=None,
+        help="end date for Playwright Bing filter (YYYY-MM-DD; requires --date-from)",
+    )
+    scrape_parser.add_argument(
         "--path",
         default=".",
         help="project directory (default: current directory)",
@@ -151,7 +168,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     tag_parser.add_argument(
         "--preset",
-        choices=tuple(TAGGER_PRESETS),
+        choices=(TAGGER_OFF, *TAGGER_PRESETS),
         default=None,
         help="tagger preset (default: config, otherwise sweetspot)",
     )
@@ -584,6 +601,21 @@ def command_process(args: argparse.Namespace) -> int:
     processing_config = config.get("processing", {})
     if not isinstance(processing_config, dict):
         raise LoraDataMakerError("config section [processing] must be a table")
+    processing_enabled = processing_config.get("enabled", True)
+    if not isinstance(processing_enabled, bool):
+        raise LoraDataMakerError("config field processing.enabled must be a boolean")
+    if not processing_enabled:
+        project.manifest.source.update(
+            {
+                "last_process_processed": 0,
+                "last_process_failed": 0,
+                "last_process_skipped": len(project.manifest.images),
+                "last_process_bypassed": True,
+            }
+        )
+        project.save()
+        print("processing bypassed; raw images will be used")
+        return 0
 
     target_size = int(processing_config.get("target_size", 512))
     target_width = int(processing_config.get("target_width", target_size))
@@ -630,6 +662,7 @@ def command_process(args: argparse.Namespace) -> int:
             "last_process_skipped": skipped,
             "last_process_target": [target_width, target_height],
             "last_process_resize_mode": resize_mode,
+            "last_process_bypassed": False,
         }
     )
     project.save()
@@ -652,9 +685,19 @@ def command_tag(args: argparse.Namespace) -> int:
     if not isinstance(tagger_config, dict):
         raise LoraDataMakerError("config section [tagger] must be a table")
 
+    processing_config = config.get("processing", {})
+    if not isinstance(processing_config, dict):
+        raise LoraDataMakerError("config section [processing] must be a table")
+    processing_enabled = processing_config.get("enabled", True)
+    if not isinstance(processing_enabled, bool):
+        raise LoraDataMakerError("config field processing.enabled must be a boolean")
+
     selected_preset = getattr(args, "preset", None) or str(
         tagger_config.get("preset", "sweetspot")
     )
+    if selected_preset.strip().lower() == TAGGER_OFF or str(tagger_config.get("backend", "wd14")).strip().lower() == TAGGER_OFF:
+        print("tagging disabled")
+        return 0
     resolved_preset = resolve_tagger_preset(selected_preset)
 
     cache_root = (
@@ -674,6 +717,7 @@ def command_tag(args: argparse.Namespace) -> int:
         project.manifest,
         root=root,
         tagger=tagger,
+        use_processed_images=processing_enabled,
     )
 
     project.manifest.source.update(
@@ -703,6 +747,20 @@ def command_clean_tags(args: argparse.Namespace) -> int:
     config = load_config(root / "config.toml")
     paths = ProjectPaths.from_root(root, config.get("paths", {}))
     project = DatasetProject.open(paths)
+
+    tagger_config = config.get("tagger", {})
+    if not isinstance(tagger_config, dict):
+        raise LoraDataMakerError("config section [tagger] must be a table")
+    if str(tagger_config.get("preset", "")).strip().lower() == TAGGER_OFF or str(tagger_config.get("backend", "wd14")).strip().lower() == TAGGER_OFF:
+        print("tag cleaning skipped: tagger disabled")
+        return 0
+
+    caption_config = config.get("caption", {})
+    if isinstance(caption_config, dict) and str(
+        caption_config.get("backend", "deterministic")
+    ).strip().lower() == "vlm":
+        print("tag cleaning skipped: VLM caption backend is VLM-only")
+        return 0
 
     tag_rules = config.get("tag_rules", {})
     if not isinstance(tag_rules, dict):
@@ -751,32 +809,20 @@ def command_caption(args: argparse.Namespace) -> int:
     if not isinstance(caption_config, dict):
         raise LoraDataMakerError("config section [caption] must be a table")
 
-    separator = caption_config.get("separator", ", ")
-    subject_position = caption_config.get("subject_position", "first")
-    trigger_from_subject = caption_config.get("trigger_from_subject", True)
-
-    if not isinstance(separator, str):
-        raise LoraDataMakerError("config field caption.separator must be a string")
-    if not isinstance(subject_position, str):
-        raise LoraDataMakerError(
-            "config field caption.subject_position must be a string"
-        )
-    if not isinstance(trigger_from_subject, bool):
-        raise LoraDataMakerError(
-            "config field caption.trigger_from_subject must be a boolean"
-        )
-
-    settings = CaptionConfig(
-        separator=separator,
-        subject_position=subject_position,
-        trigger_from_subject=trigger_from_subject,
-    )
+    settings = caption_config_from_dict(caption_config, root=root)
+    processing_config = config.get("processing", {})
+    if not isinstance(processing_config, dict):
+        raise LoraDataMakerError("config section [processing] must be a table")
+    processing_enabled = processing_config.get("enabled", True)
+    if not isinstance(processing_enabled, bool):
+        raise LoraDataMakerError("config field processing.enabled must be a boolean")
 
     summary = caption_manifest(
         project.manifest,
         root=root,
         output_dir=paths.work / "captions",
         config=settings,
+        use_processed_images=processing_enabled,
     )
 
     project.manifest.source.update(
@@ -785,14 +831,17 @@ def command_caption(args: argparse.Namespace) -> int:
             "last_caption_captioned": summary.captioned,
             "last_caption_failed": summary.failed,
             "last_caption_skipped": summary.skipped,
-            "last_caption_separator": separator,
+            "last_caption_fallback": summary.fallback,
+            "last_caption_backend": settings.backend,
+            "last_caption_separator": settings.separator,
             "last_caption_subject": project.manifest.subject,
             "last_caption_trigger": (
                 project.manifest.subject
-                if trigger_from_subject
+                if settings.trigger_from_subject
                 else project.manifest.trigger
             ),
-            "last_caption_trigger_from_subject": trigger_from_subject,
+            "last_caption_trigger_from_subject": settings.trigger_from_subject,
+            "last_caption_max_tokens": settings.max_tokens,
         }
     )
     project.save()
@@ -800,11 +849,12 @@ def command_caption(args: argparse.Namespace) -> int:
     print(f"scanned: {summary.scanned}")
     print(f"captioned: {summary.captioned}")
     print(f"failed: {summary.failed}")
+    print(f"fallback: {summary.fallback}")
     print(f"skipped: {summary.skipped}")
+    print(f"backend: {settings.backend}")
     print(f"captions: {paths.work / 'captions'}")
 
-    return 0 if summary.captioned or summary.skipped else 1
-
+    return 0 if summary.failed == 0 and (summary.captioned or summary.skipped) else 1
 
 
 def command_export(args: argparse.Namespace) -> int:
@@ -812,6 +862,13 @@ def command_export(args: argparse.Namespace) -> int:
     config = load_config(root / "config.toml")
     paths = ProjectPaths.from_root(root, config.get("paths", {}))
     project = DatasetProject.open(paths)
+
+    processing_config = config.get("processing", {})
+    if not isinstance(processing_config, dict):
+        raise LoraDataMakerError("config section [processing] must be a table")
+    processing_enabled = processing_config.get("enabled", True)
+    if not isinstance(processing_enabled, bool):
+        raise LoraDataMakerError("config field processing.enabled must be a boolean")
 
     export_config = config.get("export", {})
     if not isinstance(export_config, dict):
@@ -839,6 +896,7 @@ def command_export(args: argparse.Namespace) -> int:
         output_dir=paths.output,
         repeats=repeats,
         folder_name=folder_name,
+        use_processed_images=processing_enabled,
     )
 
     project.manifest.source.update(
@@ -956,6 +1014,30 @@ def command_scrape(args: argparse.Namespace) -> int:
     delay = float(scraper_config.get("delay", 1.0))
     max_scrolls = int(scraper_config.get("max_scrolls", 30))
 
+    cli_year = getattr(args, "year", None)
+    cli_date_from = getattr(args, "date_from", None)
+    cli_date_to = getattr(args, "date_to", None)
+    if cli_year is not None and (cli_date_from is not None or cli_date_to is not None):
+        raise LoraDataMakerError("use either --year or --date-from/--date-to, not both")
+
+    if cli_year is not None:
+        if cli_year < 1970 or cli_year > 9998:
+            raise LoraDataMakerError("--year must be between 1970 and 9998")
+        date_from, date_to = f"{cli_year:04d}-01-01", f"{cli_year:04d}-12-31"
+    elif cli_date_from is not None or cli_date_to is not None:
+        date_from, date_to = cli_date_from, cli_date_to
+    else:
+        configured_year = scraper_config.get("year", 0)
+        if isinstance(configured_year, bool) or not isinstance(configured_year, int):
+            raise LoraDataMakerError("scraper.year must be an integer")
+        if configured_year:
+            if configured_year < 1970 or configured_year > 9998:
+                raise LoraDataMakerError("scraper.year must be between 1970 and 9998")
+            date_from, date_to = f"{configured_year:04d}-01-01", f"{configured_year:04d}-12-31"
+        else:
+            date_from = scraper_config.get("date_from") or None
+            date_to = scraper_config.get("date_to") or None
+
     manager = ScraperManager(
         backend=args.backend,
         output_dir=paths.raw,
@@ -964,6 +1046,8 @@ def command_scrape(args: argparse.Namespace) -> int:
         retries=retries,
         delay=delay,
         max_scrolls=max_scrolls,
+        date_from=date_from,
+        date_to=date_to,
     )
     known_urls = {
         record.source_url
@@ -1002,12 +1086,16 @@ def command_scrape(args: argparse.Namespace) -> int:
             "last_scrape_downloaded": len(downloads),
             "last_scrape_added_records": added_records,
             "last_scrape_failed": len(failures),
+            "last_scrape_date_from": date_from,
+            "last_scrape_date_to": date_to,
         }
     )
     project.save()
 
     print(f"scrape backend: {args.backend}")
     print(f"query: {query}")
+    if date_from is not None and date_to is not None:
+        print(f"date range: {date_from} .. {date_to}")
     print(f"requested: {count}")
     print(f"downloaded: {len(downloads)}")
     print(f"failed: {len(failures)}")

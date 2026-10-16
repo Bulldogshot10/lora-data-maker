@@ -1,6 +1,14 @@
 from lora_data_maker.scrapers.archive import DownloadArchive
 from lora_data_maker.scrapers.google import GoogleImagesScraper
 
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def mock_downloader_url_validation(monkeypatch):
+    # Downloader tests use fake HTTP sessions and reserved example hosts.
+    monkeypatch.setattr("lora_data_maker.scrapers.downloader.assert_safe_outbound_url", lambda value, **kwargs: value)
+
 
 def test_download_archive_deduplicates(tmp_path):
     archive = DownloadArchive(tmp_path / "downloads.txt")
@@ -55,6 +63,7 @@ class _FakeResponse:
         self.text = text
         self.content = content
         self.headers = {"Content-Type": content_type}
+        self.status_code = 200
         self.closed = False
 
     def raise_for_status(self):
@@ -528,6 +537,11 @@ def test_chromium_preserves_duckduckgo_candidate_order(monkeypatch):
     )
 
     scraper = chromium_module.ChromiumImagesScraper(delay=0)
+    monkeypatch.setattr(
+        scraper,
+        "_start_driver",
+        lambda: (_ for _ in ()).throw(AssertionError("Bing unavailable in this test")),
+    )
     results = list(scraper.search("julia", limit=2))
 
     assert [item.image_url for item in results] == [
@@ -590,7 +604,7 @@ def test_chromium_bing_page_timeout_retries(monkeypatch):
     assert driver.get_calls == 2
     assert driver.stop_calls == 2
 
-def test_chromium_continues_to_bing_when_duckduckgo_has_too_few_candidates(monkeypatch):
+def test_chromium_prefers_bing_then_fills_from_duckduckgo(monkeypatch):
     import sys
     import types
 
@@ -648,12 +662,12 @@ def test_chromium_continues_to_bing_when_duckduckgo_has_too_few_candidates(monke
     results = list(scraper.search("julia", limit=2))
 
     assert [item.image_url for item in results] == [
-        "https://cdn.example.com/ddg.jpg",
         "https://cdn.example.com/bing.jpg",
+        "https://cdn.example.com/ddg.jpg",
     ]
     assert [item.metadata["provider"] for item in results] == [
-        "duckduckgo",
         "bing",
+        "duckduckgo",
     ]
     assert driver.quit_called is True
 
@@ -959,6 +973,90 @@ def test_playwright_bing_extracts_original_urls():
 
 
 
+def test_playwright_bing_ignores_iusc_anchors_outside_results_grid():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = """
+    <a class="iusc" m='{"murl":"https://cdn.example.com/unrelated.jpg"}'></a>
+    <ul class="dgControl_list">
+      <li><a class="iusc" m='{"murl":"https://cdn.example.com/query-result.jpg"}'></a></li>
+    </ul>
+    """
+
+    assert PlaywrightImagesScraper._extract_bing_urls(body) == [
+        "https://cdn.example.com/query-result.jpg"
+    ]
+
+
+def test_playwright_bing_relevance_fallback_when_grid_class_changes():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    # Some Bing layouts omit the known dgControl_list wrapper. The stable
+    # iusc metadata still contains title/description and can be relevance-checked.
+    body = """
+    <div class="results-experiment">
+      <a class="iusc" m='{"murl":"https://cdn.example.com/julia.jpg","t":"Julia Patty portrait"}'></a>
+      <a class="iusc" m='{"murl":"https://cdn.example.com/zelda.jpg","t":"Zelda gameplay screenshot"}'></a>
+    </div>
+    """
+
+    results = PlaywrightImagesScraper._extract_bing_results(body, "Julia Patty")
+
+    assert [item["image_url"] for item in results] == [
+        "https://cdn.example.com/julia.jpg"
+    ]
+
+
+def test_playwright_bing_relevance_filter_rejects_unrelated_cards():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = """
+    <a class="iusc" m='{"murl":"https://cdn.example.com/outside.jpg"}'></a>
+    <ul class="dgControl_list">
+      <li>
+        <a class="iusc" m='{"murl":"https://cdn.example.com/zelda.jpg","desc":"game"}'></a>
+        <div class="infnmpt"><a>Zelda character gameplay screenshot</a></div>
+      </li>
+      <li>
+        <a class="iusc" m='{"murl":"https://cdn.example.com/julia.jpg","desc":"portrait photo"}'></a>
+        <div class="infnmpt"><a>Julia Patty portrait photo</a></div>
+      </li>
+    </ul>
+    """
+
+    results = PlaywrightImagesScraper._extract_bing_results(
+        body,
+        "Julia Patty portrait",
+    )
+
+    assert [item["image_url"] for item in results] == [
+        "https://cdn.example.com/julia.jpg"
+    ]
+    assert results[0]["matched_terms"] == 3
+    assert results[0]["query_terms_total"] == 3
+
+
+def test_playwright_bing_relevance_filter_uses_title_or_description():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = """
+    <ul class="dgControl_list">
+      <li>
+        <a class="iusc" m='{"murl":"https://cdn.example.com/one.jpg","desc":"julia patty portrait photo"}'></a>
+      </li>
+      <li>
+        <a class="iusc" m='{"murl":"https://cdn.example.com/two.jpg","desc":"zelda video game"}'></a>
+      </li>
+    </ul>
+    """
+
+    results = PlaywrightImagesScraper._extract_bing_results(body, "Julia Patty")
+
+    assert [item["image_url"] for item in results] == [
+        "https://cdn.example.com/one.jpg"
+    ]
+
+
 def test_playwright_bing_parser_handles_html_entities_and_quote_styles():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
@@ -1019,6 +1117,8 @@ def test_playwright_manager_passes_max_scrolls(monkeypatch, tmp_path):
         "retries": 2,
         "delay": 0.75,
         "max_scrolls": 11,
+        "date_from": None,
+        "date_to": None,
     }
 
 
@@ -1065,13 +1165,18 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
                 )
                 return {"loaderId": "loader-1"}
             if method == "Runtime.evaluate":
+                assert "document.querySelectorAll('a.iusc').length" in params["expression"]
                 self.evaluate_calls += 1
-                href = (
-                    "about:blank"
-                    if self.evaluate_calls == 1
-                    else "https://www.bing.com/images/search?q=julia"
-                )
-                return {"result": {"value": ["complete", href]}}
+                if self.evaluate_calls == 1:
+                    href = "about:blank"
+                    result_count = 0
+                elif self.evaluate_calls == 2:
+                    href = "https://www.bing.com/images/search?q=wrong-query"
+                    result_count = 1
+                else:
+                    href = "https://www.bing.com/images/search?q=julia"
+                    result_count = 1
+                return {"result": {"value": ["complete", href, result_count]}}
             raise AssertionError(f"unexpected CDP method: {method}")
 
     class FakePage:
@@ -1082,7 +1187,10 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
 
         def content(self):
             return (
-                '<a class="iusc" m=\'{"murl":"https://cdn.example.com/a.jpg"}\'></a>'
+                '<ul class="dgControl_list"><li><a class="iusc" '
+                'm=\'{"murl":"https://cdn.example.com/a.jpg","t":"Julia portrait"}\'></a>'
+                '<div class="infnmpt"><a>Julia portrait</a></div>'
+                '</li></ul>'
             )
 
         def evaluate(self, _script):
@@ -1141,6 +1249,92 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
     assert browser.closed is True
 
 
+def test_playwright_keeps_collected_results_if_scroll_throws(monkeypatch):
+    import sys
+    import types
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakeSession:
+        def send(self, method, params=None, timeout=None):
+            if method == "Page.navigate":
+                return {"loaderId": "loader-1"}
+            if method == "Runtime.evaluate":
+                return {
+                    "result": {
+                        "value": [
+                            "complete",
+                            "https://www.bing.com/images/search?q=julia",
+                            1,
+                        ]
+                    }
+                }
+            raise AssertionError(f"unexpected CDP method: {method}")
+
+    class FakePage:
+        def __init__(self):
+            self.session = FakeSession()
+            self.closed = False
+
+        def content(self):
+            return (
+                '<ul class="dgControl_list"><li><a class="iusc" '
+                'm=\'{"murl":"https://cdn.example.com/first.jpg","t":"Julia portrait"}\'></a>'
+                '<div class="infnmpt"><a>Julia portrait</a></div>'
+                '</li></ul>'
+            )
+
+        def evaluate(self, _script):
+            raise RuntimeError("Uncaught")
+
+        def wait_for_timeout(self, _ms):
+            pass
+
+        def close(self):
+            self.closed = True
+
+    page = FakePage()
+
+    class FakeBrowser:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            pass
+
+        def new_page(self):
+            return page
+
+    class FakeChromium:
+        def __init__(self, *, headless):
+            assert headless is True
+
+        def __enter__(self):
+            return FakeBrowser()
+
+        def __exit__(self, *_args):
+            pass
+
+    monkeypatch.setitem(
+        sys.modules,
+        "playwright_termux",
+        types.SimpleNamespace(Chromium=FakeChromium),
+    )
+
+    scraper = PlaywrightImagesScraper(
+        provider="bing",
+        retries=0,
+        delay=0,
+        max_scrolls=3,
+    )
+    results = list(scraper.search("julia", limit=2))
+
+    assert [result.image_url for result in results] == [
+        "https://cdn.example.com/first.jpg"
+    ]
+    assert page.closed is True
+
+
 def test_playwright_scraper_validates_provider():
     import pytest
 
@@ -1175,3 +1369,398 @@ def test_downloader_honors_pre_cancel(tmp_path):
         )
 
     assert not (tmp_path / "000001.jpg").exists()
+
+
+def test_playwright_bing_builds_custom_date_range_url():
+    from urllib.parse import parse_qs, urlparse
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    scraper = PlaywrightImagesScraper(
+        provider="bing",
+        date_from="2019-01-01",
+        date_to="2019-12-31",
+    )
+    parsed = urlparse(scraper._build_url("julia russian woman"))
+
+    assert parsed.path == "/images/search"
+    params = parse_qs(parsed.query)
+    assert params["q"] == ["julia russian woman"]
+    assert params["filters"] == ['ex1:"ez5_17897_18262"']
+    assert params["adlt"] == ["off"]
+
+
+def test_playwright_bing_leaves_date_filter_off_by_default():
+    from urllib.parse import parse_qs, urlparse
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    scraper = PlaywrightImagesScraper(provider="bing")
+    params = parse_qs(urlparse(scraper._build_url("julia")).query)
+
+    assert "filters" not in params
+
+
+def test_playwright_bing_validates_custom_date_range():
+    import pytest
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    with pytest.raises(ValueError, match="provided together"):
+        PlaywrightImagesScraper(provider="bing", date_from="2019-01-01")
+    with pytest.raises(ValueError, match="on or before"):
+        PlaywrightImagesScraper(
+            provider="bing",
+            date_from="2020-01-01",
+            date_to="2019-12-31",
+        )
+    with pytest.raises(ValueError, match="only supported"):
+        PlaywrightImagesScraper(
+            provider="google",
+            date_from="2019-01-01",
+            date_to="2019-12-31",
+        )
+
+
+def test_existing_chromium_reads_google_profile_environment(monkeypatch, tmp_path):
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+    monkeypatch.setenv("CHROME_USER_DATA_DIR", str(profile))
+    monkeypatch.delenv("CHROME_DEBUG_PORT", raising=False)
+
+    browser = ExistingChromium.from_environment(timeout=20)
+
+    assert browser.user_data_dir == profile.resolve()
+    assert browser.port == 9222
+    assert browser.timeout == 5.0
+
+
+def test_existing_chromium_discovers_local_cdp_endpoint(monkeypatch, tmp_path):
+    from lora_data_maker.scrapers import existing_chromium as module
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def read(self):
+            return b'{"webSocketDebuggerUrl":"ws://127.0.0.1:9222/devtools/browser/test"}'
+
+    def fake_urlopen(url, timeout):
+        assert url == "http://127.0.0.1:9222/json/version"
+        assert 0 < timeout <= 5.0
+        return FakeResponse()
+
+    monkeypatch.setattr(module, "urlopen", fake_urlopen)
+
+    browser = ExistingChromium(
+        user_data_dir=profile,
+        port=9222,
+        timeout=20,
+    )
+    assert (
+        browser._discover_websocket_url()
+        == "ws://127.0.0.1:9222/devtools/browser/test"
+    )
+
+
+def test_existing_chromium_rejects_remote_websocket_url(monkeypatch, tmp_path):
+    import pytest
+
+    from lora_data_maker.scrapers import existing_chromium as module
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return None
+
+        def read(self):
+            return b'{"webSocketDebuggerUrl":"wss://attacker.example:9222/devtools/browser/test"}'
+
+    monkeypatch.setattr(module, "urlopen", lambda url, timeout: FakeResponse())
+    browser = ExistingChromium(user_data_dir=profile, port=9222, timeout=3)
+
+    with pytest.raises(module.ScraperError, match="non-local"):
+        browser._discover_websocket_url()
+
+
+def test_existing_chromium_rejects_non_local_cdp_host(tmp_path):
+    import pytest
+
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    with pytest.raises(ValueError, match="CDP host must be local"):
+        ExistingChromium(
+            user_data_dir=tmp_path,
+            host="192.168.1.10",
+        )
+
+
+def test_existing_chromium_rejects_invalid_debug_port(monkeypatch, tmp_path):
+    import pytest
+
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+    monkeypatch.setenv("CHROME_USER_DATA_DIR", str(profile))
+    monkeypatch.setenv("CHROME_DEBUG_PORT", "not-a-port")
+
+    with pytest.raises(ValueError, match="CHROME_DEBUG_PORT"):
+        ExistingChromium.from_environment(timeout=20)
+
+
+def test_playwright_google_uses_existing_profile_when_configured(monkeypatch, tmp_path):
+    from lora_data_maker.scrapers import playwright as playwright_module
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+    monkeypatch.setenv("CHROME_USER_DATA_DIR", str(profile))
+
+    scraper = playwright_module.PlaywrightImagesScraper(
+        provider="google",
+        delay=0,
+        retries=0,
+        max_scrolls=1,
+    )
+
+    browser = scraper._create_browser()
+
+    assert isinstance(browser, ExistingChromium)
+    assert browser.user_data_dir == profile.resolve()
+    browser.close()
+
+
+def test_scraper_manager_forwards_bing_date_range(tmp_path):
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    manager = ScraperManager(
+        backend="playwright-bing",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        date_from="2019-01-01",
+        date_to="2019-12-31",
+    )
+
+    assert manager.scraper.date_from == "2019-01-01"
+    assert manager.scraper.date_to == "2019-12-31"
+
+
+def test_scraper_manager_rejects_date_filter_for_other_backends(tmp_path):
+    import pytest
+
+    from lora_data_maker.scrapers.base import ScraperError
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    with pytest.raises(ScraperError, match="playwright-bing"):
+        ScraperManager(
+            backend="duckduckgo",
+            output_dir=tmp_path / "raw",
+            cache_dir=tmp_path / "cache",
+            date_from="2019-01-01",
+            date_to="2019-12-31",
+        )
+
+
+def test_chromium_prefers_bing_and_preserves_duckduckgo_metadata(monkeypatch):
+    import json
+
+    from lora_data_maker.scrapers import chromium as chromium_module
+    from lora_data_maker.scrapers.base import ImageResult
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
+
+    class FakeDriver:
+        closed = False
+
+        def execute_script(self, script):
+            if "querySelectorAll('a.iusc')" in script:
+                return [
+                    json.dumps(
+                        {"murl": "https://cdn.example.com/bing.jpg"}
+                    )
+                ]
+            return None
+
+        def quit(self):
+            self.closed = True
+
+    calls = {}
+    driver = FakeDriver()
+
+    class FakeDuckDuckGo:
+        def __init__(self, **kwargs):
+            pass
+
+        def search(self, query, *, limit):
+            calls["query"] = query
+            calls["limit"] = limit
+            yield ImageResult(
+                image_url="https://cdn.example.com/ddg.jpg",
+                query=query,
+                page_url="https://example.com/ddg-result",
+                metadata={
+                    "title": "Julia Patty portrait",
+                    "source": "example.com",
+                    "width": 640,
+                },
+            )
+
+    scraper = ChromiumImagesScraper(delay=0, max_scrolls=1)
+    monkeypatch.setattr(scraper, "_start_driver", lambda: driver)
+    monkeypatch.setattr(scraper, "_load_page", lambda _driver, _url: True)
+    monkeypatch.setattr(
+        chromium_module,
+        "DuckDuckGoImagesScraper",
+        FakeDuckDuckGo,
+    )
+    monkeypatch.setattr(chromium_module.time, "sleep", lambda _seconds: None)
+
+    results = list(scraper.search("Julia Patty", limit=2))
+
+    assert [result.image_url for result in results] == [
+        "https://cdn.example.com/bing.jpg",
+        "https://cdn.example.com/ddg.jpg",
+    ]
+    assert results[0].metadata == {"provider": "bing"}
+    assert results[1].metadata == {
+        "title": "Julia Patty portrait",
+        "source": "example.com",
+        "width": 640,
+        "provider": "duckduckgo",
+    }
+    assert results[1].page_url == "https://example.com/ddg-result"
+    assert calls == {"query": "Julia Patty", "limit": 1}
+    assert driver.closed is True
+
+
+def test_chromium_uses_duckduckgo_when_bing_browser_is_unavailable(monkeypatch):
+    from lora_data_maker.scrapers import chromium as chromium_module
+    from lora_data_maker.scrapers.base import ImageResult, ScraperError
+    from lora_data_maker.scrapers.chromium import ChromiumImagesScraper
+
+    class FakeDuckDuckGo:
+        SITE_URL = "https://duckduckgo.com/"
+
+        def __init__(self, **kwargs):
+            pass
+
+        def search(self, query, *, limit):
+            yield ImageResult(
+                image_url="https://cdn.example.com/ddg.jpg",
+                query=query,
+                metadata={"title": "Julia Patty portrait"},
+            )
+
+    scraper = ChromiumImagesScraper(delay=0)
+    monkeypatch.setattr(
+        scraper,
+        "_start_driver",
+        lambda: (_ for _ in ()).throw(ScraperError("chromium unavailable")),
+    )
+    monkeypatch.setattr(
+        chromium_module,
+        "DuckDuckGoImagesScraper",
+        FakeDuckDuckGo,
+    )
+
+    results = list(scraper.search("Julia Patty", limit=1))
+
+    assert len(results) == 1
+    assert results[0].image_url == "https://cdn.example.com/ddg.jpg"
+    assert results[0].metadata == {
+        "title": "Julia Patty portrait",
+        "provider": "duckduckgo",
+    }
+
+
+def test_playwright_bing_ready_page_without_result_anchors_is_not_navigation_timeout():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakeSession:
+        def send(self, method, params=None, timeout=None):
+            if method == "Page.navigate":
+                return {"loaderId": "loader-1"}
+            if method == "Runtime.evaluate":
+                assert "document.querySelectorAll('a.iusc').length" in params["expression"]
+                return {
+                    "result": {
+                        "value": [
+                            "complete",
+                            "https://www.bing.com/images/search?q=julia",
+                            0,
+                        ]
+                    }
+                }
+            raise AssertionError(f"unexpected CDP method: {method}")
+
+    class FakePage:
+        def __init__(self):
+            self.session = FakeSession()
+            self._url = "about:blank"
+
+    scraper = PlaywrightImagesScraper(
+        provider="bing",
+        timeout=1,
+        retries=0,
+        delay=0,
+    )
+    page = FakePage()
+
+    scraper._goto(page, scraper._build_url("julia"))
+
+    assert page._url == "https://www.bing.com/images/search?q=julia"
+
+
+def test_playwright_bing_readiness_reports_verification_page():
+    import pytest
+
+    from lora_data_maker.scrapers.base import ScraperError
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakeSession:
+        def send(self, method, params=None, timeout=None):
+            if method == "Page.navigate":
+                return {"loaderId": "loader-1"}
+            if method == "Runtime.evaluate":
+                return {
+                    "result": {
+                        "value": [
+                            "complete",
+                            "https://www.bing.com/images/search?q=julia",
+                            0,
+                            "Verify you are human",
+                            "Please verify you are human before continuing.",
+                        ]
+                    }
+                }
+            raise AssertionError(f"unexpected CDP method: {method}")
+
+    class FakePage:
+        def __init__(self):
+            self.session = FakeSession()
+            self._url = "about:blank"
+
+    scraper = PlaywrightImagesScraper(
+        provider="bing",
+        timeout=1,
+        retries=0,
+        delay=0,
+    )
+
+    with pytest.raises(ScraperError, match="verification/block page"):
+        scraper._goto(FakePage(), scraper._build_url("julia"))

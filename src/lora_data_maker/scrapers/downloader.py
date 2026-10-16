@@ -7,13 +7,14 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 import urllib3.util.connection as urllib3_connection
 
 from .archive import DownloadArchive
 from .base import ScraperCancelledError, ScraperError
+from ..security import assert_safe_outbound_url
 
 
 def _is_termux_environment() -> bool:
@@ -67,6 +68,7 @@ class ImageDownloader:
         delay: float = 1.0,
         user_agent: str,
         session: requests.Session | None = None,
+        max_bytes: int = 50 * 1024 * 1024,
     ) -> None:
         if timeout <= 0:
             raise ValueError("timeout must be greater than zero")
@@ -74,11 +76,15 @@ class ImageDownloader:
             raise ValueError("retries cannot be negative")
         if delay < 0:
             raise ValueError("delay cannot be negative")
+        if max_bytes < 1:
+            raise ValueError("max_bytes must be greater than zero")
 
         self.timeout = timeout
         self.retries = retries
         self.delay = delay
+        self.max_bytes = int(max_bytes)
         self.session = session or requests.Session()
+        self.session.trust_env = False
         self.session.headers.update({"User-Agent": user_agent})
         _configure_termux_network()
 
@@ -110,13 +116,49 @@ class ImageDownloader:
                 else:
                     request_timeout = self.timeout
 
-                response = self.session.get(
-                    url,
-                    timeout=request_timeout,
-                    allow_redirects=True,
-                    stream=True,
-                )
+                request_url = url
+                for redirect_count in range(6):
+                    try:
+                        safe_url = assert_safe_outbound_url(
+                            request_url,
+                            allow_loopback=False,
+                        )
+                    except ValueError as exc:
+                        raise ScraperError(f"unsafe image URL: {exc}") from exc
+
+                    response = self.session.get(
+                        safe_url,
+                        timeout=request_timeout,
+                        allow_redirects=False,
+                        stream=True,
+                    )
+                    if response.status_code in {301, 302, 303, 307, 308}:
+                        location = response.headers.get("Location", "").strip()
+                        response.close()
+                        response = None
+                        if not location:
+                            raise ScraperError("image redirect did not include a Location header")
+                        if redirect_count >= 5:
+                            raise ScraperError("image URL exceeded the redirect limit")
+                        request_url = urljoin(request_url, location)
+                        continue
+                    if 300 <= response.status_code < 400:
+                        raise ScraperError("unsupported image redirect response")
+                    break
+                else:
+                    raise ScraperError("image URL exceeded the redirect limit")
+
                 response.raise_for_status()
+                raw_content_length = response.headers.get("Content-Length", "").strip()
+                if raw_content_length:
+                    try:
+                        declared_size = int(raw_content_length)
+                    except ValueError as exc:
+                        raise ScraperError("image response has an invalid Content-Length") from exc
+                    if declared_size < 0 or declared_size > self.max_bytes:
+                        raise ScraperError(
+                            f"image exceeds the {self.max_bytes}-byte download limit"
+                        )
 
                 content_type = self._normalize_content_type(
                     response.headers.get("Content-Type")
@@ -142,9 +184,13 @@ class ImageDownloader:
                             raise ScraperCancelledError("scrape cancelled")
                         if not chunk:
                             continue
+                        total += len(chunk)
+                        if total > self.max_bytes:
+                            raise ScraperError(
+                                f"image exceeds the {self.max_bytes}-byte download limit"
+                            )
                         handle.write(chunk)
                         digest.update(chunk)
-                        total += len(chunk)
 
                 temp_path.replace(output_path)
 

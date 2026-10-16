@@ -32,6 +32,8 @@ class ScraperManager:
         delay: float = 1.0,
         user_agent: str | None = None,
         max_scrolls: int = 30,
+        date_from: str | None = None,
+        date_to: str | None = None,
     ) -> None:
         self.backend = backend
         self.output_dir = Path(output_dir).expanduser().resolve()
@@ -40,6 +42,9 @@ class ScraperManager:
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
         effective_user_agent = user_agent or DEFAULT_USER_AGENT
+
+        if (date_from or date_to) and backend != "playwright-bing":
+            raise ScraperError("date filtering is only supported with the playwright-bing backend")
 
         if backend == "google":
             self.scraper: Scraper = GoogleImagesScraper(
@@ -69,6 +74,8 @@ class ScraperManager:
                 retries=retries,
                 delay=delay,
                 max_scrolls=max_scrolls,
+                date_from=date_from,
+                date_to=date_to,
             )
         elif backend == "playwright-google":
             self.scraper = PlaywrightImagesScraper(

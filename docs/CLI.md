@@ -39,10 +39,10 @@ lora-data-maker info [path]
 Download images through a built-in backend.
 
 ~~~bash
-lora-data-maker scrape {google,duckduckgo,chromium,playwright-bing,playwright-google,direct} [query] [--count COUNT] [--path PATH]
+lora-data-maker scrape {google,duckduckgo,chromium,playwright-bing,playwright-google,direct} [query] [--count COUNT] [--year YEAR | --date-from YYYY-MM-DD --date-to YYYY-MM-DD] [--path PATH]
 ~~~
 
-Google uses query text with the legacy HTTP parser. DuckDuckGo uses query text and its image JSON endpoint. Chromium mode uses DuckDuckGo Images first, then local headless Chromium for Bing Images. The Playwright backends use the Termux-native Chromium CDP adapter directly for Bing or Google Images. Direct uses a text file containing source URLs.
+Google uses query text with the legacy HTTP parser. DuckDuckGo uses query text and its image JSON endpoint. Chromium mode uses DuckDuckGo Images first, then local headless Chromium for Bing Images. The Playwright backends use the Termux-native Chromium CDP adapter directly for Bing or Google Images. Direct uses a text file containing source URLs. `--year` and `--date-from/--date-to` apply only to `playwright-bing`; omit both to search any date.
 
 Scrape is add-only. Known manifest source URLs and archived URLs are skipped.
 
@@ -86,7 +86,11 @@ Create standardized training images.
 lora-data-maker process [--path PATH]
 ~~~
 
-Output goes under work/processed/. Supported resize modes are cover, fit, and stretch.
+Output goes under work/processed/. Resize modes: `cover` fills the target and crops overflow; `fit` preserves the full image with no padding (so output may be smaller than the target on one axis); `stretch` uses the exact target dimensions and may distort the aspect ratio.
+
+
+
+Set `[processing].enabled = false` in `config.toml` to skip resizing/cropping entirely. Captioning, tagging, and export then use the original images in `raw/`; the `process` command exits successfully without writing `work/processed/`.
 
 ## tag
 
@@ -118,13 +122,13 @@ The subject is inserted exactly once at the front.
 
 ## caption
 
-Write deterministic UTF-8 caption files.
+Write caption files from cleaned image records.
 
 ~~~bash
 lora-data-maker caption [--path PATH]
 ~~~
 
-Caption files are stored under work/captions/.
+The default caption.backend = "deterministic" builds captions from cleaned tags. With caption.backend = "vlm", the stage reads each processed image directly and sends it to the local llama-cpp-python VLM runtime. The VLM returns four short fields (pose, clothing, expression, background), which become the ordered caption body after the canonical trigger. WD14 and JoyTag are skipped completely. The four validated VLM fields are written directly after the canonical trigger; caption.max_tokens is not applied in VLM mode. VLM inference or formatting errors are recorded as failed images and never fall back to booru tags.
 
 ## build
 

@@ -71,7 +71,26 @@ Test Google:
 lora-data-maker scrape playwright-google "julia russian woman" --count 10
 ~~~
 
-Google verification/consent pages are treated as a source failure. The scraper does not attempt to bypass them.
+By default the Google backend starts a temporary browser session. To search with a Google account already signed into Chromium, start Chromium yourself with remote debugging, then run the WebUI or CLI with `CHROME_USER_DATA_DIR` set to the same profile directory.
+
+**Security:** CDP is a privileged browser-control endpoint. Use a dedicated Chromium profile for scraping, keep `--remote-debugging-address=127.0.0.1`, and never expose port 9222 on a LAN, through a tunnel, or via a reverse proxy. Treat the profile directory as sensitive because it contains login cookies and session state. The WebUI itself has no user login; leave it on localhost. See the repository's [Security Policy](../SECURITY.md).
+
+~~~bash
+# Open the Termux:X11 app, then start the X11 server/browser:
+termux-x11 :1 &
+export DISPLAY=:1
+export CHROME_USER_DATA_DIR="$HOME/.local/share/lora-data-maker/google-profile"
+chromium-browser --user-data-dir="$CHROME_USER_DATA_DIR" --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1
+~~~
+
+Sign into Google in that Chromium window. In a second Termux session, set the same profile path and start the WebUI:
+
+~~~bash
+export CHROME_USER_DATA_DIR="$HOME/.local/share/lora-data-maker/google-profile"
+./mk.sh
+~~~
+
+Select `playwright-google` in the WebUI. The backend attaches to the local CDP session rather than launching a fresh anonymous browser. Check that `curl -s http://127.0.0.1:9222/json/version` returns JSON when troubleshooting. Google verification/consent pages can still block scraping; the authenticated session only reuses the profile you opened.
 
 ## Quality/text-filter runtime
 

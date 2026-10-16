@@ -135,6 +135,40 @@ def run_build(
         skip=skip,
     )
 
+    processing_config = config.get("processing", {})
+    if not isinstance(processing_config, dict):
+        raise ValueError("config section [processing] must be a table")
+    processing_enabled = processing_config.get("enabled", True)
+    if not isinstance(processing_enabled, bool):
+        raise ValueError("config field processing.enabled must be a boolean")
+    if not processing_enabled:
+        selected = tuple(stage for stage in selected if stage != "process")
+
+    caption_config = config.get("caption", {})
+    if not isinstance(caption_config, dict):
+        raise ValueError("config section [caption] must be a table")
+    caption_backend = str(
+        caption_config.get("backend", "deterministic")
+    ).strip().lower()
+    if caption_backend not in {"deterministic", "vlm"}:
+        raise ValueError(
+            "caption.backend must be 'deterministic' or 'vlm'"
+        )
+
+    tagger_config = config.get("tagger", {})
+    if not isinstance(tagger_config, dict):
+        raise ValueError("config section [tagger] must be a table")
+    tagger_disabled = (
+        str(tagger_config.get("preset", "sweetspot")).strip().lower() == "off"
+        or str(tagger_config.get("backend", "wd14")).strip().lower() == "off"
+    )
+
+    if caption_backend == "vlm" or tagger_disabled:
+        selected = tuple(
+            stage for stage in selected
+            if stage not in {"tag", "clean-tags"}
+        )
+
     commands = {
         "scrape": command_scrape,
         "validate": command_validate,
@@ -177,6 +211,15 @@ def run_build(
             ],
         }
     )
+    if not processing_enabled:
+        project.manifest.source.update(
+            {
+                "last_process_processed": 0,
+                "last_process_failed": 0,
+                "last_process_skipped": len(project.manifest.images),
+                "last_process_bypassed": True,
+            }
+        )
     project.save()
 
     for index, stage in enumerate(selected, start=1):

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Literal
 from PIL import Image, ImageOps
 
 from ..paths import manifest_path
+from ..security import MAX_IMAGE_PIXELS
 from .faces import FaceDetector, largest_face, square_crop_around_face
 
 if TYPE_CHECKING:
@@ -71,6 +72,15 @@ def process_image(
 
     with Image.open(source) as opened:
         source_size = opened.size
+        if (
+            source_size[0] < 1
+            or source_size[1] < 1
+            or source_size[0] * source_size[1] > MAX_IMAGE_PIXELS
+        ):
+            raise ValueError(
+                f"unsafe image dimensions {source_size[0]}x{source_size[1]}; "
+                f"maximum is {MAX_IMAGE_PIXELS} pixels"
+            )
         exif = opened.getexif()
         orientation = exif.get(274)
         image = ImageOps.exif_transpose(opened)
@@ -140,16 +150,15 @@ def resize_and_crop(
         )
 
     if mode == "fit":
+        # Keep the complete image and its aspect ratio without synthesizing
+        # border pixels. The result fits inside the target box and may be
+        # smaller than the requested dimensions on one axis.
         fitted = ImageOps.contain(
             image,
             (target_width, target_height),
             method=Image.Resampling.LANCZOS,
         )
-        canvas = Image.new("RGB", (target_width, target_height), background)
-        left = (target_width - fitted.width) // 2
-        top = (target_height - fitted.height) // 2
-        canvas.paste(fitted, (left, top))
-        return canvas, None
+        return fitted, None
 
     if mode != "cover":
         raise ValueError(f"unsupported resize mode: {mode}")

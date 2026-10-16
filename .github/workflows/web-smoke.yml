@@ -1,16 +1,28 @@
 name: WebUI smoke
 
 on:
+  # Core CI already runs the complete non-model test suite. Keep this
+  # focused WebUI workflow available for on-demand debugging only.
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   smoke:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v6
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@83679a892e2d95755f2dac6acb0bfd1e9ac5d548 # v6.1.0
         with:
           python-version: "3.12"
-      - run: python -m pip install --upgrade pip
-      - run: pip install -e ".[web,tagger,dev]"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - run: python -m pip install ".[web,tagger,dev]"
       - run: pytest -q tests/test_web.py tests/test_web_scrape.py

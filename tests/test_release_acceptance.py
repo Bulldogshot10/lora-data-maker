@@ -80,3 +80,59 @@ def test_v1_end_to_end_offline(tmp_path):
     assert f"output/10_julia/{exported.image_id}.jpg" in names
     assert f"output/10_julia/{exported.image_id}.txt" in names
     assert "manifest.json" in names
+
+
+def test_pipeline_bypasses_resize_and_exports_original_raw_image(tmp_path):
+    root = tmp_path / "raw-pipeline"
+
+    assert command_init(
+        Namespace(
+            path=str(root),
+            name="raw-julia",
+            subject="julia",
+            trigger=None,
+            force=False,
+        )
+    ) == 0
+
+    source = root / "raw" / "original.png"
+    Image.new("RGB", (800, 640), (30, 120, 200)).save(source, format="PNG")
+    original_bytes = source.read_bytes()
+
+    assert command_validate(Namespace(path=str(root))) == 0
+
+    config_path = root / "config.toml"
+    config = config_path.read_text(encoding="utf-8")
+    config = config.replace("text_check = true", "text_check = false", 1)
+    config = config.replace(
+        "[processing]\nenabled = true",
+        "[processing]\nenabled = false",
+        1,
+    )
+    config_path.write_text(config, encoding="utf-8")
+
+    assert command_clean(Namespace(path=str(root))) == 0
+    assert command_process(Namespace(path=str(root))) == 0
+
+    project = DatasetProject.open(ProjectPaths.from_root(root))
+    record = next(iter(project.manifest.images.values()))
+    record.tags = ["portrait", "blue outfit"]
+    record.set_status("tagged")
+    project.save()
+
+    assert command_caption(Namespace(path=str(root))) == 0
+    assert command_export(
+        Namespace(path=str(root), repeats=1, folder_name=None)
+    ) == 0
+
+    refreshed = DatasetProject.open(ProjectPaths.from_root(root))
+    exported = next(iter(refreshed.manifest.images.values()))
+    output_image = (
+        root / "output" / "1_julia" / f"{exported.image_id}.png"
+    )
+
+    assert exported.status == "exported"
+    assert source.read_bytes() == original_bytes
+    assert output_image.read_bytes() == original_bytes
+    assert not (root / "work" / "processed").exists()
+    assert refreshed.manifest.source["last_process_bypassed"] is True

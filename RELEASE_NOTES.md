@@ -1,3 +1,22 @@
+# Unreleased
+
+## VLM captioning and WebUI
+
+- Added optional local llama.cpp and ONNX VLM captioning plus Gemini and OpenAI-compatible API runtimes.
+- Added per-user API-key storage outside dataset projects, with owner-only file permissions and a WebUI clear action.
+- Expanded the WebUI with provider model discovery, safer upload limits, request-origin checks, and local-only access assumptions.
+
+## Browser scraping
+
+- Added authenticated Google Images scraping by attaching to an existing local Chromium/CDP session; verification challenges are not bypassed.
+- Added Bing publication-date filtering by year or custom range in the CLI and WebUI.
+- Hardened local CDP metadata discovery by rejecting redirects and bounding the response size.
+
+## Public-repository readiness
+
+- Added a repository-level security policy and documented credential, WebUI, custom API endpoint, and Chromium profile boundaries.
+- Expanded the third-party dependency/model notice and corrected README guidance for credential persistence and manual CI workflows.
+
 # v2.1.0
 
 ## WebUI
