@@ -1,10 +1,10 @@
 from __future__ import annotations
 
+from http.client import HTTPConnection, HTTPException
 import json
 import os
 from pathlib import Path
 from urllib.parse import urlsplit
-from http.client import HTTPConnection, HTTPException
 
 from .base import ScraperError
 
@@ -133,7 +133,8 @@ class ExistingChromium:
         return page
 
     def _discover_websocket_url(self) -> str:
-        endpoint = f"http://{self.host}:{self.port}/json/version"
+        display_host = f"[{self.host}]" if ":" in self.host else self.host
+        endpoint = f"http://{display_host}:{self.port}/json/version"
         connection = HTTPConnection(
             self.host,
             self.port,
