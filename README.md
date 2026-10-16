@@ -121,9 +121,9 @@ n_gpu_layers = 0
 seed = 42
 ~~~
 
-In the WebUI, choose the Gemini or OpenAI-compatible runtime, paste the API key into the password field, and press **set**. The server stores the key only in its own process environment as `GEMINI_API_KEY` or `OPENAI_API_KEY`; the secret is never written to `config.toml`. After the key is set, the WebUI automatically discovers available models and fills the model selector.
+In the WebUI, choose the Gemini or OpenAI-compatible runtime, paste the API key into the password field, and use **Set / Save / Reuse**. The key is saved in a per-user credential file outside dataset projects and loaded into the server process environment. It is never written to `config.toml`. The file is plaintext protected by filesystem permissions, not encrypted; see [SECURITY.md](SECURITY.md) before using API credentials. After the key is set, the WebUI discovers available models and fills the model selector.
 
-Gemini model discovery calls the provider's model-list endpoint and keeps models that advertise `generateContent` support. The WebUI therefore does not require a model-name textbox. For OpenAI-compatible runtimes, the WebUI reads the standard `/models` response from the configured base URL and exposes the returned model IDs in the selector. OpenAI-compatible endpoints use `/chat/completions` for image-to-text captioning. citeturn293663search0turn405087search4
+Gemini model discovery calls the provider's model-list endpoint and keeps models that advertise `generateContent` support. The WebUI therefore does not require a model-name textbox. For OpenAI-compatible runtimes, the WebUI reads the standard `/models` response from the configured base URL and exposes the returned model IDs in the selector. OpenAI-compatible endpoints use `/chat/completions` for image-to-text captioning.
 
 For an OpenAI-compatible custom provider, only the API base URL may need to be changed in Settings. The model is always selected from the discovered dropdown. Providers that do not expose a compatible /models endpoint may need model configuration outside the current WebUI discovery flow.
 
@@ -175,6 +175,9 @@ Termux-specific Playwright/CDP adapter. It does not run `playwright install`
 or download a glibc browser bundle. For authenticated Google searches, the
 backend can attach to an already-running Chromium using `CHROME_USER_DATA_DIR`
 and the local CDP port (9222 by default); see [Termux installation notes](docs/INSTALL_TERMUX.md).
+A CDP endpoint grants powerful control over the browser and its signed-in accounts.
+Use a dedicated profile, bind debugging to `127.0.0.1`, and never expose the port
+through a LAN address, tunnel, or reverse proxy. Read [SECURITY.md](SECURITY.md).
 
 For tagging support:
 
@@ -321,6 +324,7 @@ TROUBLESHOOTING.md
 ARCHITECTURE.md
 ROADMAP.md
 RESPONSIBLE_USE.md
+SECURITY.md
 ~~~
 
 ## Development
@@ -332,7 +336,7 @@ python -m pip install ".[dev]"
 pytest -q
 ~~~
 
-The project CI smoke-tests Python 3.12, 3.13, and 3.14, including package installation, compilation, tests, CLI entry points, documentation files, and project initialization.
+The core and WebUI smoke workflows are currently manual (`workflow_dispatch`) to avoid automatic GitHub Actions runs. Run the test commands locally before publishing a release; a successful prior workflow run is not evidence that the current branch passes.
 
 ## License
 
