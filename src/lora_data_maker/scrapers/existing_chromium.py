@@ -4,7 +4,7 @@ import json
 import os
 from pathlib import Path
 from urllib.parse import urlsplit
-from urllib.request import urlopen
+from http.client import HTTPConnection, HTTPException
 
 from .base import ScraperError
 
@@ -134,18 +134,45 @@ class ExistingChromium:
 
     def _discover_websocket_url(self) -> str:
         endpoint = f"http://{self.host}:{self.port}/json/version"
+        connection = HTTPConnection(
+            self.host,
+            self.port,
+            timeout=min(max(self.timeout, 0.5), 5.0),
+        )
         try:
-            with urlopen(
-                endpoint,
-                timeout=min(max(self.timeout, 0.5), 5.0),
-            ) as response:
-                payload = json.load(response)
-        except (OSError, TypeError, ValueError) as exc:
+            # Use a direct loopback HTTP connection instead of urllib, which
+            # follows redirects by default. CDP discovery must never redirect
+            # this local request to a different destination.
+            connection.request(
+                "GET",
+                "/json/version",
+                headers={"Connection": "close"},
+            )
+            response = connection.getresponse()
+            if response.status != 200:
+                raise ScraperError(
+                    f"Chromium CDP endpoint {endpoint} returned HTTP {response.status}; "
+                    "redirects and non-success responses are not accepted"
+                )
+
+            # The metadata document is tiny. Bound reads in case another local
+            # service is listening on the configured debug port.
+            raw_payload = response.read(1024 * 1024 + 1)
+            if len(raw_payload) > 1024 * 1024:
+                raise ScraperError(
+                    f"Chromium CDP endpoint {endpoint} returned metadata larger than 1 MiB"
+                )
+            payload = json.loads(raw_payload.decode("utf-8"))
+        except ScraperError:
+            raise
+        except (OSError, HTTPException, TypeError, ValueError, UnicodeError) as exc:
             raise ScraperError(
                 f"Chromium CDP is unavailable at {endpoint}. "
                 "Start the logged-in Chromium profile with "
                 f"--remote-debugging-port={self.port}: {exc}"
             ) from exc
+        finally:
+            connection.close()
 
         websocket_url = (
             payload.get("webSocketDebuggerUrl")
