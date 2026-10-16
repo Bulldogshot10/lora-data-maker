@@ -82,27 +82,33 @@ PYTHON PACKAGES
 
 MODEL ARTIFACTS
 
-13. SmilingWolf/wd-vit-tagger-v3
+13. cryptography
+    Purpose: optional AES-GCM authenticated encryption for the WebUI credential vault.
+    License: Apache License 2.0 or BSD 3-Clause; consult the exact installed
+    distribution's license metadata.
+    Project: https://github.com/pyca/cryptography
+
+14. SmilingWolf/wd-vit-tagger-v3
     Purpose: default WD14-compatible image tagging model.
     License: Apache License 2.0 as published by the model repository.
     Project: https://huggingface.co/SmilingWolf/wd-vit-tagger-v3
 
-14. Smashinfries/wd-swinv2-tagger-v3-onnx-mobile
+15. Smashinfries/wd-swinv2-tagger-v3-onnx-mobile
     Purpose: optional mobile WD14-compatible tagging model.
     License: Apache License 2.0 as published by the model repository.
     Project: https://huggingface.co/Smashinfries/wd-swinv2-tagger-v3-onnx-mobile
 
-15. fancyfeast/joytag
+16. fancyfeast/joytag
     Purpose: optional JoyTag image tagging model.
     License: Apache License 2.0 as published by the model repository.
     Project: https://huggingface.co/fancyfeast/joytag
 
-16. hr16/yolox-onnx / YOLOX-Nano
+17. hr16/yolox-onnx / YOLOX-Nano
     Purpose: optional person-quality detector.
     License: Apache License 2.0 as published by the model repository.
     Project: https://huggingface.co/hr16/yolox-onnx
 
-17. OpenCV Zoo YuNet and PP-OCR text-detection artifacts
+18. OpenCV Zoo YuNet and PP-OCR text-detection artifacts
     Purpose: optional face detection and text quality filtering.
     License: retain the license and attribution terms published with each
     exact model revision and any bundled third-party files.

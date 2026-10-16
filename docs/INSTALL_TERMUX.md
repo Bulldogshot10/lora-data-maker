@@ -123,7 +123,7 @@ On Termux, native optional packages depend on the target device and package avai
 ## Development install
 
 ~~~bash
-python -m pip install ".[dev]"
+python -m pip install ".[web,dev]"
 pytest -q
 ~~~
 
@@ -140,6 +140,17 @@ termux-setup-storage
 Shared storage is available below ~/storage/shared/.
 
 Keeping active projects inside Termux home is usually simpler for repeated processing.
+
+## Encrypted API-key vault
+
+The WebUI stores Gemini and OpenAI-compatible API keys in a passphrase-encrypted AES-GCM vault. On Termux, install the packaged crypto library before the WebUI extra to avoid compiling its Rust-backed dependency on-device:
+
+~~~bash
+pkg install python-cryptography
+python -m pip install ".[web]"
+~~~
+
+Create or unlock the vault in the WebUI with a passphrase of at least 12 characters. The passphrase is not saved, so unlock the vault after each server start. Existing `api-keys.json` credentials are migrated when you first unlock. See [SECURITY.md](../SECURITY.md) for the vault threat model.
 
 ## WebUI dataset explorer
 

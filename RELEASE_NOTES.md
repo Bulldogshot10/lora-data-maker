@@ -1,5 +1,12 @@
 # v2.5.1 - 2026-10-16
 
+## Security audit and credential handling
+
+- Replaced plaintext API-key persistence with a passphrase-encrypted AES-256-GCM vault using scrypt key derivation; added unlock/lock controls and one-time migration from the legacy plaintext JSON store.
+- Documented vault-at-rest protection, unlock-on-startup behavior, and remaining same-user/process threat boundaries.
+- Hardened dataset selection/deletion to reject symlink aliases and added a regression test to prevent deleting or selecting another project through an alias.
+- Added the cryptography dependency to the WebUI extra and ignored local encrypted vault artifacts.
+
 ## VLM captioning and WebUI
 
 - Added optional local llama.cpp and ONNX VLM captioning plus Gemini and OpenAI-compatible API runtimes.

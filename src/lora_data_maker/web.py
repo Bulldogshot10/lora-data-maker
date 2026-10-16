@@ -27,7 +27,13 @@ from .captions import (
     reset_vlm_captions_for_deterministic,
 )
 from .config import load_config, write_default_config
-from .credentials import default_api_key_store_path, load_api_keys, save_api_keys
+from .credentials import (
+    API_KEY_ENV_NAMES,
+    CredentialVault,
+    CredentialVaultError,
+    default_api_key_store_path,
+    default_legacy_api_key_store_path,
+)
 from .dataset import DatasetProject
 from .export import export_manifest, safe_component
 from .manifest import find_image_by_source_url, register_image
@@ -964,11 +970,20 @@ dialog::backdrop{background:rgba(15,20,28,.45);backdrop-filter:blur(4px)}
             <div style="display:flex;gap:8px"><input id="caption_mmproj_path" autocomplete="off" placeholder="/path/to/mmproj.gguf"><button type="button" class="action-secondary" id="caption_mmproj_upload">upload</button></div><input id="caption_mmproj_file" type="file" accept=".gguf" hidden><div class="field-note" id="caption_mmproj_status">no mmproj uploaded</div>
           </div>
         </div>
+        <div class="field" id="caption_vault_field" style="margin-top:12px">
+          <label for="caption_vault_passphrase">encrypted API-key vault</label>
+          <div style="display:flex;gap:8px;min-width:0">
+            <input id="caption_vault_passphrase" type="password" autocomplete="off" placeholder="vault passphrase · 12+ chars to create" style="flex:1;min-width:0">
+            <button type="button" class="action-secondary" id="caption_vault_unlock">unlock / create</button>
+            <button type="button" class="action-secondary" id="caption_vault_lock">lock</button>
+          </div>
+          <div class="field-note" id="caption_vault_status">API keys are encrypted on disk with a passphrase. The passphrase is never saved.</div>
+        </div>
         <div class="form-grid three" style="margin-top:12px">
           <div class="field">
             <label for="caption_api_key">API key</label>
             <div style="display:flex;gap:8px"><input id="caption_api_key" type="password" autocomplete="off" placeholder="enter once; blank keeps saved key"><button type="button" class="action-secondary" id="caption_api_key_set">save / reuse</button><button type="button" class="action-secondary" id="caption_api_key_clear">clear</button></div>
-            <div class="field-note" id="caption_api_key_status">API keys are saved locally with owner-only file permissions (plaintext, not encrypted), shared across dataset folders and WebUI restarts.</div>
+            <div class="field-note" id="caption_api_key_status">API keys are saved in the encrypted vault and shared across dataset folders. Unlock it to save or clear keys.</div>
           </div>
           <div class="field">
             <label for="caption_api_model">API model</label>
@@ -1104,6 +1119,7 @@ const appState={
   toastSeq:0,
   projects:[],
   apiKeysSet:{gemini:false,openai_compatible:false},
+  credentialVault:{configured:false,unlocked:false,legacy_found:false},
   apiModelCache:{}
 };
 
@@ -1148,7 +1164,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_models_reload,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_vault_passphrase,#caption_vault_unlock,#caption_vault_lock,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_models_reload,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
     if(el)el.disabled=busy;
   });
   const vlmOnly=$("caption_backend").value==="vlm";
@@ -1173,9 +1189,14 @@ function syncCaptionRuntimeUI(){
   $("caption_model_path").disabled=!local;
   $("caption_model_upload").disabled=!local;
   $("caption_model_file").disabled=!local;
-  $("caption_api_key").disabled=!api;
-  $("caption_api_key_set").disabled=!api;
-  $("caption_api_key_clear").disabled=!api;
+  const vaultLocked=!appState.credentialVault.unlocked;
+  $("caption_vault_passphrase").disabled=!api||isBusyOnActiveProject();
+  $("caption_vault_unlock").disabled=!api||isBusyOnActiveProject();
+  $("caption_vault_lock").disabled=!api||isBusyOnActiveProject()||vaultLocked;
+  $("caption_vault_unlock").textContent=appState.credentialVault.unlocked?"unlocked":"unlock / create";
+  $("caption_api_key").disabled=!api||vaultLocked;
+  $("caption_api_key_set").disabled=!api||vaultLocked;
+  $("caption_api_key_clear").disabled=!api||vaultLocked;
   $("caption_api_model").disabled=!api;
   $("caption_api_models_reload").disabled=!api;
   $("caption_api_base_url").disabled=!api||gemini;
@@ -1189,6 +1210,7 @@ function syncCaptionRuntimeUI(){
   showField("caption_chat_format",local);
   showField("caption_model_path",local);
   showField("caption_mmproj_path",local);
+  showField("caption_vault_passphrase",api);
   showField("caption_api_key",api);
   showField("caption_api_model",api);
   showField("caption_api_base_url",runtime==="openai_compatible");
@@ -1210,9 +1232,13 @@ function syncCaptionRuntimeUI(){
     $("caption_api_base_url").placeholder="https://generativelanguage.googleapis.com/v1beta";
     $("caption_model_status").textContent="unused by Gemini API";
     $("caption_mmproj_status").textContent="unused by Gemini API";
-    $("caption_api_key_status").textContent=appState.apiKeysSet.gemini
-      ? "Gemini key is saved locally. leave this field blank to keep using it."
-      : "No saved Gemini key yet. enter it once and it will persist across projects and restarts.";
+    $("caption_api_key_status").textContent=appState.credentialVault.unlocked
+      ? (appState.apiKeysSet.gemini
+        ? "Gemini key is available. leave this field blank to keep using it."
+        : "No saved Gemini key yet. enter it and choose save / reuse.")
+      : (appState.apiKeysSet.gemini
+        ? "Gemini key is available from the server environment; unlock the vault to save or clear keys."
+        : "Unlock/create the encrypted vault before entering and saving a Gemini key.");
   }else{
     $("caption_api_key").placeholder="paste OpenAI-compatible API key";
     if(!$("caption_api_base_url").value.trim()
@@ -1221,9 +1247,13 @@ function syncCaptionRuntimeUI(){
     }
     $("caption_model_status").textContent="unused by OpenAI-compatible API";
     $("caption_mmproj_status").textContent="unused by OpenAI-compatible API";
-    $("caption_api_key_status").textContent=appState.apiKeysSet.openai_compatible
-      ? "OpenAI-compatible key is saved locally. leave this field blank to keep using it."
-      : "No saved key for this provider yet. enter it once and it will persist across projects and restarts.";
+    $("caption_api_key_status").textContent=appState.credentialVault.unlocked
+      ? (appState.apiKeysSet.openai_compatible
+        ? "OpenAI-compatible key is available. leave this field blank to keep using it."
+        : "No saved key for this provider yet. enter it and choose save / reuse.")
+      : (appState.apiKeysSet.openai_compatible
+        ? "OpenAI-compatible key is available from the server environment; unlock the vault to save or clear keys."
+        : "Unlock/create the encrypted vault before entering and saving an API key.");
   }
 }
 async function loadVlmModels(explicit=false){
@@ -1684,6 +1714,77 @@ async function saveSettings(){
     return false;
   }
 }
+async function refreshCredentialVault(){
+  try{
+    const state=await api("/api/vlm/vault");
+    appState.credentialVault=state;
+    const status=$("caption_vault_status");
+    if(state.unlocked&&state.legacy_found){
+      status.textContent="vault unlocked, but a legacy plaintext credential file remains. delete the old api-keys.json file manually after verifying the encrypted vault works.";
+    }else if(state.unlocked){
+      status.textContent="vault unlocked. saved API keys are encrypted at rest and available to this server process.";
+    }else if(state.legacy_found){
+      status.textContent="legacy plaintext credential file detected. unlock/create with a passphrase (12+ chars) to encrypt it and remove the old file.";
+    }else if(state.configured){
+      status.textContent="encrypted vault found but locked. enter its passphrase to unlock.";
+    }else{
+      status.textContent="create a vault with a passphrase of at least 12 characters. the passphrase is never saved.";
+    }
+    syncCaptionRuntimeUI();
+    return state;
+  }catch(e){
+    $("caption_vault_status").textContent=e.message;
+    return null;
+  }
+}
+async function unlockCredentialVault(){
+  const passphrase=$("caption_vault_passphrase").value;
+  if(!passphrase){
+    $("caption_vault_status").textContent="enter the vault passphrase first.";
+    return;
+  }
+  $("caption_vault_unlock").disabled=true;
+  try{
+    const data=await api("/api/vlm/vault/unlock",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({passphrase:passphrase})
+    });
+    appState.credentialVault=data.vault;
+    appState.apiKeysSet={
+      gemini:!!data.api_keys_set.gemini,
+      openai_compatible:!!data.api_keys_set.openai_compatible
+    };
+    appState.apiModelCache={};
+    await refreshCredentialVault();
+    await refresh();
+    void loadVlmModels();
+    toast("encrypted credential vault unlocked","ok");
+  }catch(e){
+    $("caption_vault_status").textContent=e.message;
+    toast(e.message,"bad");
+  }finally{
+    $("caption_vault_passphrase").value="";
+    syncCaptionRuntimeUI();
+  }
+}
+async function lockCredentialVault(){
+  try{
+    const data=await api("/api/vlm/vault/lock",{method:"POST"});
+    appState.credentialVault=data.vault;
+    appState.apiKeysSet={
+      gemini:!!data.api_keys_set?.gemini,
+      openai_compatible:!!data.api_keys_set?.openai_compatible
+    };
+    appState.apiModelCache={};
+    await refreshCredentialVault();
+    await refresh();
+    $("caption_api_model").innerHTML='<option value="">select model…</option>';
+    toast("encrypted credential vault locked","ok");
+  }catch(e){
+    toast(e.message,"bad");
+  }
+}
 async function setVlmApiKey(){
   const runtime=$("caption_runtime").value;
   if(runtime!=="gemini"&&runtime!=="openai_compatible")return;
@@ -1702,7 +1803,7 @@ async function setVlmApiKey(){
     appState.apiKeysSet[runtime]=!!d.key_set;
     appState.apiModelCache={};
     $("caption_api_key_status").textContent=d.saved
-      ? (key?"API key saved locally with owner-only file permissions.":"saved API key kept; nothing needed re-entering.")
+      ? (key?"API key saved in the encrypted vault.":"saved API key kept; nothing needed re-entering.")
       : "no saved API key for this provider.";
     void loadVlmModels();
     toast(key?"API key saved for future sessions":"saved API key reused","ok");
@@ -1721,9 +1822,11 @@ async function clearVlmApiKey(){
       body:JSON.stringify({runtime:runtime,clear:true})
     });
     $("caption_api_key").value="";
-    appState.apiKeysSet[runtime]=false;
+    appState.apiKeysSet[runtime]=!!d.key_set;
     appState.apiModelCache={};
-    $("caption_api_key_status").textContent="API key removed from the local credential file and server process.";
+    $("caption_api_key_status").textContent=d.key_set
+      ? "Saved vault key cleared; a key is still available from the server environment."
+      : "API key removed from the encrypted vault and active server environment.";
     $("caption_api_model").innerHTML='<option value="">select model…</option>';
     syncCaptionRuntimeUI();
     toast("API key cleared","ok");
@@ -2040,6 +2143,8 @@ $("caption_backend").addEventListener("change",()=>{syncCaptionRuntimeUI();markD
 $("caption_runtime").addEventListener("change",()=>{syncCaptionRuntimeUI();markDirty();loadVlmModels();});
 $("caption_api_model").addEventListener("change",()=>{ $("caption_api_model").dataset.selectedModel=$("caption_api_model").value; markDirty(); });
 $("caption_api_base_url").addEventListener("change",()=>{markDirty();if($("caption_runtime").value==="openai_compatible")loadVlmModels();});
+$("caption_vault_unlock").addEventListener("click",unlockCredentialVault);
+$("caption_vault_lock").addEventListener("click",lockCredentialVault);
 $("caption_api_key_set").addEventListener("click",setVlmApiKey);
 $("caption_api_key_clear").addEventListener("click",clearVlmApiKey);
 $("caption_api_models_reload").addEventListener("click",()=>loadVlmModels(true));
@@ -2114,6 +2219,7 @@ document.addEventListener("keydown",event=>{
 const initialView=location.hash.slice(1)||"overview";
 setView(initialView,false);
 updateDirtyUI();
+void refreshCredentialVault();
 refresh().then(()=>{
   if(appState.jobId){
     poll(appState.jobId);
@@ -2323,6 +2429,16 @@ def create_app(
     async def reject_untrusted_local_requests(request: Request, call_next):
         # The UI is local-only. Reject remote peers and unexpected Host headers,
         # including DNS-rebinding hosts, before dispatching any route.
+        peer = request.client.host if request.client is not None else ""
+        is_test_client = peer in {"testclient", "testserver"}
+        if not is_test_client:
+            try:
+                peer_address = ipaddress.ip_address(peer.split("%", 1)[0])
+            except ValueError:
+                return JSONResponse(status_code=403, content={"detail": "local access only"})
+            if not peer_address.is_loopback:
+                return JSONResponse(status_code=403, content={"detail": "local access only"})
+
         host_header = request.headers.get("host", "")
         try:
             host_parts = urlsplit("//" + host_header)
@@ -2330,6 +2446,9 @@ def create_app(
             host_port = host_parts.port
         except ValueError:
             host_parts, host_name, host_port = None, None, None
+        allowed_hosts = {"localhost", "127.0.0.1", "::1"}
+        if is_test_client:
+            allowed_hosts.update({"testserver", "testclient"})
         if (
             host_parts is None
             or host_parts.username is not None
@@ -2338,18 +2457,9 @@ def create_app(
             or host_parts.query
             or host_parts.fragment
             or (host_port is not None and not 1 <= host_port <= 65535)
-            or (host_name or "").rstrip(".").lower()
-            not in {"localhost", "127.0.0.1", "::1", "testserver", "testclient"}
+            or (host_name or "").rstrip(".").lower() not in allowed_hosts
         ):
             return JSONResponse(status_code=421, content={"detail": "untrusted Host header"})
-        peer = request.client.host if request.client is not None else ""
-        if peer not in {"testclient", "testserver"}:
-            try:
-                peer_address = ipaddress.ip_address(peer.split("%", 1)[0])
-            except ValueError:
-                return JSONResponse(status_code=403, content={"detail": "local access only"})
-            if not peer_address.is_loopback:
-                return JSONResponse(status_code=403, content={"detail": "local access only"})
         if request.url.path.startswith("/api/"):
             fetch_site = request.headers.get("sec-fetch-site", "").strip().lower()
             origin = request.headers.get("origin", "").strip()
@@ -2369,7 +2479,7 @@ def create_app(
                 "/api/projects/select", "/api/project/new",
             }
             or path.startswith((
-                "/api/vlm/upload/", "/api/run/", "/api/images/",
+                "/api/vlm/upload/", "/api/vlm/vault/", "/api/run/", "/api/images/",
                 "/api/projects/", "/api/jobs/",
             ))
         )
@@ -2390,13 +2500,44 @@ def create_app(
         return response
 
     credential_path = (
-        Path(api_key_store_path).expanduser().resolve()
+        Path(api_key_store_path).expanduser().absolute()
         if api_key_store_path is not None
         else default_api_key_store_path()
     )
-    for env_name, saved_key in load_api_keys(credential_path).items():
-        if not os.environ.get(env_name, "").strip():
-            os.environ[env_name] = saved_key
+    legacy_credential_path = (
+        default_legacy_api_key_store_path(credential_path)
+        if api_key_store_path is None
+        else None
+    )
+    credential_vault = CredentialVault(
+        credential_path,
+        legacy_path=legacy_credential_path,
+    )
+    # Shell-provided keys remain available when the vault is locked. If a key
+    # is activated from the vault, restore the original environment on lock.
+    baseline_env_keys = {
+        name: os.environ.get(name) or None for name in API_KEY_ENV_NAMES
+    }
+    vault_managed_env_names: set[str] = set()
+
+    def restore_env_key(name: str) -> None:
+        if name not in vault_managed_env_names:
+            return
+        baseline = baseline_env_keys.get(name)
+        if baseline:
+            os.environ[name] = baseline
+        else:
+            os.environ.pop(name, None)
+        vault_managed_env_names.discard(name)
+
+    def activate_vault_keys(keys: dict[str, str]) -> None:
+        for name in API_KEY_ENV_NAMES:
+            value = keys.get(name)
+            if value:
+                os.environ[name] = value
+                vault_managed_env_names.add(name)
+            else:
+                restore_env_key(name)
     model_list_cache: dict[
         tuple[str, str, str], tuple[float, list[dict[str, str]]]
     ] = {}
@@ -2506,13 +2647,18 @@ def create_app(
 
     def select_active_root(target: Path) -> None:
         nonlocal project_root
-        target = target.expanduser().resolve()
+        # Reject aliases before resolving; otherwise a symlink name can select
+        # a different project's real path and bypass the explorer's no-symlink policy.
+        candidate = target.expanduser()
+        if candidate.is_symlink():
+            raise HTTPException(400, "symlinked project paths are not allowed")
+        target = candidate.resolve()
         try:
             target.relative_to(workspace_root)
         except ValueError as exc:
             raise HTTPException(400, "project is outside workspace") from exc
-        if target.parent != workspace_root:
-            raise HTTPException(400, "project must be a direct workspace child")
+        if target.parent != workspace_root or target != workspace_root / target.name:
+            raise HTTPException(400, "project must be a direct, non-symlink workspace child")
         if (
             (target / "config.toml").is_symlink()
             or (target / "manifest.json").is_symlink()
@@ -2777,8 +2923,13 @@ def create_app(
         project_name = safe_component(name.strip())
         if not project_name or project_name != name:
             raise HTTPException(400, "invalid project name")
-        target = (workspace_root / project_name).resolve()
-        if target.parent != workspace_root or not target.is_dir():
+        candidate = workspace_root / project_name
+        # Do not resolve a symlink before checking it: doing so turns an alias
+        # into the real project path and could delete the aliased project.
+        if candidate.is_symlink():
+            raise HTTPException(400, "symlinked project paths are not allowed")
+        target = candidate.resolve()
+        if target != candidate or target.parent != workspace_root or not target.is_dir():
             raise HTTPException(404, "dataset project not found")
         if not (target / "config.toml").is_file() or not (target / "manifest.json").is_file():
             raise HTTPException(404, "dataset project not found")
@@ -2810,6 +2961,53 @@ def create_app(
             "path": target.as_posix(),
         }
 
+    @app.get("/api/vlm/vault")
+    def vault_status():
+        return credential_vault.status()
+
+    @app.post("/api/vlm/vault/unlock")
+    def unlock_vault(payload: dict[str, Any]):
+        if jobs.has_running():
+            raise HTTPException(409, "wait for the current job to finish before unlocking credentials")
+        passphrase = payload.get("passphrase", "")
+        if not isinstance(passphrase, str):
+            raise HTTPException(400, "vault passphrase must be a string")
+        try:
+            keys = credential_vault.unlock(passphrase)
+        except CredentialVaultError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(500, "could not write the encrypted credential vault") from exc
+        activate_vault_keys(keys)
+        with model_list_cache_lock:
+            model_list_cache.clear()
+        return {
+            "ok": True,
+            "vault": credential_vault.status(),
+            "api_keys_set": {
+                "gemini": bool(os.environ.get("GEMINI_API_KEY", "").strip()),
+                "openai_compatible": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
+            },
+        }
+
+    @app.post("/api/vlm/vault/lock")
+    def lock_vault():
+        if jobs.has_running():
+            raise HTTPException(409, "wait for the current job to finish before locking credentials")
+        credential_vault.lock()
+        for env_name in tuple(vault_managed_env_names):
+            restore_env_key(env_name)
+        with model_list_cache_lock:
+            model_list_cache.clear()
+        return {
+            "ok": True,
+            "vault": credential_vault.status(),
+            "api_keys_set": {
+                "gemini": bool(os.environ.get("GEMINI_API_KEY", "").strip()),
+                "openai_compatible": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
+            },
+        }
+
     @app.post("/api/vlm/api-key")
     def set_vlm_api_key(payload: dict[str, Any]):
         if jobs.has_running():
@@ -2818,7 +3016,6 @@ def create_app(
         if runtime not in {"gemini", "openai_compatible"}:
             raise HTTPException(400, "API key can only be set for an API VLM runtime")
         env_name, _ = _api_runtime_settings(runtime)
-        saved_keys = load_api_keys(credential_path)
         clear_requested = payload.get("clear", False)
         if not isinstance(clear_requested, bool):
             raise HTTPException(400, "clear must be a boolean")
@@ -2829,13 +3026,35 @@ def create_app(
         if len(value) > 4096 or any(ord(char) < 32 or ord(char) == 127 for char in value):
             raise HTTPException(400, "API key is too long or contains control characters")
 
+        if not credential_vault.is_unlocked:
+            if clear_requested or value:
+                raise HTTPException(
+                    423,
+                    "unlock or create the encrypted credential vault before saving or clearing API keys",
+                )
+            # Shell-provided keys can be used without persistence. Never copy
+            # them to disk unless the encrypted vault has been explicitly unlocked.
+            existing_key = os.environ.get(env_name, "").strip()
+            return {
+                "ok": True,
+                "runtime": runtime,
+                "env": env_name,
+                "key_set": bool(existing_key),
+                "saved": False,
+                "cleared": False,
+                "vault_locked": True,
+            }
+
+        saved_keys = credential_vault.keys()
         if clear_requested:
             saved_keys.pop(env_name, None)
             try:
-                save_api_keys(credential_path, saved_keys)
+                credential_vault.save_keys(saved_keys)
+            except CredentialVaultError as exc:
+                raise HTTPException(423, str(exc)) from exc
             except OSError as exc:
-                raise HTTPException(500, f"could not update local credential store: {exc}") from exc
-            os.environ.pop(env_name, None)
+                raise HTTPException(500, "could not update the encrypted credential vault") from exc
+            restore_env_key(env_name)
             with model_list_cache_lock:
                 for cache_key in list(model_list_cache):
                     if cache_key[0] == runtime:
@@ -2844,7 +3063,7 @@ def create_app(
                 "ok": True,
                 "runtime": runtime,
                 "env": env_name,
-                "key_set": False,
+                "key_set": bool(os.environ.get(env_name, "").strip()),
                 "saved": False,
                 "cleared": True,
             }
@@ -2852,10 +3071,13 @@ def create_app(
         if value:
             saved_keys[env_name] = value
             try:
-                save_api_keys(credential_path, saved_keys)
+                credential_vault.save_keys(saved_keys)
+            except CredentialVaultError as exc:
+                raise HTTPException(423, str(exc)) from exc
             except OSError as exc:
-                raise HTTPException(500, f"could not save API key locally: {exc}") from exc
+                raise HTTPException(500, "could not save API key to the encrypted credential vault") from exc
             os.environ[env_name] = value
+            vault_managed_env_names.add(env_name)
             with model_list_cache_lock:
                 for cache_key in list(model_list_cache):
                     if cache_key[0] == runtime:
@@ -2873,14 +3095,16 @@ def create_app(
         if not existing_key and saved_keys.get(env_name):
             existing_key = saved_keys[env_name]
             os.environ[env_name] = existing_key
+            vault_managed_env_names.add(env_name)
         elif existing_key and not saved_keys.get(env_name):
-            # If a key was supplied by the shell environment, an explicit
-            # Save / reuse click opts it into persistent WebUI storage too.
             saved_keys[env_name] = existing_key
             try:
-                save_api_keys(credential_path, saved_keys)
+                credential_vault.save_keys(saved_keys)
+            except CredentialVaultError as exc:
+                raise HTTPException(423, str(exc)) from exc
             except OSError as exc:
-                raise HTTPException(500, f"could not save API key locally: {exc}") from exc
+                raise HTTPException(500, "could not save API key to the encrypted credential vault") from exc
+            vault_managed_env_names.add(env_name)
         return {
             "ok": True,
             "runtime": runtime,
@@ -2889,7 +3113,6 @@ def create_app(
             "saved": bool(saved_keys.get(env_name)),
             "cleared": False,
         }
-
 
     def _fetch_vlm_models(selected: str, env_name: str, api_base: str) -> dict[str, Any]:
         api_key = os.environ.get(env_name, "").strip()
@@ -4084,6 +4307,8 @@ def create_app(
         trigger = str(payload.get("trigger", "")).strip() or subject
         if not name: raise HTTPException(400, "project name required")
         target = workspace_root / name
+        if target.is_symlink():
+            raise HTTPException(409, "project path already exists as a symlink")
         if target.exists(): raise HTTPException(409, "project already exists")
         target.mkdir(parents=True)
         new_paths = ProjectPaths.from_root(target); new_paths.create_directories()

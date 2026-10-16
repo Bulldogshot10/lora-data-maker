@@ -121,13 +121,13 @@ n_gpu_layers = 0
 seed = 42
 ~~~
 
-In the WebUI, choose the Gemini or OpenAI-compatible runtime, paste the API key into the password field, and use **Set / Save / Reuse**. The key is saved in a per-user credential file outside dataset projects and loaded into the server process environment. It is never written to `config.toml`. The file is plaintext protected by filesystem permissions, not encrypted; see [SECURITY.md](SECURITY.md) before using API credentials. After the key is set, the WebUI discovers available models and fills the model selector.
+In the WebUI, choose the Gemini or OpenAI-compatible runtime, create or unlock the encrypted credential vault with a passphrase of at least 12 characters, then paste the API key and choose **save / reuse**. The vault uses AES-256-GCM with a passphrase-derived key; the passphrase is never saved, so the vault must be unlocked each time the WebUI starts. The key is available to the running server process only while unlocked and is never written to `config.toml`. See [SECURITY.md](SECURITY.md) for the threat model.
 
 Gemini model discovery calls the provider's model-list endpoint and keeps models that advertise `generateContent` support. The WebUI therefore does not require a model-name textbox. For OpenAI-compatible runtimes, the WebUI reads the standard `/models` response from the configured base URL and exposes the returned model IDs in the selector. OpenAI-compatible endpoints use `/chat/completions` for image-to-text captioning.
 
 For an OpenAI-compatible custom provider, only the API base URL may need to be changed in Settings. The model is always selected from the discovered dropdown. Providers that do not expose a compatible /models endpoint may need model configuration outside the current WebUI discovery flow.
 
-The selected model is stored in the dataset config so the next caption job uses the same model. API keys entered in the WebUI are saved per provider in a per-user credential file outside dataset folders (`~/.config/lora-data-maker/api-keys.json`, or under `$XDG_CONFIG_HOME` when set). The file and its containing directory are restricted to the current OS user; the keys are plaintext at rest, not encrypted. Keys are never written into a dataset `config.toml`, are restored when the WebUI server starts, and stay available when switching dataset projects. Use **clear** to remove the selected provider key.
+The selected model is stored in the dataset config so the next caption job uses the same model. API keys are encrypted in a per-user vault outside dataset folders (`~/.config/lora-data-maker/api-keys.vault`, or under `$XDG_CONFIG_HOME` when set). Set `LORA_DATA_MAKER_API_KEY_FILE` to override the vault path. Existing plaintext `api-keys.json` files are migrated on first successful unlock. Keys are never written into dataset `config.toml` and remain available across project switches while the vault is unlocked. Use **clear** to remove a provider key and **lock** to remove vault-managed keys from the active process environment.
 
 The WebUI caches provider model discovery for ten minutes. The model selector shows known Gemini choices immediately while refreshing the provider's model list in the background.
 
@@ -331,7 +331,7 @@ RESPONSIBLE_USE.md
 Install the development dependencies:
 
 ~~~bash
-python -m pip install ".[dev]"
+python -m pip install ".[web,dev]"
 pytest -q
 ~~~
 
@@ -342,6 +342,15 @@ The core and WebUI smoke workflows are currently manual (`workflow_dispatch`) to
 Licensed under the Apache License 2.0. See `LICENSE` and `NOTICE`.
 
 ## WebUI
+
+For Termux, install its packaged cryptography module before installing the WebUI extra:
+
+```bash
+pkg install python-cryptography
+python -m pip install ".[web]"
+```
+
+Using the Termux package avoids trying to compile the Rust-backed `cryptography` dependency from PyPI on-device. Linux users can install it through the normal `.[web]` extra.
 
 The project includes an optional localhost WebUI. It is designed for local dataset work from a phone or desktop browser. The scraper is intentionally outside the WebUI pipeline. The WebUI has no user login and is not designed for multi-user/network exposure; keep it bound to loopback. See [SECURITY.md](SECURITY.md).
 

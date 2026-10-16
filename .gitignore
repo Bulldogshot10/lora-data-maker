@@ -29,6 +29,8 @@ models/
 
 # Local credentials and authenticated browser profiles
 api-keys.json
+api-keys.vault
+*.vault
 .api-keys-*.tmp
 credentials.json
 google-profile/

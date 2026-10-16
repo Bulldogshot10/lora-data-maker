@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from lora_data_maker.config import write_default_config
-from lora_data_maker.credentials import load_api_keys, save_api_keys
+from lora_data_maker.credentials import CredentialVault, CredentialVaultError
 from lora_data_maker.dataset import DatasetProject
 from lora_data_maker.paths import ProjectPaths
 from lora_data_maker.web import create_app
@@ -30,18 +30,19 @@ def make_project(root: Path) -> Path:
     return root
 
 
-def test_api_key_store_is_private_and_keeps_provider_keys(tmp_path: Path) -> None:
-    path = tmp_path / "private" / "api-keys.json"
-    save_api_keys(
-        path,
+def test_api_key_store_is_encrypted_and_private(tmp_path: Path) -> None:
+    path = tmp_path / "private" / "api-keys.vault"
+    vault = CredentialVault(path)
+    vault.unlock("correct horse battery")
+    saved = vault.save_keys(
         {
             "GEMINI_API_KEY": "gemini-secret",
             "OPENAI_API_KEY": "openai-secret",
             "IGNORED_KEY": "must-not-be-written",
-        },
+        }
     )
 
-    assert load_api_keys(path) == {
+    assert saved == {
         "GEMINI_API_KEY": "gemini-secret",
         "OPENAI_API_KEY": "openai-secret",
     }
@@ -49,9 +50,45 @@ def test_api_key_store_is_private_and_keeps_provider_keys(tmp_path: Path) -> Non
         assert stat.S_IMODE(path.stat().st_mode) == 0o600
         assert stat.S_IMODE(path.parent.stat().st_mode) == 0o700
 
-    saved = json.loads(path.read_text(encoding="utf-8"))
-    assert "IGNORED_KEY" not in saved
+    raw = path.read_text(encoding="utf-8")
+    envelope = json.loads(raw)
+    assert envelope["format"] == "lora-data-maker-credential-vault"
+    assert "gemini-secret" not in raw
+    assert "openai-secret" not in raw
+    assert "GEMINI_API_KEY" not in raw
+    assert "IGNORED_KEY" not in raw
 
+    vault.lock()
+    reopened = CredentialVault(path)
+    with pytest.raises(CredentialVaultError, match="incorrect passphrase"):
+        reopened.unlock("wrong passphrase")
+    assert reopened.unlock("correct horse battery") == {
+        "GEMINI_API_KEY": "gemini-secret",
+        "OPENAI_API_KEY": "openai-secret",
+    }
+
+
+def test_legacy_plaintext_credentials_are_migrated_after_unlock(tmp_path: Path) -> None:
+    legacy = tmp_path / "api-keys.json"
+    vault_path = tmp_path / "api-keys.vault"
+    legacy.write_text(
+        json.dumps({"GEMINI_API_KEY": "legacy-secret", "OPENAI_API_KEY": "legacy-openai"}),
+        encoding="utf-8",
+    )
+
+    vault = CredentialVault(vault_path, legacy_path=legacy)
+    with pytest.raises(CredentialVaultError, match="at least 12"):
+        vault.unlock("short")
+    assert legacy.exists()
+    assert not vault_path.exists()
+
+    assert vault.unlock("a-much-longer-vault-passphrase") == {
+        "GEMINI_API_KEY": "legacy-secret",
+        "OPENAI_API_KEY": "legacy-openai",
+    }
+    assert vault_path.exists()
+    assert not legacy.exists()
+    assert "legacy-secret" not in vault_path.read_text(encoding="utf-8")
 
 def test_webui_api_keys_survive_project_switch_and_restart(
     tmp_path: Path,
@@ -65,6 +102,12 @@ def test_webui_api_keys_survive_project_switch_and_restart(
     key_file = tmp_path / "private" / "api-keys.json"
 
     first_client = TestClient(create_app(first_root, api_key_store_path=key_file))
+    unlocked = first_client.post(
+        "/api/vlm/vault/unlock",
+        json={"passphrase": "a-much-longer-vault-passphrase"},
+    )
+    assert unlocked.status_code == 200
+    assert unlocked.json()["vault"]["unlocked"] is True
     gemini = first_client.post(
         "/api/vlm/api-key",
         json={"runtime": "gemini", "api_key": "gemini-secret"},
@@ -87,6 +130,12 @@ def test_webui_api_keys_survive_project_switch_and_restart(
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     restarted_client = TestClient(create_app(first_root, api_key_store_path=key_file))
+    assert restarted_client.get("/api/vlm/vault").json()["unlocked"] is False
+    unlock_again = restarted_client.post(
+        "/api/vlm/vault/unlock",
+        json={"passphrase": "a-much-longer-vault-passphrase"},
+    )
+    assert unlock_again.status_code == 200
     state = restarted_client.get("/api/state").json()
     assert state["caption"]["api_keys_set"] == {
         "gemini": True,
@@ -261,7 +310,7 @@ def test_vlm_credential_routes_reject_cross_origin_browser_requests(
     assert mutate_key.status_code == 403
     assert start_job.status_code == 403
     assert calls == []
-    assert load_api_keys(tmp_path / "private" / "api-keys.json") == {}
+    assert not (tmp_path / "private" / "api-keys.json").exists()
 
 def test_saving_api_keys_does_not_change_existing_parent_permissions(tmp_path: Path) -> None:
     shared_dir = tmp_path / "shared"
@@ -269,8 +318,10 @@ def test_saving_api_keys_does_not_change_existing_parent_permissions(tmp_path: P
     if os.name == "posix":
         os.chmod(shared_dir, 0o755)
 
-    path = shared_dir / "api-keys.json"
-    save_api_keys(path, {"GEMINI_API_KEY": "test-key"})
+    path = shared_dir / "api-keys.vault"
+    vault = CredentialVault(path)
+    vault.unlock("a-much-longer-vault-passphrase")
+    vault.save_keys({"GEMINI_API_KEY": "test-key"})
 
     if os.name == "posix":
         assert stat.S_IMODE(shared_dir.stat().st_mode) == 0o755
@@ -432,6 +483,15 @@ def test_webui_rejects_untrusted_host_and_non_loopback_clients(tmp_path: Path) -
 
     bad_host = client.get("/api/state", headers={"host": "attacker.example"})
     assert bad_host.status_code == 421
+
+    # TestClient's synthetic Host aliases are accepted only for the synthetic
+    # test peer, never for an actual loopback socket in production.
+    loopback_client = TestClient(
+        create_app(root),
+        client=("127.0.0.1", 54321),
+    )
+    synthetic_host = loopback_client.get("/api/state", headers={"host": "testserver"})
+    assert synthetic_host.status_code == 421
 
     remote_client = TestClient(
         create_app(root),
@@ -618,3 +678,113 @@ def test_download_route_only_serves_zip_artifacts_from_output(tmp_path: Path) ->
     response = TestClient(create_app(root)).get("/api/download")
     assert response.status_code == 400
     assert "[project]" not in response.text
+
+
+
+def test_webui_requires_unlocked_vault_before_saving_api_keys(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    root = make_project(tmp_path / "workspace" / "dataset")
+    vault_path = tmp_path / "private" / "api-keys.vault"
+    client = TestClient(create_app(root, api_key_store_path=vault_path))
+
+    denied = client.post(
+        "/api/vlm/api-key",
+        json={"runtime": "gemini", "api_key": "must-not-be-written"},
+    )
+    assert denied.status_code == 423
+    assert not vault_path.exists()
+
+    created = client.post(
+        "/api/vlm/vault/unlock",
+        json={"passphrase": "a-much-longer-vault-passphrase"},
+    )
+    assert created.status_code == 200
+    assert created.json()["vault"]["unlocked"] is True
+
+    saved = client.post(
+        "/api/vlm/api-key",
+        json={"runtime": "gemini", "api_key": "must-not-be-written"},
+    )
+    assert saved.status_code == 200
+    assert saved.json()["saved"] is True
+    assert "must-not-be-written" not in vault_path.read_text(encoding="utf-8")
+
+    locked = client.post("/api/vlm/vault/lock")
+    assert locked.status_code == 200
+    assert locked.json()["vault"]["unlocked"] is False
+    assert "GEMINI_API_KEY" not in os.environ
+
+    wrong_passphrase = client.post(
+        "/api/vlm/vault/unlock",
+        json={"passphrase": "wrong vault passphrase"},
+    )
+    assert wrong_passphrase.status_code == 400
+
+    unlocked = client.post(
+        "/api/vlm/vault/unlock",
+        json={"passphrase": "a-much-longer-vault-passphrase"},
+    )
+    assert unlocked.status_code == 200
+    assert os.environ["GEMINI_API_KEY"] == "must-not-be-written"
+
+
+
+def test_credential_vault_rejects_symlink_paths(tmp_path: Path) -> None:
+    from lora_data_maker.credentials import CredentialVaultError
+
+    actual = tmp_path / "actual.vault"
+    actual.write_text("{}", encoding="utf-8")
+    alias = tmp_path / "alias.vault"
+    try:
+        alias.symlink_to(actual)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable on this filesystem")
+
+    with pytest.raises(CredentialVaultError, match="must not be symlinks"):
+        CredentialVault(alias)
+
+
+
+def test_unknown_vault_format_is_not_overwritten(tmp_path: Path) -> None:
+    path = tmp_path / "api-keys.vault"
+    original = json.dumps(
+        {
+            "format": "lora-data-maker-credential-vault",
+            "version": 999,
+            "ciphertext": "future-format",
+        }
+    )
+    path.write_text(original, encoding="utf-8")
+
+    vault = CredentialVault(path)
+    assert vault.has_vault is True
+    with pytest.raises(CredentialVaultError, match="not a supported encrypted vault"):
+        vault.unlock("a-much-longer-vault-passphrase")
+    assert path.read_text(encoding="utf-8") == original
+
+def test_project_symlink_alias_cannot_select_or_delete_another_project(
+    tmp_path: Path,
+) -> None:
+    workspace = tmp_path / "workspace"
+    active = make_project(workspace / "active")
+    victim = make_project(workspace / "victim")
+    alias = workspace / "alias"
+    try:
+        alias.symlink_to(victim, target_is_directory=True)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks are unavailable on this filesystem")
+
+    client = TestClient(create_app(active))
+    selected = client.post("/api/projects/select", json={"name": "alias"})
+    deleted = client.delete("/api/projects/alias")
+
+    assert selected.status_code == 400
+    assert deleted.status_code == 400
+    assert alias.is_symlink()
+    assert victim.is_dir()
+    assert (victim / "config.toml").is_file()
+    assert (victim / "manifest.json").is_file()
+
