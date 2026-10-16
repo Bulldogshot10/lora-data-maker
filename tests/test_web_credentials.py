@@ -788,3 +788,14 @@ def test_project_symlink_alias_cannot_select_or_delete_another_project(
     assert (victim / "config.toml").is_file()
     assert (victim / "manifest.json").is_file()
 
+def test_webui_accepts_ipv4_mapped_loopback_peer(tmp_path: Path) -> None:
+    root = make_project(tmp_path / "workspace" / "dataset")
+    client = TestClient(
+        create_app(root),
+        client=("::ffff:127.0.0.1", 54321),
+    )
+
+    response = client.get("/api/state", headers={"host": "127.0.0.1:8787"})
+
+    assert response.status_code == 200
+
