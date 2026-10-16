@@ -1,4 +1,4 @@
-# Unreleased
+# v2.5.1 - 2026-10-16
 
 ## VLM captioning and WebUI
 
