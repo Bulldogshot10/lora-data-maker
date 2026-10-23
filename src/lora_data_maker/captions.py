@@ -438,8 +438,8 @@ def reset_vlm_captions_for_deterministic(
     return reset
 
 
-def _normalize_api_vlm_fields(fields: list[str]) -> list[str]:
-    """Turn the five API fields into four consistent, readable caption phrases."""
+def _normalize_legacy_vlm_fields(fields: list[str]) -> list[str]:
+    """Turn legacy five-field output into compact, readable caption phrases."""
     if len(fields) != 5:
         return fields
 
@@ -500,7 +500,7 @@ def _vlm_caption_items(raw_caption: str) -> list[str]:
     else:
         # Keep old saved prompts compatible while moving every runtime to the same
         # comma-separated SD 1.5 caption style.
-        flat_caption = ", ".join(_normalize_api_vlm_fields(fields))
+        flat_caption = ", ".join(_normalize_legacy_vlm_fields(fields))
 
     return [
         item.strip(" \t\r\n,.;:")
