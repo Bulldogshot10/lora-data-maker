@@ -154,6 +154,7 @@ def test_default_vlm_prompt_targets_sd15_comma_separated_captions():
     assert "Stable Diffusion 1.5 (SD 1.5)" in DEFAULT_VLM_PROMPT
     assert "comma-separated tags or short visual phrases" in DEFAULT_VLM_PROMPT
     assert "Output only the comma-separated caption on one line" in DEFAULT_VLM_PROMPT
+    assert "below roughly 70 CLIP tokens" in DEFAULT_VLM_PROMPT
     assert "dataset pipeline adds it automatically" in DEFAULT_VLM_PROMPT
     assert "do not describe hair color or hairstyle, eye color" in DEFAULT_VLM_PROMPT
     assert "pose:" not in DEFAULT_VLM_PROMPT
