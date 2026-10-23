@@ -170,7 +170,8 @@ def test_openai_compatible_returns_unstructured_caption_without_retry(monkeypatc
     assert raw == "A woman standing in a black dress indoors."
     assert len(FakeSession.payloads) == 1
     prompt = FakeSession.payloads[0][1]["json"]["messages"][0]["content"][1]["text"]
-    assert "required template" in prompt
+    assert "comma-separated tags or short visual phrases" in prompt
+    assert "Stable Diffusion 1.5 (SD 1.5)" in prompt
 
 
 def test_gemini_caption_normalizes_models_prefix(monkeypatch, tmp_path):
