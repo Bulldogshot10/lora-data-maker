@@ -518,8 +518,8 @@ def test_caption_manifest_uses_injected_vlm_captioner(tmp_path):
     assert (
         (root / image.caption_path).read_text(encoding="utf-8")
         == (
-            "julia, standing with arms raised, white halter top, black skirt, "
-            "slight smile, indoors, soft window lighting\n"
+            "julia, standing with arms raised straight-on, wearing a white halter top, "
+            "black skirt, slight smile expression, indoors, soft window lighting\n"
         )
     )
 
@@ -712,7 +712,7 @@ def test_vlm_caption_ignores_tagger_tags_and_max_token_setting():
         trigger="ignored",
         config=config,
     )
-    assert caption == "julia, standing, black dress, smiling, indoors soft lighting"
+    assert caption == "julia, standing straight-on, wearing a black dress, smiling expression, indoors with soft lighting"
 
 
 def test_vlm_caption_can_use_raw_image_when_processing_is_bypassed(tmp_path):
