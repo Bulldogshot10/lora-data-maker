@@ -13,6 +13,7 @@ from lora_data_maker.captions import (
     clean_vlm_caption,
     estimate_caption_tokens,
     parse_vlm_caption,
+    parse_vlm_fields,
     truncate_caption,
     resolve_trigger,
     reset_vlm_captions_for_deterministic,
@@ -149,14 +150,14 @@ She is sitting outdoors."""
     assert clean_vlm_caption(raw) == "a woman in a black dress. She is sitting outdoors."
 
 
-def test_default_vlm_prompt_uses_five_structured_fields():
-    assert DEFAULT_VLM_PROMPT.count("\n") >= 4
-    assert "exactly these 5 fields, one per line" in DEFAULT_VLM_PROMPT
-    assert "maximum of 5 words per field" in DEFAULT_VLM_PROMPT
-    assert "angle camera: describe the visible camera angle or view" in DEFAULT_VLM_PROMPT
-    assert "pose: describe body pose" in DEFAULT_VLM_PROMPT
-    assert "prefer camera terms: straight-on, from above, from below, high-angle shot, low-angle shot, overhead shot." in DEFAULT_VLM_PROMPT
-    assert "do not mention hair color, eye color, face, age, or gender" in DEFAULT_VLM_PROMPT
+def test_default_vlm_prompt_targets_sd15_comma_separated_captions():
+    assert "Stable Diffusion 1.5 (SD 1.5)" in DEFAULT_VLM_PROMPT
+    assert "comma-separated tags or short visual phrases" in DEFAULT_VLM_PROMPT
+    assert "Output only the comma-separated caption on one line" in DEFAULT_VLM_PROMPT
+    assert "dataset pipeline adds it automatically" in DEFAULT_VLM_PROMPT
+    assert "do not describe hair color or hairstyle, eye color" in DEFAULT_VLM_PROMPT
+    assert "pose:" not in DEFAULT_VLM_PROMPT
+    assert "angle camera:" not in DEFAULT_VLM_PROMPT
 
 
 def test_parse_vlm_caption_normalizes_five_fields():
@@ -175,14 +176,21 @@ def test_parse_vlm_caption_normalizes_five_fields():
     )
 
 
-def test_parse_vlm_caption_rejects_malformed_output():
+def test_parse_vlm_fields_still_rejects_malformed_legacy_output():
     with pytest.raises(VlmCaptionerError, match="missing required fields"):
-        parse_vlm_caption("pose: standing\nclothing: black shirt")
+        parse_vlm_fields("pose: standing\\nclothing: black shirt")
 
 
-def test_parse_vlm_caption_rejects_unstructured_prose():
-    with pytest.raises(VlmCaptionerError, match="does not contain the expected"):
-        parse_vlm_caption("a woman standing in a black dress outdoors")
+def test_parse_vlm_caption_accepts_flat_sd15_caption():
+    assert parse_vlm_caption(
+        "upper body portrait, standing, white shirt, slight smile, soft lighting"
+    ) == "upper body portrait, standing, white shirt, slight smile, soft lighting"
+
+
+def test_parse_vlm_caption_accepts_unstructured_prose_fallback():
+    assert parse_vlm_caption(
+        "a woman standing in a black dress outdoors"
+    ) == "a woman standing in a black dress outdoors"
 
 
 def test_parse_vlm_caption_accepts_camera_angle_alias():
@@ -303,7 +311,7 @@ def test_build_api_vlm_caption_keeps_unstructured_output_for_audit():
     ) == "julia, A woman standing in a black dress indoors."
 
 
-def test_caption_manifest_keeps_unstructured_api_caption_and_marks_warning(tmp_path):
+def test_caption_manifest_accepts_flat_api_caption_without_format_warning(tmp_path):
     root = tmp_path / "project"
     manifest = ProjectManifest(
         project_name="julia-set",
@@ -348,17 +356,54 @@ def test_caption_manifest_keeps_unstructured_api_caption_and_marks_warning(tmp_p
     assert summary.captioned == 1
     assert summary.failed == 0
     assert image.status == "captioned"
-    assert image.metadata["caption_vlm_format_warning"].startswith(
-        "VLM caption does not contain the expected"
-    )
-    assert image.metadata["caption_vlm_raw_output"] == (
-        "A woman standing in a black dress indoors."
-    )
+    assert "caption_vlm_format_warning" not in image.metadata
+    assert "caption_vlm_raw_output" not in image.metadata
     assert (
         (root / image.caption_path).read_text(encoding="utf-8")
         == "julia, A woman standing in a black dress indoors.\n"
     )
 
+
+
+def test_build_vlm_caption_accepts_sd15_tag_style_output():
+    config = CaptionConfig(
+        backend="vlm",
+        vlm=VlmConfig(model_path="model.gguf", mmproj_path="mmproj.gguf"),
+    )
+    assert build_vlm_caption(
+        "upper body portrait, standing, both arms raised, front view, "
+        "white halter top, black mini skirt, slight smile, "
+        "looking at viewer, indoor studio, soft lighting",
+        subject="Julia",
+        trigger="ignored",
+        config=config,
+    ) == (
+        "julia, upper body portrait, standing, both arms raised, front view, "
+        "white halter top, black mini skirt, slight smile, "
+        "looking at viewer, indoor studio, soft lighting"
+    )
+
+
+def test_build_api_vlm_caption_accepts_sd15_tag_style_output():
+    config = CaptionConfig(
+        backend="vlm",
+        vlm=VlmConfig(
+            runtime="openai_compatible",
+            api_key_env="OPENAI_API_KEY",
+            api_model="vision-model",
+            api_base_url="https://api.openai.com/v1",
+        ),
+    )
+    assert build_api_vlm_caption(
+        "full body, seated on a chair, three-quarter view, red coat, "
+        "black boots, neutral expression, city street, overcast daylight",
+        subject="Julia",
+        trigger="ignored",
+        config=config,
+    ) == (
+        "julia, full body, seated on a chair, three-quarter view, red coat, "
+        "black boots, neutral expression, city street, overcast daylight"
+    )
 
 def test_build_vlm_caption_removes_repeated_trigger_mentions():
     config = CaptionConfig(
@@ -377,7 +422,7 @@ def test_build_vlm_caption_removes_repeated_trigger_mentions():
         subject="Julia",
         trigger="ignored",
         config=config,
-    ) == "julia, portrait pose, black shirt, smiling, indoor room"
+    ) == "julia, portrait pose straight-on, wearing a black shirt, smiling expression, indoor room"
 
 
 def test_caption_config_rejects_llama_vlm_without_paths():
