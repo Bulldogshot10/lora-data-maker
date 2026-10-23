@@ -10,7 +10,7 @@ from PIL import Image, UnidentifiedImageError
 from pathlib import Path
 from typing import Any
 
-from .caption_vlm import VlmCaptionerError, VlmConfig
+from .caption_vlm import DEFAULT_VLM_PROMPT, VlmCaptionerError, VlmConfig
 from .security import MAX_IMAGE_PIXELS, MAX_IMAGE_UPLOAD_BYTES, assert_safe_outbound_url, validate_api_base_url
 
 
@@ -181,29 +181,8 @@ def _extract_openai_text(data: dict[str, Any]) -> str:
     )
 
 
-API_VLM_PROMPT = (
-    "caption this image for a stable diffusion character lora dataset. "
-    "return exactly these 5 fields, in this exact order, one field per line. "
-    "copy the field labels exactly as written in the required template below. "
-    "each field value must be a short phrase, maximum 7 words. "
-    "in the pose field, include shot type and body pose, using visible framing only. "
-    "choose from extreme close-up, close-up, medium close-up, medium shot, medium-long shot, cowboy shot, full-body shot, wide shot. "
-    "examples: close-up portrait; medium shot standing; cowboy shot standing; full-body shot standing; wide shot seated. "
-    "describe the visible camera angle or view; describe visible clothing; "
-    "describe visible expression; describe the visible background and include lighting. "
-    "do not mention hair color, eye color, face, age, or gender. "
-    "do not mention image quality, watermarks, text, metadata, ai, or this task. "
-    "do not guess hidden or ambiguous details. "
-    "replace every placeholder with a real short phrase; never output the angle-bracket placeholders. "
-    "required template, with exactly these labels and line breaks:\n"
-    "pose: <body pose>\n"
-    "angle camera: <camera angle or view>\n"
-    "clothing: <visible clothing>\n"
-    "expression: <visible expression>\n"
-    "background: <background and lighting>\n"
-    "return only those five lines, no introduction, explanation, bullets, markdown, or quotes."
-)
-
+# Share one SD 1.5 caption contract across local and API VLM runtimes.
+API_VLM_PROMPT = DEFAULT_VLM_PROMPT
 
 
 class _ApiVlmCaptioner:
