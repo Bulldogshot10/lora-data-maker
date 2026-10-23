@@ -390,8 +390,14 @@ def parse_vlm_fields(raw_caption: str) -> list[str]:
     return [by_name[field_name] for field_name in _VLM_FIELDS]
 
 def parse_vlm_caption(raw_caption: str) -> str:
-    """Parse the VLM response into one ordered caption fragment."""
-    return ", ".join(parse_vlm_fields(raw_caption))
+    """Normalize either a legacy structured caption or a flat SD 1.5 caption."""
+    try:
+        return ", ".join(parse_vlm_fields(raw_caption))
+    except VlmCaptionerError as parse_error:
+        fallback = clean_vlm_caption(_strip_vlm_wrappers(raw_caption))
+        if not fallback:
+            raise parse_error
+        return fallback
 
 
 def reset_vlm_captions_for_deterministic(
@@ -483,6 +489,68 @@ def _normalize_api_vlm_fields(fields: list[str]) -> list[str]:
     return [pose, clothing, expression, background]
 
 
+def _vlm_caption_items(raw_caption: str) -> list[str]:
+    """Convert legacy five-field or modern flat VLM output to compact caption items."""
+    try:
+        fields = parse_vlm_fields(raw_caption)
+    except VlmCaptionerError as parse_error:
+        flat_caption = clean_vlm_caption(_strip_vlm_wrappers(raw_caption))
+        if not flat_caption:
+            raise parse_error
+    else:
+        # Keep old saved prompts compatible while moving every runtime to the same
+        # comma-separated SD 1.5 caption style.
+        flat_caption = ", ".join(_normalize_api_vlm_fields(fields))
+
+    return [
+        item.strip(" \\t\\r\\n,.;:")
+        for item in re.split(r"\\s*,\\s*", flat_caption)
+        if item.strip(" \\t\\r\\n,.;:")
+    ]
+
+
+def _build_vlm_caption(
+    raw_caption: str,
+    *,
+    subject: str,
+    trigger: str,
+    config: CaptionConfig,
+) -> str:
+    """Build one SD 1.5-friendly caption and prepend the resolved trigger once."""
+    items = _vlm_caption_items(raw_caption)
+    resolved_trigger = resolve_trigger(
+        subject=subject,
+        trigger=trigger,
+        trigger_from_subject=config.trigger_from_subject,
+    )
+
+    cleaned_items: list[str] = []
+    seen: set[str] = set()
+    trigger_pattern = (
+        re.compile(
+            rf"(?<![A-Za-z0-9_]){re.escape(resolved_trigger)}(?![A-Za-z0-9_])",
+            re.IGNORECASE,
+        )
+        if resolved_trigger
+        else None
+    )
+    for item in items:
+        value = item
+        if trigger_pattern is not None:
+            value = trigger_pattern.sub("", value)
+        value = re.sub(r"\\s+", " ", value).strip(" ,;:.")
+        key = value.casefold()
+        if value and key not in seen:
+            cleaned_items.append(value)
+            seen.add(key)
+
+    parts: list[str] = []
+    if resolved_trigger:
+        parts.append(resolved_trigger)
+    parts.extend(cleaned_items)
+    return config.separator.join(parts)
+
+
 def build_api_vlm_caption(
     raw_caption: str,
     *,
@@ -490,42 +558,13 @@ def build_api_vlm_caption(
     trigger: str,
     config: CaptionConfig,
 ) -> str:
-    """Normalize an API VLM caption and inject the trigger, even if its format is unstructured."""
-    try:
-        fields = parse_vlm_fields(raw_caption)
-    except VlmCaptionerError as parse_error:
-        # Keep non-empty API output so it can be audited instead of failing the image.
-        fallback = clean_vlm_caption(_strip_vlm_wrappers(raw_caption))
-        if not fallback:
-            raise parse_error
-        fields = [fallback]
-    else:
-        fields = _normalize_api_vlm_fields(fields)
-
-    resolved_trigger = resolve_trigger(
+    """Normalize API output and inject the dataset trigger, accepting flat or legacy output."""
+    return _build_vlm_caption(
+        raw_caption,
         subject=subject,
         trigger=trigger,
-        trigger_from_subject=config.trigger_from_subject,
+        config=config,
     )
-
-    cleaned_fields: list[str] = []
-    for field_value in fields:
-        value = field_value
-        if resolved_trigger and value:
-            pattern = re.compile(
-                rf"(?<![A-Za-z0-9_]){re.escape(resolved_trigger)}(?![A-Za-z0-9_])",
-                re.IGNORECASE,
-            )
-            value = pattern.sub("", value)
-            value = re.sub(r"\s+", " ", value).strip(" ,;:")
-        if value:
-            cleaned_fields.append(value)
-
-    parts: list[str] = []
-    if resolved_trigger:
-        parts.append(resolved_trigger)
-    parts.extend(cleaned_fields)
-    return config.separator.join(parts)
 
 
 def build_vlm_caption(
@@ -535,35 +574,13 @@ def build_vlm_caption(
     trigger: str,
     config: CaptionConfig,
 ) -> str:
-    """Build a VLM caption from strict fields."""
-    fields = parse_vlm_fields(raw_caption)
-    # Keep the local training caption focused on pose, clothing, expression, and background.
-    fields = [fields[0], *fields[2:]]
-    resolved_trigger = resolve_trigger(
+    """Normalize local VLM output and inject the dataset trigger, accepting flat or legacy output."""
+    return _build_vlm_caption(
+        raw_caption,
         subject=subject,
         trigger=trigger,
-        trigger_from_subject=config.trigger_from_subject,
+        config=config,
     )
-
-    cleaned_fields: list[str] = []
-    for field_value in fields:
-        value = field_value
-        if resolved_trigger and value:
-            pattern = re.compile(
-                rf"(?<![A-Za-z0-9_]){re.escape(resolved_trigger)}(?![A-Za-z0-9_])",
-                re.IGNORECASE,
-            )
-            value = pattern.sub("", value)
-            value = re.sub(r"\s+", " ", value).strip(" ,;:")
-        if value:
-            cleaned_fields.append(value)
-
-    parts: list[str] = []
-    if resolved_trigger:
-        parts.append(resolved_trigger)
-    parts.extend(cleaned_fields)
-
-    return config.separator.join(parts)
 
 
 def estimate_caption_tokens(text: str) -> int:
@@ -803,15 +820,9 @@ def caption_manifest(
                 try:
                     assert runtime is not None
                     raw_caption = runtime.caption(source_image)
+                    image.metadata.pop("caption_vlm_format_warning", None)
+                    image.metadata.pop("caption_vlm_raw_output", None)
                     if settings.vlm.runtime in {"gemini", "openai_compatible"}:
-                        try:
-                            parse_vlm_fields(raw_caption)
-                        except VlmCaptionerError as format_error:
-                            image.metadata["caption_vlm_format_warning"] = str(format_error)[:500]
-                            image.metadata["caption_vlm_raw_output"] = str(raw_caption)[:4000]
-                        else:
-                            image.metadata.pop("caption_vlm_format_warning", None)
-                            image.metadata.pop("caption_vlm_raw_output", None)
                         caption = build_api_vlm_caption(
                             raw_caption,
                             subject=manifest.subject,
@@ -819,7 +830,6 @@ def caption_manifest(
                             config=settings,
                         )
                     else:
-                        image.metadata.pop("caption_vlm_format_warning", None)
                         caption = build_vlm_caption(
                             raw_caption,
                             subject=manifest.subject,
