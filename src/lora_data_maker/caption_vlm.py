@@ -13,21 +13,16 @@ from .exceptions import LoraDataMakerError
 from .security import MAX_IMAGE_PIXELS, MAX_IMAGE_UPLOAD_BYTES
 
 DEFAULT_VLM_PROMPT = (
-    "describe this photo for a stable diffusion character lora training caption.\n"
-    "use exactly these 5 fields, one per line.\n"
-    "use short phrases only, with a maximum of 5 words per field.\n\n"
-    "pose: describe body pose and shot type, e.g. close-up portrait, medium shot standing, cowboy shot, full-body shot standing, wide shot seated.\n"
-    "choose shot type from visible framing: extreme close-up, close-up, medium close-up, medium shot, medium-long shot, cowboy shot, full-body shot, wide shot.\n"
-    "angle camera: describe the visible camera angle or view\n"
-    "prefer camera terms: straight-on, from above, from below, high-angle shot, low-angle shot, overhead shot.\n"
-    "clothing: describe visible clothing\n"
-    "expression: describe visible facial expression\n"
-    "background: describe setting and lighting\n\n"
-    "do not mention hair color, eye color, face, age, or gender.\n"
-    "no extra text. be factual, concise, and specific.\n"
-    "prioritize concrete visual details over generic descriptions.\n"
-    "do not guess hidden or ambiguous details.\n"
-    "do not mention image quality, the image itself, ai, or this task."
+    "Write concise captions for images used to train character/person LoRAs on Stable Diffusion 1.5 (SD 1.5).\\n"
+    "Inspect only what is visibly present. Return ONE single-line caption made of comma-separated tags or short visual phrases, using familiar vocabulary that SD 1.5's CLIP text encoder can understand. Prefer concise labels over long prose.\\n\\n"
+    "Prioritize useful, image-specific details in this order: framing/composition and camera view (close-up portrait, upper body, cowboy shot, full body, front view, side view, from above); visible pose/action (standing, sitting, arms raised, holding an object, walking, crossed legs); visible clothing and accessories, including garment types and colors; expression and gaze when clear (smiling, neutral expression, looking at viewer, looking away); subject count/composition (solo, two people, group) when clear; background/setting and lighting (bedroom, street, plain background, window light, soft lighting, backlighting). Mention the medium only when obvious and useful, such as photograph, anime illustration, or digital illustration.\\n\\n"
+    "For a character/person LoRA, leave stable identity-defining traits for the dataset trigger to learn: do not describe hair color or hairstyle, eye color, facial identity, age, or gender. Do not guess hidden, occluded, or ambiguous details.\\n"
+    "Do not include the subject's name or trigger token; the dataset pipeline adds it automatically.\\n"
+    "Use about 6-12 useful items. Avoid duplicate synonyms, redundant restatements, long narrative sentences, generic praise, quality-rating tags, subjective opinions, negative prompts, and explanations. Do not caption watermarks or incidental text.\\n"
+    "Output only the comma-separated caption on one line. No labels, field names, bullets, numbering, quotes, markdown, or introductory text.\\n\\n"
+    "Example: upper body portrait, standing, both arms raised, front view, white halter top, black mini skirt, slight smile, looking at viewer, indoor studio, soft lighting\\n"
+    "Example: full body, seated on a chair, three-quarter view, red coat, black boots, neutral expression, city street, overcast daylight\\n"
+    "Example: close-up portrait, side profile, looking away, open mouth, dramatic side lighting, dark background"
 )
 
 
