@@ -19,7 +19,7 @@ quality filter
 process / crop / resize
   ├──→ tag → tag filtering → deterministic caption → trigger → .txt
   │
-  └──→ local VLM → structured fields → trigger → .txt
+  └──→ local/API VLM → SD 1.5 comma-separated caption → trigger → .txt
   ↓
 export
   ↓
@@ -50,7 +50,7 @@ By default the trigger is derived from the subject. Caption generation prepends 
 
 Example final caption:
 
-julia, blonde hair, blue eyes, portrait
+julia, upper body portrait, standing, white shirt, slight smile, indoor studio
 
 Trigger injection must be idempotent. Re-running the caption stage must not produce repeated trigger tokens.
 
@@ -97,7 +97,7 @@ Tagger output is treated as visual metadata. General tags, character tags, confi
 
 ## Caption boundary
 
-Caption generation branches by backend. With `caption.backend = "deterministic"`, the final caption is built from normalized, deduplicated tags on tagged records. With `caption.backend = "vlm"`, the local llama-cpp-python runtime reads processed records directly and generates a strict four-field response: pose, clothing, expression, and background with lighting. WD14 and JoyTag are completely bypassed in VLM mode. The parser strips field labels and validates the response shape and five-word-per-field limit. The resolved trigger is placed first, followed by the four ordered fields. VLM output is written directly after strict field validation; the deterministic `caption.max_tokens` budget is not applied to VLM captions. VLM inference or formatting failures mark the image failed instead of falling back to deterministic tags.
+Caption generation branches by backend. With `caption.backend = "deterministic"`, the final caption is built from normalized, deduplicated tags on tagged records. With `caption.backend = "vlm"`, local and API VLM runtimes use the same SD 1.5-focused prompt and produce one concise, comma-separated caption line covering framing, pose/action, clothing/accessories, expression/gaze, subject count when clear, and background/lighting. Stable identity traits are left to the dataset trigger for character/person LoRAs. WD14 and JoyTag are completely bypassed in VLM mode. The caption builder accepts the new flat format and legacy five-field responses, normalizes items, removes duplicate trigger mentions, and prepends the resolved trigger exactly once. The deterministic `caption.max_tokens` budget is not applied to VLM captions. VLM inference failures or empty captions mark the image failed instead of falling back to deterministic tags.
 
 Captions are written as UTF-8 `.txt` files under `work/captions/`, one file per image record. The resolved trigger is derived from `subject` when `caption.trigger_from_subject = true`; otherwise the manifest trigger is used. Trigger injection is idempotent. Caption backend/model/fallback metadata is retained in the manifest for audit and resume.
 
