@@ -195,9 +195,9 @@ For API runtimes, api_key_env names the environment variable holding the API key
 
 The WebUI caches provider model discovery for ten minutes. The model selector shows known Gemini choices immediately while refreshing the provider's model list in the background.
 
-Local VLM runtimes use the structured four-field caption contract: pose, clothing, expression, background; pose includes a camera view term when visible; background includes lighting; hair color, eye color, face, age, and gender are excluded. Local parsing keeps this structure because local runtimes need an explicit output contract.
+Local and API VLM runtimes share one SD 1.5-focused caption prompt. The VLM returns one concise, single-line caption with comma-separated tags or short visual phrases, covering framing, pose/action, clothing/accessories, expression/gaze, subject count when clear, and background/lighting. The prompt avoids stable identity traits such as hair/eye color, hairstyle, facial identity, age, and gender so a character/person LoRA can learn those through its dataset trigger. The pipeline prepends the resolved trigger and accepts both this flat caption format and legacy five-field VLM output.
 
-API VLM runtimes use a separate thin contract. The API receives the image plus a built-in four-field caption prompt and returns exactly four fields: pose, clothing, expression, background. API requests do not expose local sampling/runtime settings such as temperature, top-p, top-k, seed, context size, or chat format. The API adapter sends only the image, the fixed prompt, and the selected API model. The backend parses the four fields, tolerates harmless formatting differences, and injects the resolved dataset trigger first.
+API requests use the shared built-in prompt and do not expose local sampling/runtime settings such as temperature, top-p, top-k, seed, context size, or chat format. The API adapter sends the image, the fixed prompt, and the selected API model.
 
 Install the local runtime with:
 
