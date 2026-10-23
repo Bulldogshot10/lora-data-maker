@@ -178,7 +178,7 @@ def test_parse_vlm_caption_normalizes_five_fields():
 
 def test_parse_vlm_fields_still_rejects_malformed_legacy_output():
     with pytest.raises(VlmCaptionerError, match="missing required fields"):
-        parse_vlm_fields("pose: standing\\nclothing: black shirt")
+        parse_vlm_fields("pose: standing\nclothing: black shirt")
 
 
 def test_parse_vlm_caption_accepts_flat_sd15_caption():
