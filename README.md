@@ -131,9 +131,9 @@ The selected model is stored in the dataset config so the next caption job uses 
 
 The WebUI caches provider model discovery for ten minutes. The model selector shows known Gemini choices immediately while refreshing the provider's model list in the background.
 
-Every VLM runtime receives the same fixed caption constraint. The model must return exactly four fields in order: `pose`, `clothing`, `expression`, and `background`. Each field is limited to five words. Pose includes one camera-view term when visible, background includes lighting, and hair color, eye color, face, age, and gender are excluded. The parser rejects malformed output.
+By default, local and API VLM runtimes share one SD 1.5-focused caption prompt. It asks for one concise, single-line caption made of comma-separated tags or short visual phrases, describing framing/view, pose/action, clothing/accessories, expression/gaze, subject count when clear, and background/lighting. The prompt aims for roughly 25-45 words and fewer than 70 CLIP tokens. For character/person LoRAs, stable identity traits such as hair/eye color, hairstyle, facial identity, age, and gender are left for the dataset trigger to learn.
 
-After parsing, the code always injects the resolved dataset trigger as the first caption token and removes duplicate trigger mentions from the four generated fields. The final order is trigger → pose → clothing → expression → background. WD14/JoyTag tags are not merged into VLM prose and `caption.max_tokens` does not limit VLM output. API or formatting failures mark that image failed instead of falling back to deterministic tags.
+The caption builder accepts the new flat output as well as legacy five-field VLM responses, normalizes the items, removes duplicate trigger mentions, and prepends the resolved dataset trigger exactly once. WD14/JoyTag tags are not merged into VLM captions and `caption.max_tokens` does not truncate VLM output. Inference failures or empty captions mark the image failed; a valid one-line caption is not rejected for lacking field labels.
 
 
 Tagger models are cached under:
@@ -250,7 +250,7 @@ clean
 process
   ├────────────→ tag → clean-tags ───→ deterministic caption → trigger → .txt
   │
-  └────────────→ local VLM → strict fields → trigger → .txt
+  └────────────→ local/API VLM → SD 1.5 comma-separated caption → trigger → .txt
   ↓
 export
   ↓
@@ -356,7 +356,7 @@ Start the WebUI from a dataset workspace:
 
 Then open http://127.0.0.1:8787 in the browser. The WebUI can create a new dataset project from the workspace, open existing projects, and switch between them without using the CLI init command.
 
-The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection for deterministic captions, local VLM model/mmproj paths and chat format, the final caption token budget, validation, staging, caption generation, Kohya export, ZIP packaging, gallery preview, manual image removal for cherry-picking, scraper cancellation, and ZIP download. VLM mode skips WD14/JoyTag and generates captions as trigger → pose → clothing → expression → background.
+The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection for deterministic captions, local VLM model/mmproj paths and chat format, the final caption token budget, validation, staging, caption generation, Kohya export, ZIP packaging, gallery preview, manual image removal for cherry-picking, scraper cancellation, and ZIP download. VLM mode skips WD14/JoyTag and generates trigger-prefixed, comma-separated captions from visible framing, pose/action, clothing/accessories, expression/gaze, and background/lighting.
 
 The one-click Prepare Dataset flow runs:
 
