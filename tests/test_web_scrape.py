@@ -242,3 +242,48 @@ def test_web_can_cancel_running_scrape(tmp_path: Path, monkeypatch) -> None:
     assert job is not None
     assert job["status"] == "cancelled"
     assert "downloaded 0/3" in job["message"]
+
+
+
+def test_web_settings_allow_google_custom_date_range(tmp_path: Path) -> None:
+    import tomllib
+
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+    payload = {
+        "name": "test",
+        "subject": "person",
+        "trigger": "person",
+        "preset": "sweetspot",
+        "scraper_backend": "playwright-google",
+        "scrape_query": "portrait",
+        "scrape_count": 2,
+        "scrape_date_mode": "range",
+        "scrape_year": 0,
+        "scrape_date_from": "2019-04-01",
+        "scrape_date_to": "2019-09-30",
+        "scrape_safe_search": False,
+        "mode": "cover",
+        "width": 512,
+        "height": 512,
+        "quality": 95,
+        "face_crop": False,
+        "face_padding": 1.75,
+        "person_check": False,
+        "max_persons": 1,
+        "person_threshold": 0.35,
+        "min_subject_area": 0.12,
+        "min_subject_visibility": 0.35,
+        "text_check": True,
+        "text_confidence": 0.5,
+        "text_min_area_ratio": 0.0004,
+    }
+
+    response = client.post("/api/settings", json=payload)
+    assert response.status_code == 200, response.text
+
+    with (root / "config.toml").open("rb") as stream:
+        saved = tomllib.load(stream)
+    assert saved["scraper"]["backend"] == "playwright-google"
+    assert saved["scraper"]["date_from"] == "2019-04-01"
+    assert saved["scraper"]["date_to"] == "2019-09-30"

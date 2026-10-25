@@ -12,7 +12,7 @@ Model training and image generation are outside the scope of this project.
 
 ## Current state
 
-v2.5.1 includes the full dataset-preparation pipeline, local and API VLM captioning, authenticated Google Images scraping through local Chromium/CDP, Bing date filtering, and the WebUI, alongside mobile-friendly tagger presets:
+v2.5.1 includes the full dataset-preparation pipeline, local and API VLM captioning, authenticated Google Images scraping through local Chromium/CDP, date filtering for Playwright Bing and Google, and the WebUI, alongside mobile-friendly tagger presets:
 
 - **sweetspot**: SmilingWolf WD ViT Tagger v3, a compact general-purpose WD14-compatible ONNX tagger.
 - **potato**: QUINT8 mobile SwinV2 tagger for the smallest built-in footprint.
@@ -306,9 +306,10 @@ Examples:
 lora-data-maker scrape duckduckgo "julia subject" --count 200
 lora-data-maker scrape playwright-bing "julia portrait" --year 2019 --count 100
 lora-data-maker scrape playwright-bing "julia portrait" --date-from 2019-04-01 --date-to 2019-09-30 --count 100
+lora-data-maker scrape playwright-google "julia portrait" --date-from 2019-04-01 --date-to 2019-09-30 --count 100
 ~~~
 
-Bing date filters are also available in the WebUI as **any date**, **specific year**, or **custom range**. The date filter controls appear when `playwright-bing` is selected. The scraper is add-only and uses the manifest to avoid re-downloading known source URLs. A running WebUI scrape can be cancelled, and downloads completed before cancellation are preserved.
+Bing and Playwright Google date filters are also available in the WebUI as **any date**, **specific year**, or **custom range**. The date filter controls appear when either Playwright backend is selected. Google uses `after:`/`before:` query operators, which filter indexed page dates and do not guarantee the date the original photo was taken. The scraper is add-only and uses the manifest to avoid re-downloading known source URLs. A running WebUI scrape can be cancelled, and downloads completed before cancellation are preserved.
 
 ## Dataset layout
 

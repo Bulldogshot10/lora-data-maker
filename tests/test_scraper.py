@@ -1215,6 +1215,25 @@ def test_playwright_google_builds_direct_google_images_url():
     assert params["safe"] == ["off"]
 
 
+def test_playwright_google_builds_date_filter_with_search_operators():
+    from urllib.parse import parse_qs, urlparse
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    scraper = PlaywrightImagesScraper(
+        provider="google",
+        date_from="2019-04-01",
+        date_to="2019-09-30",
+    )
+    params = parse_qs(urlparse(scraper._build_url("julia russian woman")).query)
+
+    assert params["q"] == [
+        "julia russian woman after:2019-04-01 before:2019-09-30"
+    ]
+    assert params["udm"] == ["2"]
+    assert "tbs" not in params
+
+
 def test_playwright_google_safesearch_can_be_enabled():
     from urllib.parse import parse_qs, urlparse
 
@@ -1580,6 +1599,23 @@ def test_playwright_google_does_not_fallback_to_rendered_thumbnails():
     """
 
     assert PlaywrightImagesScraper._extract_google_original_urls(body) == []
+
+
+def test_playwright_google_extracts_unquoted_ou_from_js_object_literal():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = r'''
+    <script>
+      var result = {
+        ou: "https://cdn.example.com/original-unquoted.jpg",
+        tu: "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Athumb"
+      };
+    </script>
+    '''
+
+    assert PlaywrightImagesScraper._extract_google_original_urls(body) == [
+        "https://cdn.example.com/original-unquoted.jpg"
+    ]
 
 
 def test_playwright_google_decodes_original_urls_and_rejects_thumbnail_hosts():
@@ -2036,7 +2072,7 @@ def test_playwright_bing_safesearch_can_be_enabled():
     assert params["adlt"] == ["moderate"]
 
 
-def test_playwright_bing_validates_custom_date_range():
+def test_playwright_providers_validate_custom_date_range():
     import pytest
 
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
@@ -2049,12 +2085,13 @@ def test_playwright_bing_validates_custom_date_range():
             date_from="2020-01-01",
             date_to="2019-12-31",
         )
-    with pytest.raises(ValueError, match="only supported"):
-        PlaywrightImagesScraper(
-            provider="google",
-            date_from="2019-01-01",
-            date_to="2019-12-31",
-        )
+    google = PlaywrightImagesScraper(
+        provider="google",
+        date_from="2019-01-01",
+        date_to="2019-12-31",
+    )
+    assert google.date_from == "2019-01-01"
+    assert google.date_to == "2019-12-31"
 
 
 def test_existing_chromium_reads_google_profile_environment(monkeypatch, tmp_path):
@@ -2216,13 +2253,30 @@ def test_scraper_manager_forwards_bing_date_range(tmp_path):
     assert manager.scraper.date_to == "2019-12-31"
 
 
+def test_scraper_manager_forwards_google_date_range(tmp_path):
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    manager = ScraperManager(
+        backend="playwright-google",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        date_from="2019-01-01",
+        date_to="2019-12-31",
+    )
+
+    assert manager.scraper.provider == "google"
+    assert manager.scraper.date_from == "2019-01-01"
+    assert manager.scraper.date_to == "2019-12-31"
+    assert "after:2019-01-01 before:2019-12-31" in manager.scraper._build_url("portrait")
+
+
 def test_scraper_manager_rejects_date_filter_for_other_backends(tmp_path):
     import pytest
 
     from lora_data_maker.scrapers.base import ScraperError
     from lora_data_maker.scrapers.manager import ScraperManager
 
-    with pytest.raises(ScraperError, match="playwright-bing"):
+    with pytest.raises(ScraperError, match="playwright-bing or playwright-google"):
         ScraperManager(
             backend="duckduckgo",
             output_dir=tmp_path / "raw",
@@ -3039,6 +3093,32 @@ def test_playwright_google_extracts_original_from_imgres_link():
         page_html,
         page_url="https://www.google.com/search?tbm=isch&q=portrait",
     ) == ["https://cdn.example.com/portrait.jpg"]
+
+
+def test_playwright_google_extracts_large_viewer_image_from_live_dom():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    original = "https://cdn.example.com/viewer-full-image.jpg"
+
+    class FakePage:
+        _url = "https://www.google.com/search?q=portrait&udm=2"
+
+        def evaluate(self, expression):
+            if expression == "location.href":
+                return self._url
+            if "querySelectorAll('a[href]')" in expression:
+                return []
+            if "img.sFlh5c" in expression and "naturalWidth" in expression:
+                return [original]
+            raise AssertionError(f"unexpected browser expression: {expression[:80]}")
+
+    scraper = PlaywrightImagesScraper(provider="google")
+    urls = scraper._extract_google_original_urls_from_page(
+        FakePage(),
+        '<html><body><img src="https://encrypted-tbn0.gstatic.com/thumb.jpg"></body></html>',
+    )
+
+    assert urls == [original]
 
 
 def test_playwright_google_extracts_original_from_live_dom_when_outer_html_has_none():

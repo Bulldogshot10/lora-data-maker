@@ -42,7 +42,7 @@ Download images through a built-in backend.
 lora-data-maker scrape {google,duckduckgo,chromium,playwright-bing,playwright-google,direct} [query] [--count COUNT] [--year YEAR | --date-from YYYY-MM-DD --date-to YYYY-MM-DD] [--path PATH]
 ~~~
 
-Google uses query text with the legacy HTTP parser. DuckDuckGo uses query text and its image JSON endpoint. Chromium mode uses DuckDuckGo Images first, then local headless Chromium for Bing Images. The Playwright backends use the Termux-native Chromium CDP adapter directly for Bing or Google Images. Direct uses a text file containing source URLs. `--year` and `--date-from/--date-to` apply only to `playwright-bing`; omit both to search any date.
+Google uses query text with the legacy HTTP parser. DuckDuckGo uses query text and its image JSON endpoint. Chromium mode uses DuckDuckGo Images first, then local headless Chromium for Bing Images. The Playwright backends use the Termux-native Chromium CDP adapter directly for Bing or Google Images. Direct uses a text file containing source URLs. `--year` and `--date-from/--date-to` apply to `playwright-bing` and `playwright-google`; omit both to search any date. Google applies `after:` and `before:` operators to the query, which filter indexed page dates rather than EXIF/photo-capture dates.
 
 Scrape is add-only. Known manifest source URLs and archived URLs are skipped.
 

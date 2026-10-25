@@ -104,17 +104,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--year",
         type=int,
         default=None,
-        help="filter Playwright Bing results to a calendar year, e.g. 2019",
+        help="filter Playwright Bing or Google results to a calendar year, e.g. 2019",
     )
     scrape_parser.add_argument(
         "--date-from",
         default=None,
-        help="start date for Playwright Bing filter (YYYY-MM-DD; requires --date-to)",
+        help="start date for Playwright Bing/Google filter (YYYY-MM-DD; requires --date-to)",
     )
     scrape_parser.add_argument(
         "--date-to",
         default=None,
-        help="end date for Playwright Bing filter (YYYY-MM-DD; requires --date-from)",
+        help="end date for Playwright Bing/Google filter (YYYY-MM-DD; requires --date-from)",
     )
     scrape_parser.add_argument(
         "--path",

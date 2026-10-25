@@ -845,7 +845,7 @@ dialog::backdrop{background:rgba(15,20,28,.45);backdrop-filter:blur(4px)}
                 <option value="year">specific year</option>
                 <option value="range">custom range</option>
               </select>
-              <div class="field-note" id="scrape_date_note">date filters are supported by Playwright Bing.</div>
+              <div class="field-note" id="scrape_date_note">date filters are available with Playwright Bing and Google.</div>
             </div>
             <div class="field" id="scrape_date_year_field" hidden>
               <label for="scrape_year">year</label>
@@ -1394,7 +1394,8 @@ async function loadVlmModels(explicit=false){
   }
 }
 function syncScrapeDateUI(){
-  const supported=$("scraper_backend").value==="playwright-bing";
+  const backend=$("scraper_backend").value;
+  const supported=["playwright-bing","playwright-google"].includes(backend);
   if(!supported&&$("scrape_date_mode").value!=="any"){
     $("scrape_date_mode").value="any";
     $("scrape_year").value="";
@@ -1406,9 +1407,11 @@ function syncScrapeDateUI(){
   $("scrape_date_year_field").hidden=mode!=="year";
   $("scrape_date_from_field").hidden=mode!=="range";
   $("scrape_date_to_field").hidden=mode!=="range";
-  $("scrape_date_note").textContent=supported
-    ?"Bing date filtering uses the selected publication date range."
-    :"date filters are only available with the Playwright · Bing backend.";
+  $("scrape_date_note").textContent=backend==="playwright-google"
+    ?"Google uses after:/before: operators; dates refer to indexed pages, not photo capture metadata."
+    :backend==="playwright-bing"
+      ?"Bing filters results by its indexed publication date."
+      :"date filters are available with the Playwright · Bing and Google backends.";
 }
 function syncWireGuardUI(){
   const supported=["playwright-bing","playwright-google"].includes($("scraper_backend").value);
@@ -3354,8 +3357,11 @@ def create_app(
                 raise HTTPException(400, "choose a valid date range from 1970 onward")
         else:
             raise HTTPException(400, "invalid scraper date filter mode")
-        if scrape_date_mode != "any" and scraper_backend != "playwright-bing":
-            raise HTTPException(400, "date filters are only supported by the Playwright Bing backend")
+        if scrape_date_mode != "any" and scraper_backend not in {"playwright-bing", "playwright-google"}:
+            raise HTTPException(
+                400,
+                "date filters are only supported by the Playwright Bing or Google backend",
+            )
         preset = preset.strip().lower()
         try:
             width = int(payload.get("width", 512))

@@ -209,8 +209,6 @@ class PlaywrightImagesScraper(Scraper):
         self.delay = delay
         self.max_scrolls = max_scrolls
         self.date_from, self.date_to = self._normalize_date_range(date_from, date_to)
-        if self.provider != "bing" and self.date_from is not None:
-            raise ValueError("date filtering is only supported by Playwright Bing")
 
     def search(self, query: str, *, limit: int) -> Iterator[ImageResult]:
         if not query.strip():
@@ -1163,8 +1161,13 @@ class PlaywrightImagesScraper(Scraper):
                 end_day = (date.fromisoformat(self.date_to) - epoch).days + 1
                 params["filters"] = f'ex1:"ez5_{start_day}_{end_day}"'
             return f"{self.BING_URL}?{urlencode(params)}"
+        # Use Google's after:/before: operators; legacy tbs=cdr is not consistent
+        # across current Google Images layouts.
+        date_query = query
+        if self.date_from is not None and self.date_to is not None:
+            date_query = f"{query} after:{self.date_from} before:{self.date_to}"
         params = {
-            "q": query,
+            "q": date_query,
             "udm": "2",
             "hl": "en",
             "safe": "active" if self.safe_search else "off",
@@ -1411,7 +1414,7 @@ class PlaywrightImagesScraper(Scraper):
                 f"{type(values).__name__}, expected a list",
                 flush=True,
             )
-            return []
+            values = []
 
         seen: set[str] = set()
         output: list[str] = []
@@ -1432,6 +1435,92 @@ class PlaywrightImagesScraper(Scraper):
                 if self._valid_image_candidate(candidate, seen):
                     seen.add(candidate)
                     output.append(candidate)
+        if output:
+            return output
+
+        # Some current Google Images layouts show a full-size image in the viewer
+        # without exposing an /imgres?imgurl= link. Inspect source attrs and large
+        # viewer images, excluding the result-grid thumbnails and Google UI.
+        try:
+            viewer_values = page.evaluate(
+                """(() => {
+                    const cards = [
+                        'div.isv-r', 'div.eA0Zlc', 'div.H8Rx8c',
+                        'div.wXeWr', 'div[data-ri]', 'div[role="listitem"]'
+                    ].join(',');
+                    const output = [];
+                    const seen = new Set();
+                    const add = value => {
+                        if (typeof value !== 'string') return;
+                        value = value.trim();
+                        if (!/^https?:\\/\\//i.test(value) || seen.has(value)) return;
+                        let host = '';
+                        try { host = new URL(value).hostname.toLowerCase(); } catch (_) { return; }
+                        if (
+                            host === 'google.com' || host.endsWith('.google.com') ||
+                            host === 'gstatic.com' || host.endsWith('.gstatic.com') ||
+                            /(^|\\.)encrypted-tbn[0-9]*\\.gstatic\\.com$/.test(host)
+                        ) return;
+                        seen.add(value);
+                        output.push(value);
+                    };
+                    const attrs = ['data-ou', 'data-original-url', 'data-image-url', 'data-iurl'];
+                    for (const element of document.querySelectorAll(
+                        '[data-ou], [data-original-url], [data-image-url], [data-iurl]'
+                    )) {
+                        for (const attr of attrs) add(element.getAttribute(attr));
+                    }
+                    const previewClasses = 'img.sFlh5c, img.n3VNCb, img[class*="preview"]';
+                    for (const image of document.querySelectorAll('img')) {
+                        if (image.closest(cards)) continue;
+                        const rect = image.getBoundingClientRect();
+                        const isPreview = image.matches(previewClasses);
+                        const isLargeImage =
+                            image.naturalWidth >= 384 && image.naturalHeight >= 384 &&
+                            rect.width >= 160 && rect.height >= 160;
+                        if (!isPreview && !isLargeImage) continue;
+                        const sources = [
+                            image.getAttribute('data-ou'),
+                            image.getAttribute('data-original-url'),
+                            image.getAttribute('data-image-url'),
+                            image.getAttribute('data-iurl'),
+                            image.getAttribute('data-src'),
+                            image.getAttribute('data-lazy-src'),
+                            image.currentSrc,
+                            image.getAttribute('src')
+                        ];
+                        for (const source of sources) add(source);
+                    }
+                    return output;
+                })()"""
+            )
+        except Exception as exc:
+            print(
+                "scrape: Google preview-image inspection failed: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+            viewer_values = []
+
+        if isinstance(viewer_values, list):
+            for raw in viewer_values:
+                if not isinstance(raw, str) or not raw.strip():
+                    continue
+                raw = html.unescape(raw.strip())
+                parsed = urlparse(raw)
+                query = parse_qs(parsed.query)
+                nested_sources = query.get("imgurl", []) or query.get("mediaurl", [])
+                for candidate in nested_sources or [raw]:
+                    candidate = html.unescape(str(candidate)).strip()
+                    if self._valid_image_candidate(candidate, seen):
+                        seen.add(candidate)
+                        output.append(candidate)
+        if output:
+            print(
+                "scrape: Google recovered source URL(s) from live preview DOM "
+                f"({len(output)} candidate(s))",
+                flush=True,
+            )
         return output
 
     def _restore_google_results_page(self, page, search_url: str) -> bool:
@@ -1554,14 +1643,20 @@ class PlaywrightImagesScraper(Scraper):
                     flush=True,
                 )
                 page.wait_for_timeout(600)
-                try:
-                    current_html = page.content()
-                except Exception:
-                    current_html = page_html
-                candidates = self._extract_google_original_urls_from_page(
-                    page,
-                    current_html,
-                )
+                candidates = []
+                for poll in range(4):
+                    if poll:
+                        page.wait_for_timeout(350)
+                    try:
+                        current_html = page.content()
+                    except Exception:
+                        current_html = page_html
+                    candidates = self._extract_google_original_urls_from_page(
+                        page,
+                        current_html,
+                    )
+                    if candidates:
+                        break
                 if candidates:
                     print(
                         "scrape: browser-assisted Google result inspection recovered "
@@ -1822,9 +1917,12 @@ class PlaywrightImagesScraper(Scraper):
         # Newer Google Images payloads expose ou (original) and tu (thumbnail).
         # Prefer ou and never treat arbitrary img/src values as training images.
         original_pattern = re.compile(
-            r"""["']ou["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
+            r"""(?<![\w$])(?:["']ou["']|\bou\b)\s*:\s*(["'])((?:\\.|(?!\1).)*)\1"""
         )
-        for raw in original_pattern.findall(page_html):
+        # Google may serialize JavaScript object literals as ou: "..." instead
+        # of strict JSON keys ("ou": "..."); accept both forms.
+        for match in original_pattern.finditer(page_html):
+            raw = match.group(2)
             value = html.unescape(
                 PlaywrightImagesScraper._decode_json_string(raw)
             ).strip().rstrip(",;")

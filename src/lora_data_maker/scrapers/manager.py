@@ -62,8 +62,11 @@ class ScraperManager:
 
         effective_user_agent = user_agent or DEFAULT_USER_AGENT
 
-        if (date_from or date_to) and backend != "playwright-bing":
-            raise ScraperError("date filtering is only supported with the playwright-bing backend")
+        if (date_from or date_to) and backend not in {"playwright-bing", "playwright-google"}:
+            raise ScraperError(
+                "date filtering is only supported with the playwright-bing "
+                "or playwright-google backends"
+            )
 
         if backend == "google":
             self.scraper: Scraper = GoogleImagesScraper(
@@ -106,6 +109,8 @@ class ScraperManager:
                 retries=retries,
                 delay=delay,
                 max_scrolls=max_scrolls,
+                date_from=date_from,
+                date_to=date_to,
                 proxy_url=proxy_url,
                 safe_search=safe_search,
             )

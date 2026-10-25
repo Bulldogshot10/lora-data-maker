@@ -259,3 +259,35 @@ The CI log for run [40192945319](https://github.com/Bulldogshot10/lora-data-make
 - The two previous failures in `tests/test_clean.py` are resolved by calibrating the synthetic fixture threshold from 1000 to 10; exact deduplication and quality rejection now run on the intended eligible fixtures.
 - Remaining verification boundary: CI's mocked/unit coverage is green, but live Google and Bing scraping on the user's Termux/X11 device is still **needs verification**. Do not represent the device-side scraper workflow as proven until it has been run there.
 - Current state: no known failing test remains in the non-`real_caption_runtime` core suite. The two skips and one deselection are reported by the configured test command and are not failures.
+
+
+## Session checkpoint / handoff (2026-10-25, Google original-image recovery and date filters)
+
+### Scope
+On the existing `main` branch, fix the Google Images scraper's tendency to choose thumbnail URLs when original image URLs are present after clicking a result, audit the original-vs-thumbnail extraction path, and enable date filtering for Playwright Google in the CLI, config, and WebUI. No branch was created or switched.
+
+### Findings from source audit and online research
+- The original URL parser matched only quoted `"ou"`/`'ou'` keys. Current Google Images payloads can be JavaScript object literals using unquoted `ou:`, so this was a concrete extraction gap.
+- Click-based recovery waited a fixed 600 ms, then ran the same source parser. The live DOM path read source links and explicit data attributes but did not inspect a large image displayed in the clicked viewer. The recovery flow now polls briefly and inspects explicit source attributes and large non-grid viewer images before falling back to thumbnails.
+- Google officially documents `after:` and `before:` operators for date-limiting indexed pages; Google Search Community also points to these operators for image search. The Google Images-specific legacy `tbs=cdr` date-range behavior varies across layouts, so this implementation uses operators inside the Google Images query.
+- Google date range semantics are **indexed result-page dates**, not the image's guaranteed EXIF capture date.
+
+### Changes prepared
+- `src/lora_data_maker/scrapers/playwright.py`: accepts unquoted `ou:` fields; after result clicks, polls for preview hydration and inspects explicit source attributes plus large non-grid viewer images; accepts custom dates for Google and appends `after:`/`before:` operators.
+- `src/lora_data_maker/scrapers/manager.py`: allows date ranges for Playwright Google and forwards them to the scraper; other backends still reject unsupported date filtering.
+- `src/lora_data_maker/cli.py`: help text reflects Google and Bing support.
+- `src/lora_data_maker/web.py`: date controls support Playwright Google and Bing with provider-specific explanatory text; API validation permits Google.
+- `tests/test_scraper.py`: adds coverage for unquoted `ou`, viewer image extraction, Google query date operators, and manager date forwarding; adjusts old expectations that Google date filtering was unsupported.
+- `tests/test_web_scrape.py`: adds a WebUI settings test for saving a Google custom date range.
+- `README.md`, `docs/CLI.md`, `docs/CONFIG.md`, and `docs/TROUBLESHOOTING.md`: document the recovery and date-filter behavior.
+
+### Validation status
+- Regression tests and source changes are prepared; CI has not yet been run against this task's commit.
+- Live Google DOM in the user's Termux/X11 session is not available from this environment. The preview extraction remains **needs verification** until a device run confirms it yields original URLs; unit tests prove the targeted extraction paths only.
+- Google date filtering is implemented using Google's search operators but still needs a live query check to confirm how the current Images layout applies them.
+
+### Next steps
+1. Commit the prepared changes on `main` and run the core-smoke CI workflow.
+2. Fix any failures using the actual CI logs.
+3. On Termux/X11, rerun a Google query and check logs for original URL extraction or viewer DOM recovery before thumbnail fallback.
+4. Test Google with a custom date range and confirm result-page dates are constrained. Keep this marked as needing verification until observed.
