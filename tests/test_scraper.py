@@ -1453,9 +1453,6 @@ def test_playwright_bing_uses_playwright_termux_page_apis(monkeypatch):
 
 
 def test_playwright_keeps_collected_results_if_scroll_throws(monkeypatch):
-    import sys
-    import types
-
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
     class FakeSession:
@@ -1508,28 +1505,14 @@ def test_playwright_keeps_collected_results_if_scroll_throws(monkeypatch):
         def new_page(self):
             return page
 
-    class FakeChromium:
-        def __init__(self, *, headless):
-            assert headless is True
-
-        def __enter__(self):
-            return FakeBrowser()
-
-        def __exit__(self, *_args):
-            pass
-
-    monkeypatch.setitem(
-        sys.modules,
-        "playwright_termux",
-        types.SimpleNamespace(Chromium=FakeChromium),
-    )
-
     scraper = PlaywrightImagesScraper(
         provider="bing",
         retries=0,
         delay=0,
         max_scrolls=3,
     )
+    browser = FakeBrowser()
+    monkeypatch.setattr(scraper, "_create_browser", lambda initial_url=None: browser)
     results = list(scraper.search("julia", limit=2))
 
     assert [result.image_url for result in results] == [
@@ -2331,8 +2314,8 @@ def test_playwright_google_search_does_not_retry_cancellation(monkeypatch):
     scraper = PlaywrightImagesScraper(provider="google", retries=4)
     calls = []
 
-    def cancelled_search(_query, *, limit):
-        calls.append(limit)
+    def cancelled_search(_query, _limit):
+        calls.append(_limit)
         raise ScraperCancelledError("cancelled")
 
     monkeypatch.setattr(scraper, "_search_once", cancelled_search)
