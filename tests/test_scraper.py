@@ -1192,6 +1192,8 @@ def test_playwright_manager_passes_max_scrolls(monkeypatch, tmp_path):
         "max_scrolls": 11,
         "date_from": None,
         "date_to": None,
+        "proxy_url": None,
+        "safe_search": False,
     }
 
 
