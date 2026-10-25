@@ -2599,3 +2599,24 @@ def test_playwright_google_extracts_original_from_imgres_link():
         page_html,
         page_url="https://www.google.com/search?tbm=isch&q=portrait",
     ) == ["https://cdn.example.com/portrait.jpg"]
+
+
+def test_playwright_google_extracts_original_from_live_dom_when_outer_html_has_none():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakePage:
+        _url = "https://www.google.com/search?tbm=isch&q=portrait"
+
+        def evaluate(self, expression):
+            if expression == "location.href":
+                return self._url
+            assert "querySelectorAll('a[href]')" in expression
+            return [
+                "https://www.google.com/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Flive.jpg"
+            ]
+
+    scraper = PlaywrightImagesScraper(provider="google")
+    assert scraper._extract_google_original_urls_from_page(
+        FakePage(),
+        "<html><body><div class='isv-r'>dynamic card without source URL in HTML</div></body></html>",
+    ) == ["https://cdn.example.com/live.jpg"]
