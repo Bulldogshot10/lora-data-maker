@@ -503,9 +503,9 @@ def _vlm_caption_items(raw_caption: str) -> list[str]:
         flat_caption = ", ".join(_normalize_legacy_vlm_fields(fields))
 
     return [
-        item.strip(" \t\r\n,.;:")
+        item.strip(" \t\r\n,;:")
         for item in re.split(r"\s*,\s*", flat_caption)
-        if item.strip(" \t\r\n,.;:")
+        if item.strip(" \t\r\n,;:")
     ]
 
 
@@ -538,7 +538,7 @@ def _build_vlm_caption(
         value = item
         if trigger_pattern is not None:
             value = trigger_pattern.sub("", value)
-        value = re.sub(r"\s+", " ", value).strip(" ,;:.")
+        value = re.sub(r"\s+", " ", value).strip(" ,;:")
         key = value.casefold()
         if value and key not in seen:
             cleaned_items.append(value)
