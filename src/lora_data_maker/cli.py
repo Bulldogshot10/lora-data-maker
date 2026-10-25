@@ -1013,6 +1013,9 @@ def command_scrape(args: argparse.Namespace) -> int:
     retries = int(scraper_config.get("retries", 3))
     delay = float(scraper_config.get("delay", 1.0))
     max_scrolls = int(scraper_config.get("max_scrolls", 30))
+    safe_search = scraper_config.get("safe_search", False)
+    if not isinstance(safe_search, bool):
+        raise LoraDataMakerError("scraper.safe_search must be a boolean")
 
     cli_year = getattr(args, "year", None)
     cli_date_from = getattr(args, "date_from", None)
@@ -1048,6 +1051,7 @@ def command_scrape(args: argparse.Namespace) -> int:
         max_scrolls=max_scrolls,
         date_from=date_from,
         date_to=date_to,
+        safe_search=safe_search,
     )
     known_urls = {
         record.source_url
