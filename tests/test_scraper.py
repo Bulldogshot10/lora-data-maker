@@ -1210,7 +1210,7 @@ def test_playwright_google_builds_direct_google_images_url():
     assert parsed.path == "/search"
     params = parse_qs(parsed.query)
     assert params["q"] == ["julia russian woman"]
-    assert params["tbm"] == ["isch"]
+    assert params["udm"] == ["2"]
     assert params["hl"] == ["en"]
     assert params["safe"] == ["off"]
 
@@ -2530,7 +2530,14 @@ def test_playwright_locator_waits_for_dynamic_result_grid():
     assert page.waited == ("a.iusc", 3000, "attached")
 
 
-def test_playwright_google_recovers_when_page_navigate_ack_times_out():
+@pytest.mark.parametrize(
+    "result_url",
+    [
+        "https://www.google.com/search?q=portrait&udm=2",
+        "https://www.google.com/search?q=portrait&tbm=isch",
+    ],
+)
+def test_playwright_google_recovers_when_page_navigate_ack_times_out(result_url):
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
     class FakeSession:
@@ -2544,10 +2551,7 @@ def test_playwright_google_recovers_when_page_navigate_ack_times_out():
             if method == "Runtime.evaluate":
                 return {
                     "result": {
-                        "value": [
-                            "complete",
-                            "https://www.google.com/search?tbm=isch&q=portrait",
-                        ]
+                        "value": ["complete", result_url]
                     }
                 }
             raise AssertionError(f"unexpected CDP method: {method}")
@@ -2565,11 +2569,10 @@ def test_playwright_google_recovers_when_page_navigate_ack_times_out():
     )
     page = FakePage()
 
-    scraper._goto(page, "https://www.google.com/search?tbm=isch&q=portrait")
+    scraper._goto(page, "https://www.google.com/search?udm=2&q=portrait")
 
     assert page.session.navigation_calls == 1
-    assert page._url == "https://www.google.com/search?tbm=isch&q=portrait"
-
+    assert page._url == result_url
 
 def test_playwright_google_waits_on_generic_blocked_page_url():
     import pytest
