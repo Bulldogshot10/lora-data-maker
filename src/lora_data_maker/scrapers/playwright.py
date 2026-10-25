@@ -390,7 +390,10 @@ class PlaywrightImagesScraper(Scraper):
                             candidates = list(candidate_details)
                         else:
                             try:
-                                candidates = self._extract_google_original_urls(page_html)
+                                candidates = self._extract_google_original_urls(
+                                    page_html,
+                                    page_url=self._current_page_url(page),
+                                )
                             except ScraperError as exc:
                                 if not self._is_google_verification_error(exc):
                                     raise
@@ -398,6 +401,7 @@ class PlaywrightImagesScraper(Scraper):
                                     page,
                                     query=query,
                                     initial_html=page_html,
+                                    initial_url=self._current_page_url(page),
                                 )
 
                         for image_url in candidates:
@@ -648,12 +652,24 @@ class PlaywrightImagesScraper(Scraper):
     def _is_google_verification_error(error: BaseException) -> bool:
         return "Google returned a consent/verification page" in str(error)
 
+    @staticmethod
+    def _current_page_url(page) -> str:
+        try:
+            value = page.evaluate("location.href")
+            if isinstance(value, str) and value:
+                page._url = value
+                return value
+        except Exception:
+            pass
+        return str(getattr(page, "_url", "") or getattr(page, "url", "") or "")
+
     def _wait_for_google_verification(
         self,
         page,
         *,
         query: str,
         initial_html: str,
+        initial_url: str = "",
     ) -> list[str]:
         """Wait on the same visible browser until a person clears Google's challenge."""
         print(
@@ -671,7 +687,10 @@ class PlaywrightImagesScraper(Scraper):
                     "scrape cancelled while waiting for Google verification"
                 )
             try:
-                candidates = self._extract_google_original_urls(page_html)
+                candidates = self._extract_google_original_urls(
+                    page_html,
+                    page_url=self._current_page_url(page) or initial_url,
+                )
             except ScraperError as exc:
                 if not self._is_google_verification_error(exc):
                     raise
@@ -716,6 +735,7 @@ class PlaywrightImagesScraper(Scraper):
         ready_url_without_results: str | None = None
         unexpected_page_since: float | None = None
         last_unexpected_url: str | None = None
+        navigation_ack_error: Exception | None = None
         try:
             navigation = page.session.send(
                 "Page.navigate",
@@ -723,9 +743,20 @@ class PlaywrightImagesScraper(Scraper):
                 timeout=navigation_timeout,
             )
         except Exception as exc:
-            raise ScraperError(
-                f"Playwright {self.provider} navigation failed: {exc}"
-            ) from exc
+            # The page may already have navigated even if Chromium's command
+            # acknowledgement arrived late. Poll the live DOM before treating
+            # this as a failed search attempt and launching another browser.
+            if "Timeout waiting for CDP command: Page.navigate" not in str(exc):
+                raise ScraperError(
+                    f"Playwright {self.provider} navigation failed: {exc}"
+                ) from exc
+            navigation_ack_error = exc
+            print(
+                f"scrape: Playwright {self.provider} Page.navigate acknowledgement "
+                "timed out; checking the live browser before retrying",
+                flush=True,
+            )
+            navigation = {}
 
         if navigation.get("errorText"):
             raise ScraperError(
@@ -849,10 +880,35 @@ class PlaywrightImagesScraper(Scraper):
                         ready_state in {"interactive", "complete"}
                         and current_url not in {"", "about:blank"}
                     ):
-                        # Let the Google extractor report consent/verification
-                        # pages directly instead of masking them as timeouts.
-                        page._url = current_url
-                        return
+                        current_host = (current.hostname or "").lower()
+                        on_google_host = (
+                            current_host == "google.com"
+                            or current_host.endswith(".google.com")
+                        )
+                        is_google_challenge = (
+                            on_google_host
+                            and (
+                                current.path.startswith("/sorry")
+                                or current_host == "consent.google.com"
+                                or current.path.startswith("/interstitial")
+                            )
+                        )
+                        if on_google_host or is_google_challenge:
+                            page._url = current_url
+                            if navigation_ack_error is not None:
+                                print(
+                                    "scrape: Playwright Google navigation recovered "
+                                    f"from delayed CDP acknowledgement at {current_url}",
+                                    flush=True,
+                                )
+                            # Verification/consent pages are returned to the
+                            # extractor so the same visible tab can wait for a
+                            # manual completion instead of restarting Chromium.
+                            return
+                        unexpected_page_since = (
+                            unexpected_page_since or time.monotonic()
+                        )
+                        last_unexpected_url = current_url
             except ScraperError:
                 raise
             except Exception as exc:
@@ -882,12 +938,18 @@ class PlaywrightImagesScraper(Scraper):
             " (Bing did not reach the requested image-search URL; last URL="
             f"{current_url if 'current_url' in locals() else 'unknown'})"
             if self.provider == "bing"
-            else ""
+            else (
+                " (Google did not reach a Google search/consent page; last URL="
+                f"{current_url if 'current_url' in locals() else 'unknown'})"
+                if self.provider == "google"
+                else ""
+            )
         )
+        cause = last_error or navigation_ack_error
         raise ScraperError(
             f"Playwright {self.provider} navigation timed out after "
             f"{timeout:g}s{detail}"
-            + (f": {last_error}" if last_error else "")
+            + (f": {cause}" if cause else "")
         )
 
     @staticmethod
@@ -1077,16 +1139,17 @@ class PlaywrightImagesScraper(Scraper):
         return urls
 
     @staticmethod
-    def _extract_google_original_urls(page_html: str) -> list[str]:
-        """Extract source URLs from Google's ou payload, never cached tu thumbnails."""
+    def _extract_google_original_urls(
+        page_html: str,
+        *,
+        page_url: str = "",
+    ) -> list[str]:
+        """Extract original/source URLs, not Google's cached thumbnail URLs."""
         urls: list[str] = []
         seen: set[str] = set()
 
-        # Google Images result payloads pair ou (original/source image URL)
-        # with tu (Google's cached thumbnail). Downloading tu can turn a
-        # low-resolution preview into a permanent training sample, so only ou
-        # is eligible here. The source hosts may reject hotlink downloads; those
-        # failures are preferable to silently polluting a dataset with thumbnails.
+        # Newer Google Images payloads expose ou (original) and tu (thumbnail).
+        # Prefer ou and never treat arbitrary img/src values as training images.
         original_pattern = re.compile(
             r"""["']ou["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
         )
@@ -1099,11 +1162,57 @@ class PlaywrightImagesScraper(Scraper):
             seen.add(value)
             urls.append(value)
 
+        # Some Google Images variants expose the source image in the result link
+        # rather than a serialized "ou" field: /imgres?imgurl=<original URL>.
+        class SourceLinkParser(HTMLParser):
+            def handle_starttag(self, tag, attrs):
+                if tag.lower() != "a":
+                    return
+                values = {
+                    key.lower(): value
+                    for key, value in attrs
+                    if value is not None
+                }
+                href = values.get("href", "")
+                if not href:
+                    return
+                absolute = urljoin("https://www.google.com/", html.unescape(href))
+                parsed = urlparse(absolute)
+                params = parse_qs(parsed.query)
+                source_values = params.get("imgurl", []) or params.get("mediaurl", [])
+                for source in source_values:
+                    value = html.unescape(source).strip()
+                    if PlaywrightImagesScraper._valid_image_candidate(value, seen):
+                        seen.add(value)
+                        urls.append(value)
+
+                for name in ("data-ou", "data-original-url", "data-image-url"):
+                    value = values.get(name, "").strip()
+                    if value and PlaywrightImagesScraper._valid_image_candidate(value, seen):
+                        seen.add(value)
+                        urls.append(value)
+
+        try:
+            SourceLinkParser().feed(page_html)
+        except Exception:
+            pass
+
         if urls:
             return urls
 
-        # Detect a blocked Google page only after checking actual source URLs,
-        # so challenge text in scripts/templates does not reject valid results.
+        parsed_page = urlparse(page_url)
+        page_host = (parsed_page.hostname or "").lower()
+        on_google_host = (
+            page_host == "google.com"
+            or page_host.endswith(".google.com")
+        )
+        url_challenge = on_google_host and (
+            parsed_page.path.startswith("/sorry")
+            or parsed_page.path.startswith("/interstitial")
+            or page_host == "consent.google.com"
+        )
+
+        # Detect visible challenge pages only after checking actual source URLs.
         challenge_markup = re.sub(
             r"(?is)<(script|style|noscript)\b[^>]*>.*?</\1\s*>",
             " ",
@@ -1112,20 +1221,34 @@ class PlaywrightImagesScraper(Scraper):
         visible_text = html.unescape(
             re.sub(r"(?s)<[^>]+>", " ", challenge_markup)
         ).casefold()
-        if any(
-            marker in visible_text
-            for marker in (
-                "our systems have detected unusual traffic",
-                "detected unusual traffic from your computer network",
-                "before you continue to google",
-                "automated queries",
-                "unusual traffic",
-                "consent.google.com",
-            )
+        normalized_text = " ".join(visible_text.split())
+        challenge_markers = (
+            "our systems have detected unusual traffic",
+            "detected unusual traffic from your computer network",
+            "before you continue to google",
+            "automated queries",
+            "unusual traffic",
+            "consent.google.com",
+            "verify you are human",
+            "confirm you are not a robot",
+            "not a robot",
+            "request blocked",
+            "your request has been blocked",
+            "webpage blocked",
+            "access denied",
+            "captcha",
+        )
+        short_block_page = (
+            on_google_host
+            and len(normalized_text) <= 240
+            and normalized_text.strip(" .!:-") in {"blocked", "access denied"}
+        )
+        if url_challenge or short_block_page or any(
+            marker in normalized_text for marker in challenge_markers
         ):
             raise ScraperError(
                 "Google returned a consent/verification page; "
-                "the scraper does not bypass verification challenges"
+                "complete it in the visible Chromium window"
             )
 
         return []
