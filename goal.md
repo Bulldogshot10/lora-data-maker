@@ -281,13 +281,16 @@ On the existing `main` branch, fix the Google Images scraper's tendency to choos
 - `tests/test_web_scrape.py`: adds a WebUI settings test for saving a Google custom date range.
 - `README.md`, `docs/CLI.md`, `docs/CONFIG.md`, and `docs/TROUBLESHOOTING.md`: document the recovery and date-filter behavior.
 
-### Validation status
-- Regression tests and source changes are prepared; CI has not yet been run against this task's commit.
-- Live Google DOM in the user's Termux/X11 session is not available from this environment. The preview extraction remains **needs verification** until a device run confirms it yields original URLs; unit tests prove the targeted extraction paths only.
-- Google date filtering is implemented using Google's search operators but still needs a live query check to confirm how the current Images layout applies them.
+### Validation update (2026-10-25)
+- Core smoke run [40196135034](https://github.com/Bulldogshot10/lora-data-maker/actions/runs/40196135034) completed with **success** on commit `c3cefbe4d92cbb3a3f2db899a244a9b1cc74e720`.
+- `python -m compileall -q src tests`: passed.
+- `pytest -q -m "not real_caption_runtime"`: **380 passed, 2 skipped, 1 deselected**, 1 warning. CLI, documentation, and init/inspect smoke checks also passed.
+- The run caught and the follow-up fixed the original-URL extraction tests' URL-encoding assumption and retained compatibility with the established WebUI validation-message test.
+- Live Google DOM in the user's Termux/X11 session is still **needs verification**. CI's mock tests prove the targeted extraction/parser/date-wiring paths but cannot prove the current Google viewer gives an original source URL in the user's session.
+- Google date filtering is wired through the CLI, config, manager, and WebUI using documented `after:`/`before:` query operators. Verify the selected dates in a live Google Images session; date operators refer to indexed page dates, not guaranteed original photo capture dates.
 
 ### Next steps
-1. Commit the prepared changes on `main` and run the core-smoke CI workflow.
-2. Fix any failures using the actual CI logs.
-3. On Termux/X11, rerun a Google query and check logs for original URL extraction or viewer DOM recovery before thumbnail fallback.
-4. Test Google with a custom date range and confirm result-page dates are constrained. Keep this marked as needing verification until observed.
+1. Pull latest `main` on Termux.
+2. Test a Google query and confirm logs show `ou` extraction or live preview DOM recovery before thumbnail fallback.
+3. Test a custom Google date range and confirm the browser query contains the encoded `after:` and `before:` operators and results are filtered as expected.
+4. If the session still only obtains thumbnails, capture the safe DOM diagnostic after a tile click (source-attribute presence, preview image source host/dimensions, viewer link href patterns, current URL and title). Do not include cookies, tokens, or logged-in session details.
