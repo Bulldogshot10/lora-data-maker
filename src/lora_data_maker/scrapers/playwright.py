@@ -10,7 +10,7 @@ from datetime import date
 from pathlib import Path
 from html.parser import HTMLParser
 from typing import Iterator
-from urllib.parse import parse_qs, urlencode, urlparse
+from urllib.parse import parse_qs, urlencode, urljoin, urlparse
 
 from .base import ImageResult, Scraper, ScraperCancelledError, ScraperError
 from .existing_chromium import ExistingChromium
