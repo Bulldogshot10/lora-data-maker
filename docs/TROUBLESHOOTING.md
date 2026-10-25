@@ -33,7 +33,9 @@ Zero new downloads during an incremental run can simply mean every returned sour
 
 ## Playwright Google source images and quality filtering
 
-The `playwright-google` backend extracts the source-image URL (`ou`) from Google Images results and does not fall back to cached thumbnails (`tu`) or rendered `img/src` previews. If a source host blocks direct downloads, that candidate is skipped rather than saving a low-resolution preview.
+The `playwright-google` backend opens Google Images with the current `udm=2` URL mode and accepts the legacy `tbm=isch` mode if Google redirects an existing browser session to it. This matters because newer Google pages can finish loading and generate normal network traffic while a detector that only recognizes `tbm=isch` incorrectly waits for navigation to time out.
+
+The backend extracts the source-image URL (`ou`) from Google Images results and does not fall back to cached thumbnails (`tu`) or rendered `img/src` previews. If a source host blocks direct downloads, that candidate is skipped rather than saving a low-resolution preview.
 
 Before a Playwright Google image enters the dataset, the scraper checks that both dimensions are at least 384 pixels and that its Laplacian-variance blur score is at least 100 (measured after downsampling to 256 pixels). This is a heuristic quality gate: very soft-focus images can be rejected, and sharp-looking images with large simple edges can still pass. The Google backend checks up to 10 candidates per requested image to compensate for rejected or inaccessible sources. Other backends keep their existing selection behavior.
 
