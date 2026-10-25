@@ -87,6 +87,31 @@ class _FakeSession:
         return self.responses.pop(0)
 
 
+def test_downloader_sends_referer_for_protected_image_hosts(tmp_path):
+    from lora_data_maker.scrapers.downloader import ImageDownloader
+
+    session = _FakeSession()
+    downloader = ImageDownloader(
+        timeout=5,
+        retries=0,
+        delay=0,
+        user_agent="test",
+        session=session,
+    )
+
+    downloader.download(
+        "https://cdn.example.com/original.jpg",
+        tmp_path,
+        index=1,
+        referer="https://www.google.com/",
+    )
+
+    options = session.calls[0][1]
+    assert options["headers"]["Referer"] == "https://www.google.com/"
+    assert "image/*" in options["headers"]["Accept"]
+    assert options["headers"]["Accept-Language"] == "en-US,en;q=0.9"
+
+
 def test_direct_downloader_writes_stable_filename(tmp_path):
     from lora_data_maker.scrapers.downloader import ImageDownloader
 
@@ -265,6 +290,64 @@ def test_scraper_manager_skips_failed_downloads_and_continues(tmp_path):
     assert len(failures) == 1
     assert failures[0][0].image_url.endswith("/b.jpg")
 
+
+
+def test_playwright_google_retries_original_403_with_thumbnail(tmp_path):
+    from pathlib import Path
+
+    from lora_data_maker.scrapers.base import ImageResult, ScraperError
+    from lora_data_maker.scrapers.downloader import DownloadResult
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    original = "https://cdn.example.com/original.jpg"
+    thumbnail = "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample"
+    manager = ScraperManager(
+        backend="playwright-google",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        delay=0,
+    )
+
+    class FakeScraper:
+        def search(self, query, *, limit):
+            yield ImageResult(
+                original,
+                query=query,
+                metadata={"fallback_image_urls": [thumbnail]},
+            )
+
+    manager.scraper = FakeScraper()
+    calls = []
+
+    class FakeDownloader:
+        def download(
+            self, url, output_dir, *, index, archive=None,
+            cancel_event=None, referer=None,
+        ):
+            calls.append((url, referer))
+            if url == original:
+                raise ScraperError(
+                    "download failed after 4 attempts: "
+                    "403 Client Error: Forbidden for url: " + original
+                )
+            return DownloadResult(
+                url=url,
+                path=Path(output_dir) / f"{index:06d}.jpg",
+                sha256="0" * 64,
+                file_size=123,
+                content_type="image/jpeg",
+            )
+
+    manager.downloader = FakeDownloader()
+    downloads, failures = manager.run("portrait", count=1)
+
+    assert failures == []
+    assert len(downloads) == 1
+    assert downloads[0].url == thumbnail
+    assert calls == [
+        (original, "https://www.google.com/"),
+        (thumbnail, "https://www.google.com/"),
+    ]
 
 
 def test_scraper_manager_preserves_downloads_when_search_fails(tmp_path):
@@ -1153,6 +1236,34 @@ def test_playwright_google_prefers_original_ou_url():
     assert PlaywrightImagesScraper._extract_google_urls(body) == [
         "https://cdn.example.com/original.jpg"
     ]
+
+
+def test_playwright_google_extracts_thumbnail_fallback_for_original():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = r'''
+    <script>
+      var first = {
+        "ou":"https://cdn.example.com/original.jpg",
+        "ow":1200,
+        "tu":"https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample",
+        "tw":200
+      };
+      var second = {
+        "ou":"https://images.example.net/portrait.png",
+        "tu":"https://lh3.googleusercontent.com/example-thumb"
+      };
+    </script>
+    '''
+
+    assert PlaywrightImagesScraper._extract_google_fallbacks(body) == {
+        "https://cdn.example.com/original.jpg": [
+            "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample"
+        ],
+        "https://images.example.net/portrait.png": [
+            "https://lh3.googleusercontent.com/example-thumb"
+        ],
+    }
 
 
 def test_playwright_google_ignores_challenge_markers_inside_valid_results():
