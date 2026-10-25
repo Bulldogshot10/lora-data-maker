@@ -213,7 +213,7 @@ class PlaywrightImagesScraper(Scraper):
                     for result in results:
                         yield result
                     return
-                url_kind = "Google thumbnail" if self.provider == "google" else "original"
+                url_kind = "original"
                 raise ScraperError(
                     f"Playwright {self.provider} image search returned no "
                     f"parseable {url_kind} image URLs"
@@ -336,7 +336,7 @@ class PlaywrightImagesScraper(Scraper):
                             candidates = list(candidate_details)
                         else:
                             try:
-                                candidates = self._extract_google_thumbnail_urls(page_html)
+                                candidates = self._extract_google_original_urls(page_html)
                             except ScraperError as exc:
                                 if not self._is_google_verification_error(exc):
                                     raise
@@ -456,7 +456,7 @@ class PlaywrightImagesScraper(Scraper):
                     "scrape cancelled while waiting for Google verification"
                 )
             try:
-                candidates = self._extract_google_thumbnail_urls(page_html)
+                candidates = self._extract_google_original_urls(page_html)
             except ScraperError as exc:
                 if not self._is_google_verification_error(exc):
                     raise
@@ -862,67 +862,33 @@ class PlaywrightImagesScraper(Scraper):
         return urls
 
     @staticmethod
-    def _extract_google_thumbnail_urls(page_html: str) -> list[str]:
-        """Extract cached Google thumbnails from JSON fields and rendered image tags."""
+    def _extract_google_original_urls(page_html: str) -> list[str]:
+        """Extract source URLs from Google's ou payload, never cached tu thumbnails."""
         urls: list[str] = []
         seen: set[str] = set()
-        raw_urls: list[str] = []
 
-        # Google has used the "tu" field in serialized image-result payloads.
-        tu_pattern = re.compile(
-            r"""["']tu["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
+        # Google Images result payloads pair ou (original/source image URL)
+        # with tu (Google's cached thumbnail). Downloading tu can turn a
+        # low-resolution preview into a permanent training sample, so only ou
+        # is eligible here. The source hosts may reject hotlink downloads; those
+        # failures are preferable to silently polluting a dataset with thumbnails.
+        original_pattern = re.compile(
+            r"""["']ou["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
         )
-        raw_urls.extend(tu_pattern.findall(page_html))
-
-        # In rendered result markup, Google often exposes thumbnails as img src,
-        # data-src/data-lazy-src, or responsive srcset attributes instead.
-        class ThumbnailMarkupParser(HTMLParser):
-            def __init__(self) -> None:
-                super().__init__(convert_charrefs=True)
-
-            def handle_starttag(self, tag, attrs):
-                if tag.lower() not in {"img", "source"}:
-                    return
-                for key, value in attrs:
-                    if not value:
-                        continue
-                    key = key.lower()
-                    if key in {"src", "data-src", "data-lazy-src"}:
-                        raw_urls.append(value)
-                    elif key == "srcset":
-                        raw_urls.extend(
-                            re.findall(r"https?://[^\s,]+", value)
-                        )
-
-        try:
-            ThumbnailMarkupParser().feed(page_html)
-        except Exception:
-            # A partially malformed HTML document can still have usable tu fields.
-            pass
-
-        for raw in raw_urls:
+        for raw in original_pattern.findall(page_html):
             value = html.unescape(
                 PlaywrightImagesScraper._decode_json_string(raw)
             ).strip().rstrip(",;")
-            parsed = urlparse(value)
-            host = (parsed.hostname or "").lower().rstrip(".")
-            is_google_thumbnail = (
-                host == "gstatic.com"
-                or host.endswith(".gstatic.com")
-                or host == "googleusercontent.com"
-                or host.endswith(".googleusercontent.com")
-            )
-            if parsed.scheme != "https" or not is_google_thumbnail:
+            if not PlaywrightImagesScraper._valid_image_candidate(value, seen):
                 continue
-            if value not in seen:
-                seen.add(value)
-                urls.append(value)
+            seen.add(value)
+            urls.append(value)
 
         if urls:
             return urls
 
-        # Detect a blocked Google page only after checking for actual thumbnail
-        # URLs, so challenge wording inside scripts does not reject valid results.
+        # Detect a blocked Google page only after checking actual source URLs,
+        # so challenge text in scripts/templates does not reject valid results.
         challenge_markup = re.sub(
             r"(?is)<(script|style|noscript)\b[^>]*>.*?</\1\s*>",
             " ",
@@ -939,6 +905,7 @@ class PlaywrightImagesScraper(Scraper):
                 "before you continue to google",
                 "automated queries",
                 "unusual traffic",
+                "consent.google.com",
             )
         ):
             raise ScraperError(
