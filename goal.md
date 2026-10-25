@@ -272,25 +272,25 @@ On the existing `main` branch, fix the Google Images scraper's tendency to choos
 - Google officially documents `after:` and `before:` operators for date-limiting indexed pages; Google Search Community also points to these operators for image search. The Google Images-specific legacy `tbs=cdr` date-range behavior varies across layouts, so this implementation uses operators inside the Google Images query.
 - Google date range semantics are **indexed result-page dates**, not the image's guaranteed EXIF capture date.
 
-### Changes prepared
-- `src/lora_data_maker/scrapers/playwright.py`: accepts unquoted `ou:` fields; after result clicks, polls for preview hydration and inspects explicit source attributes plus large non-grid viewer images; accepts custom dates for Google and appends `after:`/`before:` operators.
+### Changes committed
+- `src/lora_data_maker/scrapers/playwright.py`: accepts unquoted `ou:` fields; after result clicks, polls for preview hydration and inspects explicit source attributes plus large non-grid viewer images; prevents generic `googleusercontent.com` cache/preview URLs discovered via viewer image src from being promoted to an original URL; accepts custom dates for Google and appends `after:`/`before:` operators.
 - `src/lora_data_maker/scrapers/manager.py`: allows date ranges for Playwright Google and forwards them to the scraper; other backends still reject unsupported date filtering.
 - `src/lora_data_maker/cli.py`: help text reflects Google and Bing support.
 - `src/lora_data_maker/web.py`: date controls support Playwright Google and Bing with provider-specific explanatory text; API validation permits Google.
-- `tests/test_scraper.py`: adds coverage for unquoted `ou`, viewer image extraction, Google query date operators, and manager date forwarding; adjusts old expectations that Google date filtering was unsupported.
+- `tests/test_scraper.py`: adds coverage for unquoted `ou`, viewer image extraction, rejecting Google-hosted viewer cache URLs as originals, Google query date operators, and manager date forwarding; adjusts old expectations that Google date filtering was unsupported.
 - `tests/test_web_scrape.py`: adds a WebUI settings test for saving a Google custom date range.
 - `README.md`, `docs/CLI.md`, `docs/CONFIG.md`, and `docs/TROUBLESHOOTING.md`: document the recovery and date-filter behavior.
 
 ### Validation update (2026-10-25)
-- Core smoke run [40196135034](https://github.com/Bulldogshot10/lora-data-maker/actions/runs/40196135034) completed with **success** on commit `c3cefbe4d92cbb3a3f2db899a244a9b1cc74e720`.
+- Latest core smoke run [40196435697](https://github.com/Bulldogshot10/lora-data-maker/actions/runs/40196435697) completed with **success** on commit `caa2b599c1847ea0a316b061b0dfc89cc8bc6a36`.
 - `python -m compileall -q src tests`: passed.
-- `pytest -q -m "not real_caption_runtime"`: **380 passed, 2 skipped, 1 deselected**, 1 warning. CLI, documentation, and init/inspect smoke checks also passed.
-- The run caught and the follow-up fixed the original-URL extraction tests' URL-encoding assumption and retained compatibility with the established WebUI validation-message test.
-- Live Google DOM in the user's Termux/X11 session is still **needs verification**. CI's mock tests prove the targeted extraction/parser/date-wiring paths but cannot prove the current Google viewer gives an original source URL in the user's session.
-- Google date filtering is wired through the CLI, config, manager, and WebUI using documented `after:`/`before:` query operators. Verify the selected dates in a live Google Images session; date operators refer to indexed page dates, not guaranteed original photo capture dates.
+- `pytest -q -m "not real_caption_runtime"`: **381 passed, 2 skipped, 1 deselected**, 1 warning. CLI, documentation, and init/inspect smoke checks also passed.
+- Two earlier checks were corrected from actual CI traces: the date-query test now decodes URL query parameters before assertion, and the WebUI's unsupported-backend validation message retains its established compatibility wording.
+- Live Google DOM in the user's Termux/X11 session is still **needs verification**. CI mocks cover the targeted extraction/parser/date-wiring paths but cannot prove that the user's current Google viewer exposes a full-resolution source URL.
+- Google date filtering is wired through the CLI, config, manager, and WebUI using documented `after:`/`before:` query operators. These operators filter indexed result-page dates, not guaranteed original photo capture dates, and still need a live Google Images check.
 
 ### Next steps
 1. Pull latest `main` on Termux.
 2. Test a Google query and confirm logs show `ou` extraction or live preview DOM recovery before thumbnail fallback.
 3. Test a custom Google date range and confirm the browser query contains the encoded `after:` and `before:` operators and results are filtered as expected.
-4. If the session still only obtains thumbnails, capture the safe DOM diagnostic after a tile click (source-attribute presence, preview image source host/dimensions, viewer link href patterns, current URL and title). Do not include cookies, tokens, or logged-in session details.
+4. If the session still only obtains thumbnails, capture safe DOM diagnostics after a tile click (source-attribute presence, preview image source host/dimensions, viewer link href patterns, current URL and title). Do not include cookies, tokens, or logged-in session details.
