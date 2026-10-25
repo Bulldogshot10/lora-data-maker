@@ -85,3 +85,40 @@ The new code attempts to check the actual page state after that specific CDP ack
 3. Run focused tests in `tests/test_scraper.py` for navigation timeout recovery, blocked verification pages, original URL extraction, network callbacks, and quality filtering. Resolve actual test failures before saying the behavior is fixed.
 4. Run the core smoke test suite and inspect its real logs/status.
 5. Re-test on Termux/X11. If it still returns zero candidates, capture the current URL, document title, a safely redacted short visible body excerpt, the relevant DOM `a[href]` and `data-*` attribute names (not session cookies/tokens), and network error summary to adapt the parser to the actual page structure.
+
+
+## Session checkpoint / handoff (2026-10-25, Google Images URL-mode fix)
+
+### Current task and scope
+On the user-selected `main` branch, fix the reported Playwright Google/X11 timeout in which `Page.navigate` acknowledgement times out, the browser records substantial network activity, and `_goto()` ultimately reports that it never reached a Google search/consent page. Keep the change limited to Google Images URL compatibility, regression coverage, troubleshooting guidance, and this handoff. No branch was created or switched.
+
+### Progress and changed files
+- `src/lora_data_maker/scrapers/playwright.py`: Google Images URL generation now uses `udm=2`; navigation readiness accepts both `udm=2` and legacy `tbm=isch` so redirects/session URLs remain compatible.
+- `tests/test_scraper.py`: URL-builder expectation updated to `udm=2`; the navigation-acknowledgement regression test exercises both modern and legacy Google Images URLs.
+- `docs/TROUBLESHOOTING.md`: documented the new URL mode and the false-timeout failure mode this compatibility handles.
+- `goal.md`: checkpoint added; prior project goal and unresolved device-validation notes retained.
+
+### Feature inventory
+**Implemented in source, pending test execution**
+- Google Images navigation recognizes current `udm=2` and legacy `tbm=isch` URL modes.
+- Google Images URL builder requests `udm=2`.
+- Regression coverage exists for both URL forms when the `Page.navigate` CDP acknowledgement times out.
+
+**Needs verification**
+- Python compile check and focused scraper tests have not been executed in this environment.
+- Live Google scraping on the user's Termux/X11 device has not been verified; this fix targets the URL-mode mismatch indicated by the current detector, not an independently reproduced device session.
+- No CI pass or successful live scrape is claimed.
+
+### Bugs and errors
+The user reported `scrape: browser network summary requests=145 responses=144` followed by `Playwright google search failed after 4 attempts: Playwright google navigation timed out after 20s (Google did not reach a Google search/consent page; last URL=...)`. The URL suffix was truncated in the provided log, so the precise final URL could not be confirmed. A root cause consistent with the source and current Google URL conventions was that `_goto()` accepted only `tbm=isch` even though Google Images uses `udm=2`; the patch handles both.
+
+### Validation
+- Read root `AGENTS.md` and `goal.md`; checked the root listing and confirmed the required `agent.md` file is absent from `main` (GitHub returned 404).
+- Inspected the Google URL builder, navigation-readiness logic, source-URL extraction, regression-test definitions, and troubleshooting guidance.
+- A local `git clone` attempt could not proceed because this environment could not resolve `github.com`; therefore local pytest/compile checks were not run.
+- No live-device test or successful CI run was available in this session.
+
+### Next steps
+1. In a checkout of `main`, run `python -m compileall -q src tests`.
+2. Run `pytest -q tests/test_scraper.py -k "playwright_google_builds_direct_google_images_url or recovers_when_page_navigate_ack_times_out"` and then the broader scraper test file.
+3. Re-run the Google scraper on Termux/X11. If the timeout persists, capture the complete final URL from the error and inspect the current document title/body marker plus relevant source-link attributes; do not infer that the live-device bug is fixed from mock tests alone.
