@@ -153,6 +153,9 @@ class ScraperManager:
             progress(0, count, f"searching for up to {search_limit} candidates...")
         print(f"scrape: searching for up to {search_limit} candidates...", flush=True)
 
+        if isinstance(self.scraper, PlaywrightImagesScraper):
+            self.scraper.cancel_event = cancel_event
+
         try:
             candidates = self.scraper.search(query, limit=search_limit)
             for result in candidates:
@@ -202,6 +205,8 @@ class ScraperManager:
 
                 if len(downloads) >= count:
                     break
+        except ScraperCancelledError:
+            self.cancelled = True
         except ScraperError as exc:
             self.last_search_error = str(exc)
             if downloads:
