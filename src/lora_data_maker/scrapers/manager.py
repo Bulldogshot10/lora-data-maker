@@ -35,9 +35,13 @@ class ScraperManager:
         date_from: str | None = None,
         date_to: str | None = None,
         proxy_url: str | None = None,
+        safe_search: bool = True,
     ) -> None:
+        if not isinstance(safe_search, bool):
+            raise ScraperError("safe_search must be a boolean")
         self.backend = backend
         self.proxy_url = proxy_url
+        self.safe_search = safe_search
         if proxy_url and backend not in {"playwright-bing", "playwright-google"}:
             raise ScraperError("WireGuard proxy is supported only by Playwright backends")
         self.output_dir = Path(output_dir).expanduser().resolve()
@@ -56,6 +60,7 @@ class ScraperManager:
                 retries=retries,
                 delay=delay,
                 user_agent=effective_user_agent,
+                safe="active" if safe_search else "off",
             )
         elif backend == "chromium":
             self.scraper = ChromiumImagesScraper(
@@ -81,6 +86,7 @@ class ScraperManager:
                 date_from=date_from,
                 date_to=date_to,
                 proxy_url=proxy_url,
+                safe_search=safe_search,
             )
         elif backend == "playwright-google":
             self.scraper = PlaywrightImagesScraper(
@@ -90,6 +96,7 @@ class ScraperManager:
                 delay=delay,
                 max_scrolls=max_scrolls,
                 proxy_url=proxy_url,
+                safe_search=safe_search,
             )
         elif backend == "direct":
             self.scraper = DirectURLScraper()
