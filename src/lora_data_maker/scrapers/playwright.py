@@ -4,6 +4,7 @@ import html
 import os
 import re
 import socket
+import threading
 import time
 from datetime import date
 from pathlib import Path
@@ -11,7 +12,7 @@ from html.parser import HTMLParser
 from typing import Iterator
 from urllib.parse import parse_qs, urlencode, urlparse
 
-from .base import ImageResult, Scraper, ScraperError
+from .base import ImageResult, Scraper, ScraperCancelledError, ScraperError
 from .existing_chromium import ExistingChromium
 
 
@@ -188,6 +189,7 @@ class PlaywrightImagesScraper(Scraper):
 
         self.provider = provider
         self.proxy_url = proxy_url
+        self.cancel_event: threading.Event | None = None
         self.safe_search = safe_search
         self.timeout = timeout
         self.retries = retries
@@ -216,6 +218,8 @@ class PlaywrightImagesScraper(Scraper):
                     f"Playwright {self.provider} image search returned no "
                     f"parseable {url_kind} image URLs"
                 )
+            except ScraperCancelledError:
+                raise
             except ScraperError as exc:
                 last_error = exc
                 if attempt >= self.retries:
@@ -447,6 +451,10 @@ class PlaywrightImagesScraper(Scraper):
         next_notice = time.monotonic() + 15.0
 
         while True:
+            if self.cancel_event is not None and self.cancel_event.is_set():
+                raise ScraperCancelledError(
+                    "scrape cancelled while waiting for Google verification"
+                )
             try:
                 candidates = self._extract_google_thumbnail_urls(page_html)
             except ScraperError as exc:
