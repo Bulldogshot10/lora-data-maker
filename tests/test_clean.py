@@ -53,7 +53,7 @@ def test_clean_exact_duplicate_and_quality_filter(tmp_path):
         perceptual_distance=6,
         min_width=512,
         min_height=512,
-        blur_threshold=1000,
+        blur_threshold=10,
     )
 
     records = {image.path: image for image in manifest.images.values()}
@@ -118,7 +118,7 @@ def test_clean_quality_rejection_happens_before_perceptual_dedup(tmp_path):
         perceptual_distance=6,
         min_width=512,
         min_height=512,
-        blur_threshold=1000,
+        blur_threshold=10,
     )
 
     records = {image.path: image for image in manifest.images.values()}

@@ -224,3 +224,27 @@ Audit both Playwright Google and Playwright Bing because repeated narrow fixes d
 - Only failures: `tests/test_clean.py::test_clean_exact_duplicate_and_quality_filter` and `tests/test_clean.py::test_clean_quality_rejection_happens_before_perceptual_dedup`. Both also failed in earlier commits `c2072848874d453d7c18588ea876eae892137891` and `ab688ce6a2ed1663623fdf41eb40c94f4c59c7f8`; they are not caused by the current Playwright audit.
 - Added a regression test for click navigation to Google `/imgres?imgurl=`, recovering the original source from the current URL, and restoring the search query. Core smoke for follow-up commit `46cbb92db80829057645165b11450ca8ee447640` completed: compileall passed; pytest reported 373 passed, 2 failed, 2 skipped, 1 deselected. The new regression passed; the same two pre-existing clean/quality failures remain.
 - No live Termux/X11 run has been performed; do not claim the user's device failure is fixed until tested there.
+
+
+## Session checkpoint / handoff (2026-10-25, clean quality-test threshold correction)
+
+### User request
+Resolve the remaining red CI tests after the Playwright Google/Bing audit. Target the existing `main` branch. Do not create or switch branches.
+
+### Root cause
+The CI log for run [40192945319](https://github.com/Bulldogshot10/lora-data-maker/actions/runs/40192945319) showed the two failures were both in `tests/test_clean.py` and happened before duplicate detection: test fixtures passed `blur_threshold=1000`. The current `laplacian_variance` implementation downsamples images to 256px and removes the one-pixel border before computing variance; with Pillow 12.3.0, the synthetic sharp fixture scores about 70.8 while the blurred fixture scores about 0.48. Therefore 1000 rejected every fixture, so exact dedup never saw eligible records and the sharp image in the order-of-operations test was also rejected.
+
+### Change made
+- `tests/test_clean.py`: corrected the two fixture thresholds from 1000 to 10. This keeps the sharp synthetic fixture valid while rejecting its blurred counterpart, matching what the tests are trying to verify.
+- No production quality or deduplication behavior was changed to mask a bad test expectation.
+- This is a regression-test calibration correction; it does not claim that the live Playwright Google/Bing device workflow has been validated.
+
+### Validation status
+- Inspected the exact failing CI log and reproduced the sharp/blurred Laplacian variance values with Pillow 12.3.0 in this environment.
+- The failing tests and full core-smoke suite must be rerun against the resulting commit; results are pending at the time of this checkpoint.
+- Compile/test runs are still the authoritative gate for this change. Live Termux/X11 Google and Bing behavior remains a separate device-verification item.
+
+### Next steps
+1. Confirm the commit triggers core-smoke and read its actual job log.
+2. If the focused clean tests and full `pytest -q -m "not real_caption_runtime"` pass, record the exact counts and current commit below.
+3. Keep the live Termux/X11 Google/Bing validation marked as needing verification until a device run is observed.
