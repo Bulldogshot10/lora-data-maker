@@ -140,13 +140,103 @@ class ExistingChromium:
                 timeout=min(max(self.timeout, 0.5), 10.0),
             ).connect()
         except Exception as exc:
-            raise ScraperError(
-                "could not connect to the existing Chromium CDP session: "
-                f"{exc}"
-            ) from exc
+            if not (self.auto_launch and self._is_cdp_origin_rejection(exc)):
+                raise ScraperError(
+                    "could not connect to the existing Chromium CDP session: "
+                    f"{exc}"
+                ) from exc
+
+            # A Chromium instance launched before the origin allowlist was
+            # added rejects the CDP WebSocket handshake. Restart only the
+            # browser using this dedicated profile and local debugging port.
+            try:
+                self._restart_browser_for_cdp_origin()
+                websocket_url = self._wait_for_websocket_url()
+                self.cdp = CDPConnection(
+                    websocket_url,
+                    timeout=min(max(self.timeout, 0.5), 10.0),
+                ).connect()
+            except Exception as retry_exc:
+                raise ScraperError(
+                    "Chromium rejected the CDP WebSocket origin. The scraper "
+                    "tried to restart its dedicated browser with the required "
+                    "origin flag, but reconnecting failed: "
+                    f"{retry_exc}"
+                ) from retry_exc
 
         return self
 
+    @staticmethod
+    def _is_cdp_origin_rejection(error: Exception) -> bool:
+        message = str(error).lower()
+        return "403 forbidden" in message and (
+            "remote-allow-origins" in message
+            or "rejected an incoming websocket connection" in message
+        )
+
+    def _matching_browser_pids(self, proc_root: Path = Path("/proc")) -> list[int]:
+        """Find the Chromium parent launched for this exact profile and CDP port."""
+        profile_arg = f"--user-data-dir={self.user_data_dir}"
+        port_arg = f"--remote-debugging-port={self.port}"
+        matches: list[int] = []
+        try:
+            process_entries = list(proc_root.iterdir())
+        except OSError:
+            return matches
+
+        for entry in process_entries:
+            if not entry.name.isdigit():
+                continue
+            try:
+                raw = (entry / "cmdline").read_bytes()
+            except OSError:
+                continue
+            argv = [part.decode("utf-8", errors="replace") for part in raw.split(b"\\0") if part]
+            if not argv or "chrom" not in Path(argv[0]).name.lower():
+                continue
+            # Only the parent browser owns the debugging listener. Never
+            # signal renderer/zygote processes or a different browser profile.
+            if any(arg.startswith("--type=") for arg in argv):
+                continue
+            if profile_arg in argv and port_arg in argv:
+                matches.append(int(entry.name))
+        return matches
+
+    def _restart_browser_for_cdp_origin(self) -> None:
+        """Restart only this profile when an old Chromium rejects the CDP origin."""
+        import signal
+
+        pids = self._matching_browser_pids()
+        if not pids:
+            raise ScraperError(
+                "the current Chromium rejects the CDP origin, but the scraper "
+                "could not identify its parent process for the configured profile. "
+                "Close the Google scraping Chromium window once, then tap scrape again."
+            )
+
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGTERM)
+            except ProcessLookupError:
+                pass
+            except OSError as exc:
+                raise ScraperError(
+                    f"could not stop the old Google Chromium process {pid}: {exc}"
+                ) from exc
+
+        deadline = time.monotonic() + 8.0
+        while time.monotonic() < deadline:
+            if not self._matching_browser_pids():
+                break
+            time.sleep(0.2)
+        else:
+            raise ScraperError(
+                "the old Google Chromium process did not close cleanly. "
+                "Close the scraping browser once, then tap scrape again."
+            )
+
+        self.process = None
+        self._launch_browser()
     def new_page(self):
         if self.cdp is None:
             raise ScraperError("existing Chromium is not connected")
@@ -306,6 +396,7 @@ class ExistingChromium:
             f"--user-data-dir={self.user_data_dir}",
             f"--remote-debugging-port={self.port}",
             "--remote-debugging-address=127.0.0.1",
+            f"--remote-allow-origins=http://127.0.0.1:{self.port}",
             "--no-first-run",
             "--no-default-browser-check",
             "--new-window",
