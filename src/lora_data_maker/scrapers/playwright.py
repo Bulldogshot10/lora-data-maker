@@ -1459,6 +1459,7 @@ class PlaywrightImagesScraper(Scraper):
                         if (
                             host === 'google.com' || host.endsWith('.google.com') ||
                             host === 'gstatic.com' || host.endsWith('.gstatic.com') ||
+                            host === 'googleusercontent.com' || host.endsWith('.googleusercontent.com') ||
                             /(^|\\.)encrypted-tbn[0-9]*\\.gstatic\\.com$/.test(host)
                         ) return;
                         seen.add(value);
@@ -1512,7 +1513,7 @@ class PlaywrightImagesScraper(Scraper):
                 nested_sources = query.get("imgurl", []) or query.get("mediaurl", [])
                 for candidate in nested_sources or [raw]:
                     candidate = html.unescape(str(candidate)).strip()
-                    if self._valid_image_candidate(candidate, seen):
+                    if self._valid_google_viewer_candidate(candidate, seen):
                         seen.add(candidate)
                         output.append(candidate)
         if output:
@@ -2039,6 +2040,20 @@ class PlaywrightImagesScraper(Scraper):
             return json.loads(f'"{value}"')
         except (TypeError, ValueError):
             return html.unescape(value).replace(r"\/", "/")
+
+    @staticmethod
+    def _valid_google_viewer_candidate(value: str, seen: set[str]) -> bool:
+        """Reject Google-hosted cache/preview URLs discovered through viewer image src."""
+        if not PlaywrightImagesScraper._valid_image_candidate(value, seen):
+            return False
+        host = (urlparse(value).hostname or "").lower().rstrip(".")
+        # Googleusercontent URLs often point to Google's resized/cached preview.
+        # Explicit original-source attributes are handled by the source-first path.
+        # Do not promote a generic viewer image src to an original URL.
+        return not (
+            host == "googleusercontent.com"
+            or host.endswith(".googleusercontent.com")
+        )
 
     @staticmethod
     def _valid_image_candidate(value: str, seen: set[str]) -> bool:

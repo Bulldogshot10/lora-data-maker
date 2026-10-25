@@ -3124,6 +3124,31 @@ def test_playwright_google_extracts_large_viewer_image_from_live_dom():
     assert urls == [original]
 
 
+def test_playwright_google_does_not_promote_googleusercontent_viewer_cache_to_original():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    cached_preview = "https://lh3.googleusercontent.com/example-preview=w800"
+
+    class FakePage:
+        _url = "https://www.google.com/search?q=portrait&udm=2"
+
+        def evaluate(self, expression):
+            if expression == "location.href":
+                return self._url
+            if "querySelectorAll('a[href]')" in expression:
+                return []
+            if "img.sFlh5c" in expression and "naturalWidth" in expression:
+                return [cached_preview]
+            raise AssertionError("unexpected browser expression")
+
+    urls = PlaywrightImagesScraper(provider="google")._extract_google_original_urls_from_page(
+        FakePage(),
+        '<html><body><img src="https://encrypted-tbn0.gstatic.com/thumb.jpg"></body></html>',
+    )
+
+    assert urls == []
+
+
 def test_playwright_google_extracts_original_from_live_dom_when_outer_html_has_none():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
