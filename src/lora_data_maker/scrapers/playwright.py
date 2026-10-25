@@ -740,15 +740,47 @@ class PlaywrightImagesScraper(Scraper):
 
     @staticmethod
     def _extract_google_thumbnail_urls(page_html: str) -> list[str]:
-        """Extract only cached Google Images thumbnails, never original image URLs."""
+        """Extract cached Google thumbnails from JSON fields and rendered image tags."""
         urls: list[str] = []
         seen: set[str] = set()
-        pattern = re.compile(
+        raw_urls: list[str] = []
+
+        # Google has used the "tu" field in serialized image-result payloads.
+        tu_pattern = re.compile(
             r"""["']tu["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
         )
+        raw_urls.extend(tu_pattern.findall(page_html))
 
-        for raw in pattern.findall(page_html):
-            value = PlaywrightImagesScraper._decode_json_string(raw)
+        # In rendered result markup, Google often exposes thumbnails as img src,
+        # data-src/data-lazy-src, or responsive srcset attributes instead.
+        class ThumbnailMarkupParser(HTMLParser):
+            def __init__(self) -> None:
+                super().__init__(convert_charrefs=True)
+
+            def handle_starttag(self, tag, attrs):
+                if tag.lower() not in {"img", "source"}:
+                    return
+                for key, value in attrs:
+                    if not value:
+                        continue
+                    key = key.lower()
+                    if key in {"src", "data-src", "data-lazy-src"}:
+                        raw_urls.append(value)
+                    elif key == "srcset":
+                        raw_urls.extend(
+                            re.findall(r"https?://[^\\s,]+", value)
+                        )
+
+        try:
+            ThumbnailMarkupParser().feed(page_html)
+        except Exception:
+            # A partially malformed HTML document can still have usable tu fields.
+            pass
+
+        for raw in raw_urls:
+            value = html.unescape(
+                PlaywrightImagesScraper._decode_json_string(raw)
+            ).strip().rstrip(",;")
             parsed = urlparse(value)
             host = (parsed.hostname or "").lower().rstrip(".")
             is_google_thumbnail = (
