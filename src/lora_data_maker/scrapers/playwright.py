@@ -331,7 +331,16 @@ class PlaywrightImagesScraper(Scraper):
                             }
                             candidates = list(candidate_details)
                         else:
-                            candidates = self._extract_google_thumbnail_urls(page_html)
+                            try:
+                                candidates = self._extract_google_thumbnail_urls(page_html)
+                            except ScraperError as exc:
+                                if not self._is_google_verification_error(exc):
+                                    raise
+                                candidates = self._wait_for_google_verification(
+                                    page,
+                                    query=query,
+                                    initial_html=page_html,
+                                )
 
                         for image_url in candidates:
                             if image_url in seen:
@@ -415,6 +424,62 @@ class PlaywrightImagesScraper(Scraper):
                 f"Playwright {self.provider} browser error during {stage}: "
                 f"{type(exc).__name__}: {exc}"
             ) from exc
+
+    @staticmethod
+    def _is_google_verification_error(error: BaseException) -> bool:
+        return "Google returned a consent/verification page" in str(error)
+
+    def _wait_for_google_verification(
+        self,
+        page,
+        *,
+        query: str,
+        initial_html: str,
+    ) -> list[str]:
+        """Wait on the same visible browser until a person clears Google's challenge."""
+        print(
+            "scrape: Google consent/verification detected. "
+            "Search paused, not retrying. Complete the challenge in the open "
+            "Chromium window; scraping will continue automatically.",
+            flush=True,
+        )
+        page_html = initial_html
+        next_notice = time.monotonic() + 15.0
+
+        while True:
+            try:
+                candidates = self._extract_google_thumbnail_urls(page_html)
+            except ScraperError as exc:
+                if not self._is_google_verification_error(exc):
+                    raise
+                candidates = []
+
+            if candidates:
+                print(
+                    "scrape: Google verification cleared; resuming the same search.",
+                    flush=True,
+                )
+                return candidates
+
+            now = time.monotonic()
+            if now >= next_notice:
+                current_url = str(getattr(page, "_url", "") or "")
+                print(
+                    "scrape: still waiting for Google verification to finish; "
+                    "complete it in Chromium to continue"
+                    + (f" (current URL: {current_url})" if current_url else ""),
+                    flush=True,
+                )
+                next_notice = now + 15.0
+
+            time.sleep(1.0)
+            try:
+                page_html = page.content()
+            except Exception:
+                # Browser/DOM transitions can briefly make CDP content reads fail.
+                # Keep the verification wait alive and try again instead of
+                # turning a transient read failure into a search retry.
+                continue
 
     def _goto(self, page, url: str) -> None:
         """Navigate and distinguish slow cards from redirects or blocked pages."""
