@@ -1836,11 +1836,89 @@ def test_existing_chromium_launches_visible_browser_with_local_cdp(
     assert f"--user-data-dir={profile.resolve()}" in args
     assert "--remote-debugging-port=9222" in args
     assert "--remote-debugging-address=127.0.0.1" in args
+    assert "--remote-allow-origins=http://127.0.0.1:9222" in args
     assert "https://www.google.com/" in args
     assert calls["kwargs"]["stdout"] is module.subprocess.DEVNULL
     assert calls["kwargs"]["stderr"] is module.subprocess.DEVNULL
     assert profile.is_dir()
 
+
+def test_existing_chromium_only_matches_its_own_browser_process(tmp_path):
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = (tmp_path / "google-profile").resolve()
+    proc_root = tmp_path / "proc"
+    proc_root.mkdir()
+
+    def write_process(pid, argv):
+        process = proc_root / str(pid)
+        process.mkdir()
+        (process / "cmdline").write_bytes(b"\\0".join(arg.encode() for arg in argv) + b"\\0")
+
+    write_process(101, [
+        "/data/data/com.termux/files/usr/bin/chromium-browser",
+        f"--user-data-dir={profile}",
+        "--remote-debugging-port=9222",
+    ])
+    write_process(102, [
+        "/data/data/com.termux/files/usr/bin/chromium-browser",
+        f"--user-data-dir={profile}",
+        "--remote-debugging-port=9222",
+        "--type=renderer",
+    ])
+    write_process(103, [
+        "/data/data/com.termux/files/usr/bin/chromium-browser",
+        f"--user-data-dir={(tmp_path / 'other-profile').resolve()}",
+        "--remote-debugging-port=9222",
+    ])
+
+    browser = ExistingChromium(user_data_dir=profile, port=9222, auto_launch=True)
+    assert browser._matching_browser_pids(proc_root) == [101]
+
+
+def test_existing_chromium_retries_after_cdp_origin_rejection(monkeypatch, tmp_path):
+    import sys
+    import types
+
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    profile = tmp_path / "google-profile"
+    profile.mkdir()
+    calls = {"connect": 0, "restart": 0}
+    websocket_url = "ws://127.0.0.1:9222/devtools/browser/test"
+
+    class FakeCDPConnection:
+        def __init__(self, url, *, timeout):
+            assert url == websocket_url
+            assert timeout > 0
+
+        def connect(self):
+            calls["connect"] += 1
+            if calls["connect"] == 1:
+                raise RuntimeError(
+                    "Handshake status 403 Forbidden: Rejected an incoming WebSocket "
+                    "connection. Use --remote-allow-origins=* to allow connections."
+                )
+            return self
+
+    package = types.ModuleType("playwright_termux")
+    package.__path__ = []
+    cdp_module = types.ModuleType("playwright_termux.cdp")
+    cdp_module.CDPConnection = FakeCDPConnection
+    monkeypatch.setitem(sys.modules, "playwright_termux", package)
+    monkeypatch.setitem(sys.modules, "playwright_termux.cdp", cdp_module)
+
+    browser = ExistingChromium(user_data_dir=profile, port=9222, auto_launch=True)
+    monkeypatch.setattr(browser, "_discover_websocket_url", lambda: websocket_url)
+    monkeypatch.setattr(browser, "_wait_for_websocket_url", lambda: websocket_url)
+
+    def restart():
+        calls["restart"] += 1
+
+    monkeypatch.setattr(browser, "_restart_browser_for_cdp_origin", restart)
+    assert browser.connect() is browser
+    assert calls == {"connect": 2, "restart": 1}
+    browser.close()
 
 def test_existing_chromium_starts_termux_x11_when_display_is_unset(
     monkeypatch, tmp_path
