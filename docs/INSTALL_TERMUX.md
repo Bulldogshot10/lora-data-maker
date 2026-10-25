@@ -59,6 +59,19 @@ python -m pip install ".[playwright]"
 This installs the pinned `playwright-termux` 2.0.0 CDP adapter used by the backend.
 Do not run `playwright install` for this backend.
 
+## Optional Playwright WireGuard proxy
+
+The WebUI can upload a WireGuard client `.conf` and use it only for Playwright scraping. It does not replace Android's global VPN or change the device's default route. Install the userspace proxy executable first:
+
+~~~bash
+pkg install golang
+go install github.com/windtf/wireproxy/cmd/wireproxy@v1.1.2
+export PATH="$HOME/go/bin:$PATH"
+wireproxy --version
+~~~
+
+If the Go binary directory is not on PATH in future Termux sessions, add the PATH export to your shell profile. In WebUI → collect images, select a Playwright backend, upload the provider's WireGuard `.conf`, and enable **use WireGuard for Playwright scraping**. The private key is stored outside dataset folders with owner-only file permissions. The local WireGuard proxy is started for the scrape and stopped afterward. SafeSearch is a separate checkbox; it defaults off and can be enabled to filter explicit results.
+
 Test Bing:
 
 ~~~bash
