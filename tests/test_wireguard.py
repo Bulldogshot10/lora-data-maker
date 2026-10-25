@@ -97,6 +97,49 @@ def test_wireguard_store_cannot_enable_without_config(tmp_path: Path):
         store.set_enabled(True)
 
 
+def test_webui_wireguard_config_upload_toggle_and_remove(tmp_path: Path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from lora_data_maker.config import write_default_config
+    from lora_data_maker.dataset import DatasetProject
+    from lora_data_maker.paths import ProjectPaths
+    from lora_data_maker.web import create_app
+
+    project_root = tmp_path / "dataset"
+    project_paths = ProjectPaths.from_root(project_root)
+    project_paths.create_directories()
+    write_default_config(project_paths.config, name="test", subject="person", trigger="person")
+    DatasetProject.create(project_paths)
+    monkeypatch.setattr(
+        WireGuardProxy,
+        "find_binary",
+        staticmethod(lambda: "/mock/wireproxy"),
+    )
+    client = TestClient(
+        create_app(project_root, wireguard_store_dir=tmp_path / "private" / "wireguard")
+    )
+
+    before = client.get("/api/wireguard/state").json()
+    assert before["configured"] is False
+    uploaded = client.post(
+        "/api/wireguard/config",
+        files={"file": ("test.conf", wireguard_config().encode(), "text/plain")},
+    )
+    assert uploaded.status_code == 200
+    assert uploaded.json()["configured"] is True
+    assert uploaded.json()["enabled"] is False
+    assert "PrivateKey" not in str(uploaded.json())
+
+    enabled = client.post("/api/wireguard/settings", json={"enabled": True})
+    assert enabled.status_code == 200
+    assert enabled.json()["enabled"] is True
+
+    removed = client.delete("/api/wireguard/config")
+    assert removed.status_code == 200
+    assert removed.json()["configured"] is False
+    assert removed.json()["enabled"] is False
+
+
 def test_wireproxy_requires_an_executable(tmp_path: Path, monkeypatch):
     config_path = tmp_path / "wireguard.conf"
     config_path.write_text(wireguard_config(), encoding="utf-8")
