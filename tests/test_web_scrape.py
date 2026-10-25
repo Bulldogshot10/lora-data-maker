@@ -118,6 +118,54 @@ def test_web_exposes_scraper_controls_and_progress(tmp_path: Path, monkeypatch) 
     assert final_state["counts"]["downloaded"] == 1
 
 
+def test_web_safe_search_setting_persists_and_can_be_disabled(tmp_path: Path) -> None:
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+
+    initial_state = client.get("/api/state").json()
+    assert initial_state["scraper"]["safe_search"] is False
+
+    payload = {
+        "name": "test",
+        "subject": "person",
+        "trigger": "person",
+        "preset": "sweetspot",
+        "scraper_backend": "playwright-google",
+        "scrape_query": "portrait",
+        "scrape_count": 1,
+        "scrape_safe_search": True,
+        "mode": "cover",
+        "width": 512,
+        "height": 512,
+        "quality": 95,
+        "face_crop": False,
+        "face_padding": 1.75,
+        "person_check": False,
+        "max_persons": 1,
+        "person_threshold": 0.35,
+        "min_subject_area": 0.12,
+        "min_subject_visibility": 0.35,
+        "text_check": True,
+        "text_confidence": 0.5,
+        "text_min_area_ratio": 0.0004,
+    }
+    saved = client.post("/api/settings", json=payload)
+    assert saved.status_code == 200
+    state = client.get("/api/state").json()
+    assert state["scraper"]["safe_search"] is True
+
+    config = (root / "config.toml").read_text(encoding="utf-8")
+    assert "safe_search = true" in config
+
+    payload["scrape_safe_search"] = False
+    saved_off = client.post("/api/settings", json=payload)
+    assert saved_off.status_code == 200
+    state_off = client.get("/api/state").json()
+    assert state_off["scraper"]["safe_search"] is False
+    config_off = (root / "config.toml").read_text(encoding="utf-8")
+    assert "safe_search = false" in config_off
+
+
 def test_web_can_cancel_running_scrape(tmp_path: Path, monkeypatch) -> None:
     root = make_project(tmp_path)
     started = threading.Event()
