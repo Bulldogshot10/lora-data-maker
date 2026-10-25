@@ -117,8 +117,8 @@ class ScraperManager:
                 + ", ".join(SCRAPER_BACKENDS)
             )
 
-        # Google thumbnails can be transiently unavailable. Cap retries only
-        # for this backend; other backends keep the configured retry count.
+        # Google source hosts may reject direct downloads. Cap retries only for this
+        # backend; other backends keep the configured retry count.
         download_retries = 2 if backend == "playwright-google" else retries
         self.downloader = ImageDownloader(
             timeout=timeout,
@@ -158,7 +158,7 @@ class ScraperManager:
 
         # Ask the source for more candidates than the target because some
         # candidates can already be archived or fail to download.
-        search_limit = max(count, count * 3)
+        search_limit = max(count, count * (10 if self.backend == "playwright-google" else 3))
 
         if progress is not None:
             progress(0, count, f"searching for up to {search_limit} candidates...")
