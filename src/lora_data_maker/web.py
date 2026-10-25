@@ -866,7 +866,7 @@ dialog::backdrop{background:rgba(15,20,28,.45);backdrop-filter:blur(4px)}
                 <input id="scrape_safe_search" type="checkbox">
                 enable SafeSearch filter
               </label>
-              <div class="field-note">off lets Google / Playwright Bing return explicit results; other backends use their own defaults.</div>
+              <div class="field-note">off requests unfiltered results from Google, Playwright Google and Playwright Bing. Turn it on to filter explicit imagery.</div>
             </div>
           </div>
           <section class="card" id="wireguard-panel" style="margin-top:14px;padding:12px;border:1px solid #aaa;box-shadow:none;background:var(--surface)">
@@ -2520,7 +2520,7 @@ def create_app(
             }
             or path.startswith((
                 "/api/vlm/upload/", "/api/run/", "/api/images/",
-                "/api/projects/", "/api/jobs/", "/api/wireguard/",
+                "/api/projects/", "/api/jobs/", "/api/wireguard/", "/api/wireguard/",
             ))
         )
         if serialized_mutation:
@@ -2906,7 +2906,7 @@ def create_app(
                 "year": int(cfg.get("scraper", {}).get("year", 0) or 0),
                 "date_from": str(cfg.get("scraper", {}).get("date_from", "") or ""),
                 "date_to": str(cfg.get("scraper", {}).get("date_to", "") or ""),
-                "safe_search": bool(cfg.get("scraper", {}).get("safe_search", False)),
+                "safe_search": cfg.get("scraper", {}).get("safe_search", False) is True,
             },
             "quality": {
                 "person_check": bool(cfg.get("quality", {}).get("person_check", False)),
