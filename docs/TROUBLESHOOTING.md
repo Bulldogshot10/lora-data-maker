@@ -39,7 +39,7 @@ Before a Playwright Google image enters the dataset, the scraper checks that bot
 
 ## Scraper source is blocked or returns no candidates
 
-Chromium mode tries DuckDuckGo Images first and Bing Images second. The Playwright backends target Bing or Google directly through Termux-native Chromium. A provider can still return a temporary block, challenge, or empty result set. Google verification pages are treated as source failures. For repeated failures, retry later, reduce request volume, or use a prepared direct URL list.
+Chromium mode tries DuckDuckGo Images first and Bing Images second. The Playwright backends use persistent Termux Chromium profiles and locator-based waits for dynamic result grids. Google consent/verification pages pause the active scrape and wait for manual completion in the visible Chromium window, then resume the same session; use Cancel to stop waiting. Browser-side HTTP errors are logged, and common analytics endpoints are blocked without blocking page scripts or verification resources. A provider may still reject automated traffic or return no candidates; lower request volume or switch provider when that happens.
 
 ## Validation rejects images
 
