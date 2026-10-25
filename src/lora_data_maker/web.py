@@ -3360,7 +3360,7 @@ def create_app(
         if scrape_date_mode != "any" and scraper_backend not in {"playwright-bing", "playwright-google"}:
             raise HTTPException(
                 400,
-                "date filters are only supported by the Playwright Bing or Google backend",
+                "date filters are only supported by the Playwright Bing backend or Playwright Google backend",
             )
         preset = preset.strip().lower()
         try:
