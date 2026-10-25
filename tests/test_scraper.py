@@ -294,22 +294,8 @@ def test_scraper_manager_skips_failed_downloads_and_continues(tmp_path):
 
 
 
-@pytest.mark.parametrize(
-    "failure_message",
-    [
-        "download failed after 4 attempts: 403 Client Error: Forbidden for url: {url}",
-        "download failed after 4 attempts: 404 Not Found for url: {url}",
-        "URL did not return an image: {url} (content-type: text/html)",
-    ],
-    ids=["403-forbidden", "404-not-found", "non-image-html"],
-)
-def test_playwright_google_falls_back_to_thumbnail_after_original_failure(
-    tmp_path, failure_message
-):
-    from pathlib import Path
-
+def test_playwright_google_manager_only_downloads_thumbnail_url(tmp_path):
     from lora_data_maker.scrapers.base import ImageResult, ScraperError
-    from lora_data_maker.scrapers.downloader import DownloadResult
     from lora_data_maker.scrapers.manager import ScraperManager
 
     original = "https://cdn.example.com/original.jpg"
@@ -325,10 +311,12 @@ def test_playwright_google_falls_back_to_thumbnail_after_original_failure(
 
     class FakeScraper:
         def search(self, query, *, limit):
+            # Google extraction supplies the thumbnail as image_url. Any legacy
+            # original URL in metadata is deliberately ignored by the manager.
             yield ImageResult(
-                original,
+                thumbnail,
                 query=query,
-                metadata={"fallback_image_urls": [thumbnail]},
+                metadata={"original_url": original},
             )
 
     manager.scraper = FakeScraper()
@@ -340,26 +328,16 @@ def test_playwright_google_falls_back_to_thumbnail_after_original_failure(
             cancel_event=None, referer=None,
         ):
             calls.append((url, referer))
-            if url == original:
-                raise ScraperError(failure_message.format(url=original))
-            return DownloadResult(
-                url=url,
-                path=Path(output_dir) / f"{index:06d}.jpg",
-                sha256="0" * 64,
-                file_size=123,
-                content_type="image/jpeg",
-            )
+            raise ScraperError("403 Client Error: Forbidden")
 
     manager.downloader = FakeDownloader()
     downloads, failures = manager.run("portrait", count=1)
 
-    assert failures == []
-    assert len(downloads) == 1
-    assert downloads[0].url == thumbnail
-    assert calls == [
-        (original, "https://www.google.com/"),
-        (thumbnail, "https://www.google.com/"),
-    ]
+    assert downloads == []
+    assert len(failures) == 1
+    assert failures[0][0].image_url == thumbnail
+    assert calls == [(thumbnail, "https://www.google.com/")]
+
 
 
 def test_scraper_manager_preserves_downloads_when_search_fails(tmp_path):
@@ -1236,46 +1214,30 @@ def test_playwright_google_builds_direct_google_images_url():
     assert params["hl"] == ["en"]
 
 
-def test_playwright_google_prefers_original_ou_url():
-    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
-
-    body = r'''
-    <script>
-    {"ou":"https://cdn.example.com/original.jpg","tu":"https://encrypted-tbn.example/thumb.jpg"}
-    </script>
-    '''
-
-    assert PlaywrightImagesScraper._extract_google_urls(body) == [
-        "https://cdn.example.com/original.jpg"
-    ]
-
-
-def test_playwright_google_extracts_thumbnail_fallback_for_original():
+def test_playwright_google_extracts_only_google_thumbnails():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
     body = r'''
     <script>
       var first = {
         "ou":"https://cdn.example.com/original.jpg",
-        "ow":1200,
-        "tu":"https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample",
-        "tw":200
+        "tu":"https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample"
       };
       var second = {
         "ou":"https://images.example.net/portrait.png",
         "tu":"https://lh3.googleusercontent.com/example-thumb"
       };
+      var third = {
+        "ou":"https://cdn.example.com/not-used.webp",
+        "tu":"https://unrelated.example.com/not-a-google-thumb.jpg"
+      };
     </script>
     '''
 
-    assert PlaywrightImagesScraper._extract_google_fallbacks(body) == {
-        "https://cdn.example.com/original.jpg": [
-            "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample"
-        ],
-        "https://images.example.net/portrait.png": [
-            "https://lh3.googleusercontent.com/example-thumb"
-        ],
-    }
+    assert PlaywrightImagesScraper._extract_google_thumbnail_urls(body) == [
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample",
+        "https://lh3.googleusercontent.com/example-thumb",
+    ]
 
 
 def test_playwright_google_ignores_challenge_markers_inside_valid_results():
@@ -1287,7 +1249,10 @@ def test_playwright_google_ignores_challenge_markers_inside_valid_results():
         <script>
           var hiddenTemplate = "Before you continue to Google";
           var staleRedirectPath = "/sorry/";
-          var imageData = {"ou":"https://cdn.example.com/original.jpg"};
+          var imageData = {
+            "ou":"https://cdn.example.com/original.jpg",
+            "tu":"https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample"
+          };
         </script>
       </head>
       <body>
@@ -1296,8 +1261,8 @@ def test_playwright_google_ignores_challenge_markers_inside_valid_results():
     </html>
     '''
 
-    assert PlaywrightImagesScraper._extract_google_urls(body) == [
-        "https://cdn.example.com/original.jpg"
+    assert PlaywrightImagesScraper._extract_google_thumbnail_urls(body) == [
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample"
     ]
 
 
@@ -1308,7 +1273,7 @@ def test_playwright_google_rejects_verification_page():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
     with pytest.raises(ScraperError, match="verification"):
-        PlaywrightImagesScraper._extract_google_urls(
+        PlaywrightImagesScraper._extract_google_thumbnail_urls(
             "Our systems have detected unusual traffic from your computer network"
         )
 
