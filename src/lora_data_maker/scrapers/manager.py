@@ -35,7 +35,7 @@ class ScraperManager:
         date_from: str | None = None,
         date_to: str | None = None,
         proxy_url: str | None = None,
-        safe_search: bool = True,
+        safe_search: bool = False,
     ) -> None:
         if not isinstance(safe_search, bool):
             raise ScraperError("safe_search must be a boolean")
