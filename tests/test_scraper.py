@@ -2267,7 +2267,10 @@ def test_scraper_manager_forwards_google_date_range(tmp_path):
     assert manager.scraper.provider == "google"
     assert manager.scraper.date_from == "2019-01-01"
     assert manager.scraper.date_to == "2019-12-31"
-    assert "after:2019-01-01 before:2019-12-31" in manager.scraper._build_url("portrait")
+    from urllib.parse import parse_qs, urlparse
+
+    params = parse_qs(urlparse(manager.scraper._build_url("portrait")).query)
+    assert params["q"] == ["portrait after:2019-01-01 before:2019-12-31"]
 
 
 def test_scraper_manager_rejects_date_filter_for_other_backends(tmp_path):
@@ -2276,7 +2279,7 @@ def test_scraper_manager_rejects_date_filter_for_other_backends(tmp_path):
     from lora_data_maker.scrapers.base import ScraperError
     from lora_data_maker.scrapers.manager import ScraperManager
 
-    with pytest.raises(ScraperError, match="playwright-bing or playwright-google"):
+    with pytest.raises(ScraperError, match="Playwright Bing backend or Playwright Google backend"):
         ScraperManager(
             backend="duckduckgo",
             output_dir=tmp_path / "raw",

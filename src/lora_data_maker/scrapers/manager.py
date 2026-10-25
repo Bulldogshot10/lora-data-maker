@@ -64,8 +64,8 @@ class ScraperManager:
 
         if (date_from or date_to) and backend not in {"playwright-bing", "playwright-google"}:
             raise ScraperError(
-                "date filtering is only supported with the playwright-bing "
-                "or playwright-google backends"
+                "date filters are only supported by the Playwright Bing backend "
+                "or Playwright Google backend"
             )
 
         if backend == "google":
