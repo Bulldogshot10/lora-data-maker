@@ -874,7 +874,7 @@ dialog::backdrop{background:rgba(15,20,28,.45);backdrop-filter:blur(4px)}
               <div class="card-title">WireGuard VPN</div>
               <div class="card-kicker">Playwright only</div>
             </div>
-            <p class="field-note" style="margin:7px 0 11px">uses a local userspace proxy for Playwright scraping only. Android's global VPN/routing is unchanged.</p>
+            <p class="field-note" style="margin:7px 0 11px">upload your WireGuard .conf here. To route scraping through it, select Playwright · Google or Playwright · Bing below. Android's global VPN/routing is unchanged.</p>
             <div class="form-grid">
               <div class="field" style="grid-column:1/-1">
                 <label for="wireguard-file">WireGuard config (.conf)</label>
@@ -1412,7 +1412,17 @@ function syncScrapeDateUI(){
 }
 function syncWireGuardUI(){
   const supported=["playwright-bing","playwright-google"].includes($("scraper_backend").value);
-  $("wireguard-panel").hidden=!supported;
+  const panel=$("wireguard-panel");
+  if(panel)panel.hidden=false;
+  const kicker=panel&&panel.querySelector(".card-kicker");
+  if(kicker)kicker.textContent=supported
+    ?"Playwright only"
+    :"upload config now · requires Playwright";
+  const enabled=$("wireguard-enabled");
+  if(enabled){
+    const configured=!!(appState.wireguard&&appState.wireguard.configured);
+    enabled.disabled=!supported||!configured||isBusyOnActiveProject();
+  }
 }
 function applySettings(s,force=false){
   if(appState.settingsDirty&&!force)return;
