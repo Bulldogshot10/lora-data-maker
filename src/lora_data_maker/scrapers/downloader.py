@@ -69,6 +69,7 @@ class ImageDownloader:
         user_agent: str,
         session: requests.Session | None = None,
         max_bytes: int = 50 * 1024 * 1024,
+        proxy_url: str | None = None,
     ) -> None:
         if timeout <= 0:
             raise ValueError("timeout must be greater than zero")
@@ -85,8 +86,37 @@ class ImageDownloader:
         self.max_bytes = int(max_bytes)
         self.session = session or requests.Session()
         self.session.trust_env = False
+        self.proxy_url = self._validate_proxy_url(proxy_url) if proxy_url else None
+        if self.proxy_url:
+            self.session.proxies.update({
+                "http": self.proxy_url,
+                "https": self.proxy_url,
+            })
         self.session.headers.update({"User-Agent": user_agent})
         _configure_termux_network()
+
+    @staticmethod
+    def _validate_proxy_url(value: str) -> str:
+        from urllib.parse import urlsplit
+
+        try:
+            parsed = urlsplit(value)
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("proxy_url must be a local HTTP proxy URL") from exc
+        if (
+            parsed.scheme != "http"
+            or parsed.hostname not in {"127.0.0.1", "localhost"}
+            or port is None
+            or not 1 <= port <= 65535
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("proxy_url must be a local HTTP proxy URL")
+        return value.rstrip("/")
 
     def download(
         self,
@@ -123,6 +153,7 @@ class ImageDownloader:
                         safe_url = assert_safe_outbound_url(
                             request_url,
                             allow_loopback=False,
+                            resolve_dns=self.proxy_url is None,
                         )
                     except ValueError as exc:
                         raise ScraperError(f"unsafe image URL: {exc}") from exc
