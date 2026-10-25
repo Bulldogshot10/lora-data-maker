@@ -11,6 +11,28 @@ from lora_data_maker.scrapers.site import (
 )
 
 
+def test_site_backend_is_registered_and_browser_command_has_independent_entrypoint():
+    from lora_data_maker.cli import build_parser
+    from lora_data_maker.scrapers.base import SCRAPER_BACKENDS
+
+    assert "playwright-site" in SCRAPER_BACKENDS
+    args = build_parser().parse_args([
+        "playwright-browser", "--url", "https://example.com/login"
+    ])
+    assert args.command == "playwright-browser"
+    assert args.url == "https://example.com/login"
+
+    scrape_args = build_parser().parse_args([
+        "scrape", "playwright-site", "https://example.com/gallery",
+        "--selector", "article img", "--count", "10"
+    ])
+    assert scrape_args.command == "scrape"
+    assert scrape_args.backend == "playwright-site"
+    assert scrape_args.query == "https://example.com/gallery"
+    assert scrape_args.selector == "article img"
+    assert scrape_args.count == 10
+
+
 def test_site_page_url_requires_http_or_https():
     assert validate_page_url("https://example.com/gallery") == "https://example.com/gallery"
     assert validate_page_url("http://localhost:8000/images") == "http://localhost:8000/images"

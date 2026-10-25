@@ -360,3 +360,8 @@ Not implemented: automatic interactive natural-language agent actions on arbitra
 - Generic page-evaluation/CDP exceptions are now converted to ScraperError and run through the configured retry/error path rather than escaping as an unhandled CLI exception.
 - Added unit coverage for viewport-sized scrolling and for transferring browser cookies into the in-memory HTTP cookie jar without writing project files.
 - Validation remains pending: GitHub Actions status currently returns no checks for the feature commit, and local git clone failed because this environment cannot resolve github.com (Could not resolve host: github.com). No test pass is claimed. After pulling the new main, run python -m compileall -q src tests and python -m pytest -q tests/test_playwright_site.py tests/test_scraper.py.
+
+### Documentation and CLI API consistency follow-up (2026-10-25)
+- Updated the README backend list and configuration guide to include playwright-site, clarified the CLI positional argument help for website URLs, and exported PlaywrightSiteScraper from the scraper package API.
+- Added a parser regression test covering the standalone login-browser command and the site backend with CSS selector options.
+- Test execution remains blocked in this environment by the failed GitHub DNS lookup noted above; the automatic core-smoke workflow is expected to run on push, but its result must be checked before claiming CI validation.

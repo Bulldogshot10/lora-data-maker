@@ -282,6 +282,7 @@ duckduckgo
 chromium
 playwright-bing
 playwright-google
+playwright-site
 direct
 ~~~
 

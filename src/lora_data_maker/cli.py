@@ -92,7 +92,7 @@ def build_parser() -> argparse.ArgumentParser:
     scrape_parser.add_argument(
         "query",
         nargs="?",
-        help="search query for google/duckduckgo/chromium, or a text file of URLs for direct",
+        help="search query for image-search backends, a page URL for playwright-site, or a text file of URLs for direct",
     )
     scrape_parser.add_argument(
         "--count",
