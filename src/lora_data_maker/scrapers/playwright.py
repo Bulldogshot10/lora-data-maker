@@ -410,6 +410,13 @@ class PlaywrightImagesScraper(Scraper):
                                     page,
                                     page_html,
                                 )
+                                if candidates:
+                                    print(
+                                        "scrape: Google extracted "
+                                        f"{len(candidates)} original/source candidate(s) "
+                                        "from the result page before thumbnail fallback",
+                                        flush=True,
+                                    )
                                 if not candidates:
                                     print(
                                         "scrape: Google original URLs were not parseable; "
@@ -1931,6 +1938,34 @@ class PlaywrightImagesScraper(Scraper):
                 continue
             seen.add(value)
             urls.append(value)
+
+        # Modern AF_initDataCallback payloads may store originals as positional
+        # arrays instead of object fields: [URL, original_height, original_width].
+        # Match the semantic URL + dimensions tuple rather than brittle array
+        # indices. Normalize JSON-escaped forward slashes before parsing.
+        tuple_search_html = page_html.replace(r"\/", "/")
+        image_tuple_pattern = re.compile(
+            r"""\[\s*(["'])(https?://[^"'\[\]]+?)\1\s*,\s*(\d{1,5})\s*,\s*(\d{1,5})\s*\]"""
+        )
+        tuple_urls: list[str] = []
+        for match in image_tuple_pattern.finditer(tuple_search_html):
+            value = html.unescape(match.group(2)).strip().rstrip(",;")
+            host = (urlparse(value).hostname or "").lower().rstrip(".")
+            # Similar tuples may describe Google's cached thumbnails. Do not
+            # promote Google-hosted preview URLs based on dimensions alone.
+            if host == "googleusercontent.com" or host.endswith(".googleusercontent.com"):
+                continue
+            if not PlaywrightImagesScraper._valid_image_candidate(value, seen):
+                continue
+            seen.add(value)
+            tuple_urls.append(value)
+        if tuple_urls:
+            print(
+                "scrape: Google original URL payload tuples yielded "
+                f"{len(tuple_urls)} source candidate(s)",
+                flush=True,
+            )
+            urls.extend(tuple_urls)
 
         # Some Google Images variants expose the source image in the result link
         # rather than a serialized "ou" field: /imgres?imgurl=<original URL>.

@@ -294,3 +294,28 @@ On the existing `main` branch, fix the Google Images scraper's tendency to choos
 2. Test a Google query and confirm logs show `ou` extraction or live preview DOM recovery before thumbnail fallback.
 3. Test a custom Google date range and confirm the browser query contains the encoded `after:` and `before:` operators and results are filtered as expected.
 4. If the session still only obtains thumbnails, capture safe DOM diagnostics after a tile click (source-attribute presence, preview image source host/dimensions, viewer link href patterns, current URL and title). Do not include cookies, tokens, or logged-in session details.
+
+
+## Session checkpoint / handoff (2026-10-25, root-cause Google payload parser follow-up)
+
+### User report
+The earlier Google original-image recovery changes and green CI still did not change the user's live Termux:X11 behavior: `playwright-google` continues to save thumbnails only. Treat the prior live-extraction approach as insufficient; do not close this issue based on mock tests alone.
+
+### Root cause found through online source research
+A current Google Images implementation reference explains that the full-resolution URLs are often embedded inside `AF_initDataCallback` script payloads as positional arrays shaped like `["https://source.example/image.jpg", height, width]`, not necessarily `ou: "..." fields and not as result-image `img.src`. Our scraper only looked for named `ou` keys, links with `imgurl`, explicit data attributes, and the displayed viewer image. Thus it could miss original URLs even when the initial rendered HTML already contained them, then deterministically fall back to thumbnails. See [Google Images scraping research (July 26, 2026)](https://status.scrapebadger.com/blog/how-to-scrape-google-images-with-python-in-2026), especially the AF_initDataCallback and URL-dimension tuple sections.
+
+### Changes prepared in this follow-up
+- `src/lora_data_maker/scrapers/playwright.py`: parse URL + two dimension tuples from page payloads after normalizing JSON-escaped slashes; reject Google-hosted thumbnail/cache candidates from this tuple path; log how many source candidates the result-page extractor found before any thumbnail fallback.
+- `tests/test_scraper.py`: add a focused regression fixture resembling an `AF_initDataCallback` payload with unescaped and escaped source URLs, Google thumbnail CDN entries, Googleusercontent preview entries, and Google UI assets. Expect only the two external original URLs.
+- `docs/TROUBLESHOOTING.md`: document the positional tuple path and put it ahead of viewer clicking/fallback.
+
+### Validation status
+- The new source/test blobs have been prepared in GitHub; commit/CI status is pending. No local Termux/X11 session is accessible from this environment.
+- Previous CI run [40196552900](https://github.com/Bulldogshot10/lora-data-maker/actions/runs/40196552900) was green at 381 passed, 2 skipped, 1 deselected, but it predated this payload-tuple parser and therefore does not validate the new root-cause fix.
+- Runtime status must remain **Needs verification** until the user reruns the query and sees a log like `Google original URL payload tuples yielded N source candidate(s)` and downloaded URLs come from the source hosts, not Google thumbnail/cache hosts.
+
+### Next steps
+1. Commit parser + regression test + docs and inspect the new GitHub Actions logs.
+2. On Termux, pull `main`, rerun the failing query, and check that the source-candidate log appears before thumbnail fallback.
+3. If the tuple count is zero, collect only a bounded safe diagnostic: counts of `AF_initDataCallback` occurrences, counts of dimensional URL tuples before host filtering, and a few candidate hostnames/dimensions. Do not dump full page content or cookies/session data.
+4. If originals are extracted but downloads still produce small images, trace each URL and downloaded image dimensions in the downloader/manager path separately.

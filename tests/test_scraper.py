@@ -1315,6 +1315,30 @@ def test_playwright_google_extracts_original_urls_and_never_thumbnail_cache():
     ]
 
 
+def test_playwright_google_extracts_original_urls_from_init_data_dimension_tuples():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = r'''
+    <html><body>
+      <script nonce="x">
+        AF_initDataCallback({key: 'ds:1', data: [
+          ["https://cdn.example.com/original.jpg",1365,2048],
+          ["https:\/\/images.example.net/portrait.png",800,1200],
+          ["https://encrypted-tbn0.gstatic.com/images?q=tbn%3Athumb",150,100],
+          ["https://lh3.googleusercontent.com/preview=w300",100,150],
+          ["https://www.google.com/images/branding/logo.png",1000,1000]
+        ]});
+      </script>
+      <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn%3Avisible-thumb">
+    </body></html>
+    '''
+
+    assert PlaywrightImagesScraper._extract_google_original_urls(body) == [
+        "https://cdn.example.com/original.jpg",
+        "https://images.example.net/portrait.png",
+    ]
+
+
 def test_playwright_google_click_navigation_recovers_source_and_restores_search(monkeypatch):
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
