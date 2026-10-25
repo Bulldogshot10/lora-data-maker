@@ -285,13 +285,13 @@ playwright-google
 direct
 ~~~
 
-\`chromium\` is the existing Selenium backend. The Playwright backends use
-Termux-native Chromium through the pinned \`playwright-termux\` adapter. They use
+`chromium` is the existing Selenium backend. The Playwright backends use
+Termux-native Chromium through the pinned `playwright-termux` adapter. They use
 its Page, Locator, and Network APIs for foreground browser interaction,
 dynamic result-grid waits, lazy-load scrolling, and request/response monitoring.
 The browser profile is persistent for each provider, so consent choices, cookies,
 and sign-in sessions can be reused. Google candidates come from original-source
-URLs (\`ou\`), never Google's cached thumbnails (\`tu\`); low-resolution and
+URLs (`ou`), never Google's cached thumbnails (`tu`); low-resolution and
 strongly blurred Google downloads are rejected before they enter the dataset.
 A small set of common analytics/tracker endpoints is blocked, while image,
 document, JavaScript, and verification resources are left available. Navigation
