@@ -96,6 +96,7 @@ class ImageDownloader:
         index: int,
         archive: DownloadArchive | None = None,
         cancel_event: threading.Event | None = None,
+        referer: str | None = None,
     ) -> DownloadResult | None:
         if cancel_event is not None and cancel_event.is_set():
             raise ScraperCancelledError("scrape cancelled")
@@ -126,12 +127,18 @@ class ImageDownloader:
                     except ValueError as exc:
                         raise ScraperError(f"unsafe image URL: {exc}") from exc
 
-                    response = self.session.get(
-                        safe_url,
-                        timeout=request_timeout,
-                        allow_redirects=False,
-                        stream=True,
-                    )
+                    request_options = {
+                        "timeout": request_timeout,
+                        "allow_redirects": False,
+                        "stream": True,
+                    }
+                    if referer:
+                        request_options["headers"] = {
+                            "Referer": referer,
+                            "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+                            "Accept-Language": "en-US,en;q=0.9",
+                        }
+                    response = self.session.get(safe_url, **request_options)
                     if response.status_code in {301, 302, 303, 307, 308}:
                         location = response.headers.get("Location", "").strip()
                         response.close()
