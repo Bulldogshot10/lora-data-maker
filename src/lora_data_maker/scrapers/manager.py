@@ -34,8 +34,12 @@ class ScraperManager:
         max_scrolls: int = 30,
         date_from: str | None = None,
         date_to: str | None = None,
+        proxy_url: str | None = None,
     ) -> None:
         self.backend = backend
+        self.proxy_url = proxy_url
+        if proxy_url and backend not in {"playwright-bing", "playwright-google"}:
+            raise ScraperError("WireGuard proxy is supported only by Playwright backends")
         self.output_dir = Path(output_dir).expanduser().resolve()
         self.cache_dir = Path(cache_dir).expanduser().resolve()
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -76,6 +80,7 @@ class ScraperManager:
                 max_scrolls=max_scrolls,
                 date_from=date_from,
                 date_to=date_to,
+                proxy_url=proxy_url,
             )
         elif backend == "playwright-google":
             self.scraper = PlaywrightImagesScraper(
@@ -84,6 +89,7 @@ class ScraperManager:
                 retries=retries,
                 delay=delay,
                 max_scrolls=max_scrolls,
+                proxy_url=proxy_url,
             )
         elif backend == "direct":
             self.scraper = DirectURLScraper()
@@ -101,6 +107,7 @@ class ScraperManager:
             retries=download_retries,
             delay=delay,
             user_agent=effective_user_agent,
+            proxy_url=proxy_url,
         )
         self.archive = DownloadArchive(self.cache_dir / "downloads.txt")
         self.last_search_error: str | None = None
