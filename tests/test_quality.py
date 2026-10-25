@@ -20,6 +20,13 @@ def test_sharp_image_has_higher_laplacian_variance():
     assert laplacian_variance(sharp) > laplacian_variance(blurry)
 
 
+
+def test_laplacian_variance_ignores_flat_image_border_artifacts():
+    image = Image.new("L", (64, 64), 128)
+
+    assert laplacian_variance(image) == 0.0
+
+
 def test_quality_rejects_low_resolution(tmp_path):
     path = tmp_path / "small.png"
     _make_checkerboard(256).save(path)
