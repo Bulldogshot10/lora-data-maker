@@ -151,6 +151,7 @@ class PlaywrightImagesScraper(Scraper):
     PROVIDERS = ("bing", "google")
     BING_URL = "https://www.bing.com/images/search"
     GOOGLE_URL = "https://www.google.com/search"
+    GOOGLE_IMAGES_URL = "https://www.google.com/search?tbm=isch"
 
     def __init__(
         self,
@@ -220,10 +221,13 @@ class PlaywrightImagesScraper(Scraper):
             f"{self.retries + 1} attempts: {last_error}"
         ) from last_error
 
-    def _create_browser(self):
+    def _create_browser(self, initial_url: str | None = None):
         if self.provider == "google":
             try:
-                return ExistingChromium.from_environment(timeout=self.timeout)
+                return ExistingChromium.from_environment(
+                    timeout=self.timeout,
+                    initial_url=initial_url or self.GOOGLE_IMAGES_URL,
+                )
             except ValueError as exc:
                 raise ScraperError(str(exc)) from exc
 
@@ -246,7 +250,7 @@ class PlaywrightImagesScraper(Scraper):
 
         stage = "creating browser"
         try:
-            browser = self._create_browser()
+            browser = self._create_browser(search_url)
             with browser as browser:
                 stage = "opening page"
                 page = browser.new_page()
