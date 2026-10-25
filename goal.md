@@ -248,3 +248,14 @@ The CI log for run [40192945319](https://github.com/Bulldogshot10/lora-data-make
 1. Confirm the commit triggers core-smoke and read its actual job log.
 2. If the focused clean tests and full `pytest -q -m "not real_caption_runtime"` pass, record the exact counts and current commit below.
 3. Keep the live Termux/X11 Google/Bing validation marked as needing verification until a device run is observed.
+
+
+### Validation update (2026-10-25, clean test fix confirmed)
+
+- Commit tested: `c568b54947a5f15ea865d08d2a65f15d9d0c2aaf` (`Fix clean quality test blur thresholds`).
+- GitHub Actions core smoke run [40193793585](https://github.com/Bulldogshot10/lora-data-maker/actions/runs/40193793585) completed with **success**.
+- `python -m compileall -q src tests`: passed.
+- `pytest -q -m "not real_caption_runtime"`: **375 passed, 2 skipped, 1 deselected**, 1 warning. All CLI, documentation, and init/inspect smoke steps also passed.
+- The two previous failures in `tests/test_clean.py` are resolved by calibrating the synthetic fixture threshold from 1000 to 10; exact deduplication and quality rejection now run on the intended eligible fixtures.
+- Remaining verification boundary: CI's mocked/unit coverage is green, but live Google and Bing scraping on the user's Termux/X11 device is still **needs verification**. Do not represent the device-side scraper workflow as proven until it has been run there.
+- Current state: no known failing test remains in the non-`real_caption_runtime` core suite. The two skips and one deselection are reported by the configured test command and are not failures.
