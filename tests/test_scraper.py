@@ -1122,6 +1122,25 @@ def test_playwright_manager_passes_max_scrolls(monkeypatch, tmp_path):
     }
 
 
+def test_playwright_google_builds_direct_google_images_url():
+    from urllib.parse import parse_qs, urlparse
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    url = PlaywrightImagesScraper(provider="google")._build_url(
+        "julia russian woman"
+    )
+    parsed = urlparse(url)
+
+    assert parsed.scheme == "https"
+    assert parsed.netloc == "www.google.com"
+    assert parsed.path == "/search"
+    params = parse_qs(parsed.query)
+    assert params["q"] == ["julia russian woman"]
+    assert params["tbm"] == ["isch"]
+    assert params["hl"] == ["en"]
+
+
 def test_playwright_google_prefers_original_ou_url():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
