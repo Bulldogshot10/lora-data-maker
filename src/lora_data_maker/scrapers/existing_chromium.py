@@ -15,6 +15,7 @@ from .base import ScraperError
 DEFAULT_CDP_HOST = "127.0.0.1"
 DEFAULT_CDP_PORT = 9222
 DEFAULT_CDP_TIMEOUT = 5.0
+DEFAULT_GOOGLE_IMAGES_URL = "https://www.google.com/search?tbm=isch"
 
 
 class ExistingChromium:
@@ -35,6 +36,7 @@ class ExistingChromium:
         timeout: float = DEFAULT_CDP_TIMEOUT,
         auto_launch: bool = False,
         executable: str | None = None,
+        initial_url: str = DEFAULT_GOOGLE_IMAGES_URL,
     ) -> None:
         profile = Path(user_data_dir).expanduser().resolve()
         if not str(user_data_dir).strip():
@@ -54,12 +56,18 @@ class ExistingChromium:
         self.timeout = timeout
         self.auto_launch = auto_launch
         self.executable = executable
+        self.initial_url = initial_url
         self.process = None
         self.cdp = None
         self._pages = []
 
     @classmethod
-    def from_environment(cls, *, timeout: float) -> "ExistingChromium":
+    def from_environment(
+        cls,
+        *,
+        timeout: float,
+        initial_url: str = DEFAULT_GOOGLE_IMAGES_URL,
+    ) -> "ExistingChromium":
         profile = os.environ.get("CHROME_USER_DATA_DIR", "").strip()
         if not profile:
             data_home = os.environ.get("XDG_DATA_HOME", "").strip()
@@ -91,6 +99,7 @@ class ExistingChromium:
             timeout=min(max(timeout, 0.5), 5.0),
             auto_launch=auto_launch,
             executable=executable,
+            initial_url=initial_url,
         )
 
     def connect(self) -> "ExistingChromium":
@@ -400,7 +409,7 @@ class ExistingChromium:
             "--no-first-run",
             "--no-default-browser-check",
             "--new-window",
-            "https://www.google.com/",
+            self.initial_url,
         ]
         try:
             self.process = subprocess.Popen(
