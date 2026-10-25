@@ -1155,6 +1155,28 @@ def test_playwright_google_prefers_original_ou_url():
     ]
 
 
+def test_playwright_google_ignores_challenge_markers_inside_valid_results():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = r'''
+    <html>
+      <head>
+        <script>
+          var hiddenTemplate = "Before you continue to Google";
+          var imageData = {"ou":"https://cdn.example.com/original.jpg"};
+        </script>
+      </head>
+      <body>
+        <div class="image-results">Google Images results</div>
+      </body>
+    </html>
+    '''
+
+    assert PlaywrightImagesScraper._extract_google_urls(body) == [
+        "https://cdn.example.com/original.jpg"
+    ]
+
+
 def test_playwright_google_rejects_verification_page():
     import pytest
 
