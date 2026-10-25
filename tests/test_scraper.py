@@ -292,7 +292,13 @@ def test_scraper_manager_skips_failed_downloads_and_continues(tmp_path):
 
 
 
-def test_playwright_google_retries_original_403_with_thumbnail(tmp_path):
+@pytest.mark.parametrize(
+    ("status_code", "reason"),
+    [(403, "Forbidden"), (404, "Not Found")],
+)
+def test_playwright_google_retries_original_403_or_404_with_thumbnail(
+    tmp_path, status_code, reason
+):
     from pathlib import Path
 
     from lora_data_maker.scrapers.base import ImageResult, ScraperError
@@ -328,7 +334,7 @@ def test_playwright_google_retries_original_403_with_thumbnail(tmp_path):
             if url == original:
                 raise ScraperError(
                     "download failed after 4 attempts: "
-                    "403 Client Error: Forbidden for url: " + original
+                    f"{status_code} Client Error: {reason} for url: " + original
                 )
             return DownloadResult(
                 url=url,
