@@ -2358,3 +2358,64 @@ def test_playwright_google_search_does_not_retry_cancellation(monkeypatch):
         list(scraper.search("julia portrait", limit=1))
 
     assert len(calls) == 1
+
+
+def test_playwright_google_quality_gate_rejects_blurry_download(tmp_path):
+    import hashlib
+
+    from PIL import Image, ImageDraw
+
+    from lora_data_maker.scrapers.base import ImageResult
+    from lora_data_maker.scrapers.downloader import DownloadResult
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    blurry_url = "https://cdn.example.com/blurred.jpg"
+    sharp_url = "https://cdn.example.com/sharp.jpg"
+    manager = ScraperManager(
+        backend="playwright-google",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        delay=0,
+        retries=0,
+    )
+
+    class FakeScraper:
+        def search(self, query, *, limit):
+            yield ImageResult(blurry_url, query=query)
+            yield ImageResult(sharp_url, query=query)
+
+    class FakeDownloader:
+        def download(
+            self, url, output_dir, *, index, archive=None,
+            cancel_event=None, referer=None,
+        ):
+            path = Path(output_dir) / f"{index:06d}.png"
+            path.parent.mkdir(parents=True, exist_ok=True)
+            if url == blurry_url:
+                image = Image.new("RGB", (512, 512), (128, 128, 128))
+            else:
+                image = Image.new("RGB", (512, 512), "white")
+                draw = ImageDraw.Draw(image)
+                for x in range(0, 512, 8):
+                    draw.line((x, 0, x, 511), fill="black", width=3)
+                for y in range(0, 512, 8):
+                    draw.line((0, y, 511, y), fill="black", width=3)
+            image.save(path, format="PNG")
+            data = path.read_bytes()
+            return DownloadResult(
+                url=url,
+                path=path,
+                sha256=hashlib.sha256(data).hexdigest(),
+                file_size=len(data),
+                content_type="image/png",
+            )
+
+    manager.scraper = FakeScraper()
+    manager.downloader = FakeDownloader()
+    downloads, failures = manager.run("portrait", count=1)
+
+    assert len(downloads) == 1
+    assert downloads[0].url == sharp_url
+    assert len(failures) == 1
+    assert failures[0][0].image_url == blurry_url
+    assert "too blurry" in failures[0][1]
