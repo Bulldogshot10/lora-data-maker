@@ -236,22 +236,44 @@ class PlaywrightImagesScraper(Scraper):
             f"{self.retries + 1} attempts: {last_error}"
         ) from last_error
 
+    @staticmethod
+    def _headless_requested() -> bool:
+        """Headless defaults to true on ordinary Linux without a display, visible on Termux."""
+        value = os.environ.get("LORA_DATA_MAKER_HEADLESS", "").strip().lower()
+        if value:
+            if value in {"1", "true", "yes", "on"}:
+                return True
+            if value in {"0", "false", "no", "off"}:
+                return False
+        is_termux = bool(os.environ.get("TERMUX_VERSION")) or (
+            "/data/data/com.termux/files/" in os.environ.get("PREFIX", "")
+        )
+        return not is_termux and not bool(os.environ.get("DISPLAY", "").strip())
+
+    @staticmethod
+    def _data_home() -> Path:
+        data_home = os.environ.get("XDG_DATA_HOME", "").strip()
+        return (
+            Path(data_home).expanduser()
+            if data_home
+            else Path.home() / ".local" / "share"
+        )
+
     def _create_browser(self, initial_url: str | None = None):
+        from .existing_chromium import ExistingChromium
+
+        headless = self._headless_requested()
+        executable = os.environ.get("CHROME_EXECUTABLE", "").strip() or None
+
         if self.proxy_url:
-            # A dedicated Chromium profile and dynamic CDP port make this a
-            # proxy-bound browser owned by this scrape, never an existing
-            # user's unproxied Chromium process.
+            # WireGuard gets a dedicated persistent profile and dynamic CDP port:
+            # session cookies survive across runs, while proxy routing stays isolated.
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
                 server.bind(("127.0.0.1", 0))
                 port = int(server.getsockname()[1])
-            data_home = os.environ.get("XDG_DATA_HOME", "").strip()
-            base_dir = (
-                Path(data_home).expanduser()
-                if data_home
-                else Path.home() / ".local" / "share"
-            )
             profile = (
-                base_dir / "lora-data-maker"
+                self._data_home()
+                / "lora-data-maker"
                 / f"playwright-{self.provider}-wireguard-profile"
             )
             try:
@@ -260,10 +282,14 @@ class PlaywrightImagesScraper(Scraper):
                     port=port,
                     timeout=min(max(self.timeout, 0.5), 5.0),
                     auto_launch=True,
-                    executable=os.environ.get("CHROME_EXECUTABLE", "").strip() or None,
-                    initial_url=initial_url or self.GOOGLE_IMAGES_URL,
+                    executable=executable,
+                    initial_url=initial_url or (
+                        self.GOOGLE_IMAGES_URL
+                        if self.provider == "google"
+                        else self.BING_URL
+                    ),
                     proxy_server=self.proxy_url,
-                    headless=self.provider == "bing",
+                    headless=headless,
                     shutdown_on_close=True,
                 )
             except ValueError as exc:
@@ -274,19 +300,40 @@ class PlaywrightImagesScraper(Scraper):
                 return ExistingChromium.from_environment(
                     timeout=self.timeout,
                     initial_url=initial_url or self.GOOGLE_IMAGES_URL,
+                    headless=headless,
                 )
             except ValueError as exc:
                 raise ScraperError(str(exc)) from exc
 
+        # Bing also uses a named profile instead of Chromium's throwaway temp
+        # profile, so cookies, language settings, and consent persist between runs.
+        profile_value = os.environ.get("CHROME_BING_USER_DATA_DIR", "").strip()
+        profile = (
+            Path(profile_value).expanduser()
+            if profile_value
+            else self._data_home() / "lora-data-maker" / "bing-profile"
+        )
+        raw_port = os.environ.get("CHROME_BING_DEBUG_PORT", "9223").strip()
         try:
-            from playwright_termux import Chromium
-        except ImportError as exc:
+            port = int(raw_port)
+        except ValueError as exc:
             raise ScraperError(
-                "Playwright backend requires playwright-termux; "
-                'install with python -m pip install ".[playwright]"'
+                f"CHROME_BING_DEBUG_PORT must be an integer, got {raw_port!r}"
             ) from exc
-
-        return Chromium(headless=True)
+        auto_launch_value = os.environ.get("CHROME_AUTO_LAUNCH", "1").strip().lower()
+        auto_launch = auto_launch_value not in {"0", "false", "no", "off"}
+        try:
+            return ExistingChromium(
+                user_data_dir=profile,
+                port=port,
+                timeout=min(max(self.timeout, 0.5), 5.0),
+                auto_launch=auto_launch,
+                executable=executable,
+                initial_url=initial_url or self.BING_URL,
+                headless=headless,
+            )
+        except ValueError as exc:
+            raise ScraperError(str(exc)) from exc
 
     def _search_once(self, query: str, limit: int) -> list[ImageResult]:
         search_url = self._build_url(query)
