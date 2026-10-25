@@ -1,11 +1,6 @@
 name: core smoke
 
 on:
-  push:
-    branches:
-      - main
-    paths-ignore:
-      - ".github/workflows/core-smoke.yml"
   workflow_dispatch:
     inputs:
       heavy_suite:
