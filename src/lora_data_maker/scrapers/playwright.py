@@ -390,9 +390,9 @@ class PlaywrightImagesScraper(Scraper):
                             candidates = list(candidate_details)
                         else:
                             try:
-                                candidates = self._extract_google_original_urls(
+                                candidates = self._extract_google_original_urls_from_page(
+                                    page,
                                     page_html,
-                                    page_url=self._current_page_url(page),
                                 )
                             except ScraperError as exc:
                                 if not self._is_google_verification_error(exc):
@@ -687,9 +687,10 @@ class PlaywrightImagesScraper(Scraper):
                     "scrape cancelled while waiting for Google verification"
                 )
             try:
-                candidates = self._extract_google_original_urls(
+                candidates = self._extract_google_original_urls_from_page(
+                    page,
                     page_html,
-                    page_url=self._current_page_url(page) or initial_url,
+                    fallback_url=initial_url,
                 )
             except ScraperError as exc:
                 if not self._is_google_verification_error(exc):
@@ -1173,6 +1174,69 @@ class PlaywrightImagesScraper(Scraper):
             urls.append(image_url)
 
         return urls
+
+    def _extract_google_original_urls_from_page(
+        self,
+        page,
+        page_html: str,
+        *,
+        fallback_url: str = "",
+    ) -> list[str]:
+        """Read original URLs from rendered Google markup and live DOM attributes."""
+        page_url = self._current_page_url(page) or fallback_url
+        try:
+            candidates = self._extract_google_original_urls(
+                page_html,
+                page_url=page_url,
+            )
+        except ScraperError:
+            # Verification detection must reach the caller so it can wait on
+            # this same browser rather than quietly falling through to DOM data.
+            raise
+        if candidates:
+            return candidates
+
+        # Some Google UI versions keep the original URL in a live result-link
+        # attribute instead of inline "ou" JSON. Query the rendered DOM using
+        # playwright-termux Page.evaluate; never scrape arbitrary img/src values.
+        try:
+            values = page.evaluate(
+                """() => Array.from(document.querySelectorAll('a[href]'))
+                    .map(a => a.href)
+                    .filter(href => /[?&](imgurl|mediaurl)=/i.test(href))
+                    .concat(Array.from(document.querySelectorAll(
+                        '[data-ou], [data-original-url], [data-image-url]'
+                    )).map(el =>
+                        el.getAttribute('data-ou') ||
+                        el.getAttribute('data-original-url') ||
+                        el.getAttribute('data-image-url')
+                    ).filter(Boolean))"""
+            )
+        except Exception:
+            return []
+        if not isinstance(values, list):
+            return []
+
+        seen: set[str] = set()
+        output: list[str] = []
+        for raw in values:
+            if not isinstance(raw, str) or not raw.strip():
+                continue
+            raw = html.unescape(raw.strip())
+            parsed = urlparse(raw)
+            query = parse_qs(parsed.query)
+            nested_sources = query.get("imgurl", []) or query.get("mediaurl", [])
+            if nested_sources:
+                raw_candidates = nested_sources
+            else:
+                raw_candidates = [raw]
+
+            for candidate in raw_candidates:
+                candidate = html.unescape(str(candidate)).strip()
+                if self._valid_image_candidate(candidate, seen):
+                    seen.add(candidate)
+                    output.append(candidate)
+        return output
 
     @staticmethod
     def _extract_google_original_urls(
