@@ -2258,6 +2258,7 @@ def test_playwright_google_defaults_to_persistent_chromium_profile(
     ).resolve()
 
 
+
 def test_playwright_google_waits_for_manual_verification_without_retry(monkeypatch):
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
@@ -2276,10 +2277,27 @@ def test_playwright_google_waits_for_manual_verification_without_retry(monkeypat
 
         def __init__(self):
             self.reads = 0
+            self.closed = False
 
         def content(self):
             self.reads += 1
             return challenge_html if self.reads == 1 else result_html
+
+        def close(self):
+            self.closed = True
+
+    class FakeBrowser:
+        def __init__(self, page):
+            self.page = page
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def new_page(self):
+            return self.page
 
     monkeypatch.setattr(
         "lora_data_maker.scrapers.playwright.time.sleep",
@@ -2289,16 +2307,23 @@ def test_playwright_google_waits_for_manual_verification_without_retry(monkeypat
         provider="google",
         retries=4,
         delay=0,
+        max_scrolls=1,
     )
     page = FakePage()
+    browser_starts = []
 
-    candidates = scraper._wait_for_google_verification(
-        page,
-        query="julia portrait",
-        initial_html=challenge_html,
-    )
+    def create_browser(initial_url=None):
+        browser_starts.append(initial_url)
+        return FakeBrowser(page)
 
-    assert candidates == [
+    monkeypatch.setattr(scraper, "_create_browser", create_browser)
+    monkeypatch.setattr(scraper, "_goto", lambda _page, _url: None)
+
+    results = list(scraper.search("julia portrait", limit=1))
+
+    assert [item.image_url for item in results] == [
         "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Averified"
     ]
+    assert len(browser_starts) == 1
     assert page.reads == 2
+    assert page.closed
