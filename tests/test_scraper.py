@@ -1228,6 +1228,24 @@ def test_playwright_google_safesearch_can_be_enabled():
     assert params["safe"] == ["active"]
 
 
+def test_scraper_manager_routes_playwright_browser_and_downloads_through_proxy(tmp_path):
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    proxy = "http://127.0.0.1:43127"
+    manager = ScraperManager(
+        backend="playwright-google",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        proxy_url=proxy,
+    )
+
+    assert manager.scraper.proxy_url == proxy
+    assert manager.downloader.proxy_url == proxy
+    assert manager.downloader.session.trust_env is False
+    assert manager.downloader.session.proxies["http"] == proxy
+    assert manager.downloader.session.proxies["https"] == proxy
+
+
 def test_scraper_manager_forwards_safe_search_to_google_backends(tmp_path):
     from lora_data_maker.scrapers.manager import ScraperManager
 
