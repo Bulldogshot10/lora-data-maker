@@ -167,6 +167,7 @@ class PlaywrightImagesScraper(Scraper):
         date_from: str | None = None,
         date_to: str | None = None,
         proxy_url: str | None = None,
+        safe_search: bool = True,
     ) -> None:
         if provider not in self.PROVIDERS:
             raise ValueError(
@@ -182,8 +183,12 @@ class PlaywrightImagesScraper(Scraper):
         if max_scrolls <= 0:
             raise ValueError("max_scrolls must be greater than zero")
 
+        if not isinstance(safe_search, bool):
+            raise ValueError("safe_search must be a boolean")
+
         self.provider = provider
         self.proxy_url = proxy_url
+        self.safe_search = safe_search
         self.timeout = timeout
         self.retries = retries
         self.delay = delay
@@ -621,7 +626,12 @@ class PlaywrightImagesScraper(Scraper):
 
     def _build_url(self, query: str) -> str:
         if self.provider == "bing":
-            params = {"q": query, "form": "HDRSC2", "adlt": "off"}
+            # Bing's "moderate" filters explicit imagery; "off" allows it.
+            params = {
+                "q": query,
+                "form": "HDRSC2",
+                "adlt": "moderate" if self.safe_search else "off",
+            }
             if self.date_from is not None and self.date_to is not None:
                 epoch = date(1970, 1, 1)
                 start_day = (date.fromisoformat(self.date_from) - epoch).days
@@ -629,10 +639,13 @@ class PlaywrightImagesScraper(Scraper):
                 end_day = (date.fromisoformat(self.date_to) - epoch).days + 1
                 params["filters"] = f'ex1:"ez5_{start_day}_{end_day}"'
             return f"{self.BING_URL}?{urlencode(params)}"
-        return (
-            f"{self.GOOGLE_URL}?"
-            f"{urlencode({'q': query, 'tbm': 'isch', 'hl': 'en'})}"
-        )
+        params = {
+            "q": query,
+            "tbm": "isch",
+            "hl": "en",
+            "safe": "active" if self.safe_search else "off",
+        }
+        return f"{self.GOOGLE_URL}?{urlencode(params)}"
 
     @staticmethod
     def _query_terms(query: str) -> list[str]:
