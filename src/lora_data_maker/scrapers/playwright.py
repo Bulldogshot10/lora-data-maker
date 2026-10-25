@@ -1245,17 +1245,22 @@ class PlaywrightImagesScraper(Scraper):
         # playwright-termux Page.evaluate; never scrape arbitrary img/src values.
         try:
             values = page.evaluate(
-                """() => Array.from(document.querySelectorAll('a[href]'))
-                    .map(a => a.href)
-                    .filter(href => /[?&](imgurl|mediaurl)=/i.test(href))
-                    .concat(Array.from(document.querySelectorAll(
+                """(() => {
+                    const linkedSources = Array.from(
+                        document.querySelectorAll('a[href]')
+                    )
+                        .map(a => a.href)
+                        .filter(href => /[?&](imgurl|mediaurl)=/i.test(href));
+                    const explicitSources = Array.from(document.querySelectorAll(
                         '[data-ou], [data-original-url], [data-image-url], [data-iurl]'
                     )).map(el =>
                         el.getAttribute('data-ou') ||
                         el.getAttribute('data-original-url') ||
                         el.getAttribute('data-image-url') ||
                         el.getAttribute('data-iurl')
-                    ).filter(Boolean))"""
+                    ).filter(Boolean);
+                    return linkedSources.concat(explicitSources);
+                })()"""
             )
         except Exception:
             return []
@@ -1291,7 +1296,7 @@ class PlaywrightImagesScraper(Scraper):
         max_clicks: int = 3,
     ) -> list[str]:
         """Click rendered Google image cards and re-inspect the live browser DOM."""
-        click_script = """() => {
+        click_script = """(() => {
             const selectors = [
                 'div.isv-r',
                 'div.eA0Zlc',
@@ -1305,12 +1310,41 @@ class PlaywrightImagesScraper(Scraper):
                 !el.hasAttribute('data-ldm-google-probed') &&
                 el.querySelector('img')
             );
-            if (!card) return false;
-            card.setAttribute('data-ldm-google-probed', '1');
-            const image = card.querySelector('img');
-            (image || card).click();
+            if (card) {
+                card.setAttribute('data-ldm-google-probed', '1');
+                const image = card.querySelector('img');
+                (image || card).click();
+                return true;
+            }
+
+            // Google's result-card classes change. Probe a likely result image
+            // directly if the current page no longer uses a known card selector.
+            const imgs = Array.from(document.querySelectorAll('img'));
+            const image = imgs.find(img => {
+                if (img.hasAttribute('data-ldm-google-probed')) return false;
+                const src = img.currentSrc ||
+                    img.getAttribute('data-src') ||
+                    img.getAttribute('src') || '';
+                if (!/^https?:\\/\\//i.test(src)) return false;
+                if (/googlelogo|google\\.com\\/images\\/branding|favicon|sprite/i.test(src)) {
+                    return false;
+                }
+                const host = (() => {
+                    try { return new URL(src).hostname.toLowerCase(); }
+                    catch (_) { return ''; }
+                })();
+                const knownThumb =
+                    /encrypted-tbn[0-9]*\\.gstatic\\.com$/.test(host) ||
+                    /(^|\\.)googleusercontent\\.com$/.test(host);
+                const alt = (img.getAttribute('alt') || '').trim();
+                const rect = img.getBoundingClientRect();
+                return knownThumb || (alt && rect.width >= 48 && rect.height >= 48);
+            });
+            if (!image) return false;
+            image.setAttribute('data-ldm-google-probed', '1');
+            (image.closest('a') || image).click();
             return true;
-        }"""
+        })()"""
         current_html = page_html
         for attempt in range(1, max_clicks + 1):
             if self.cancel_event is not None and self.cancel_event.is_set():
@@ -1365,7 +1399,7 @@ class PlaywrightImagesScraper(Scraper):
         page_html: str,
     ) -> list[str]:
         """Collect result-card thumbnails only after original-source recovery fails."""
-        thumbnail_script = """() => {
+        thumbnail_script = """(() => {
             const selector = [
                 'div.isv-r',
                 'div.eA0Zlc',
@@ -1379,30 +1413,49 @@ class PlaywrightImagesScraper(Scraper):
             const roots = Array.from(document.querySelectorAll(selector));
             const urls = [];
             const seen = new Set();
-            for (const root of roots) {
-                for (const image of root.querySelectorAll('img')) {
-                    const srcset = (image.getAttribute('srcset') || '')
-                        .split(',')[0].trim().split(' ')[0];
-                    const sources = [
-                        image.currentSrc,
-                        image.getAttribute('data-src'),
-                        image.getAttribute('data-lazy-src'),
-                        image.getAttribute('src'),
-                        srcset
-                    ];
-                    const url = sources.find(value =>
-                        typeof value === 'string' &&
-                        (value.trim().startsWith('https://') ||
-                         value.trim().startsWith('http://'))
-                    );
-                    if (url && !seen.has(url)) {
-                        seen.add(url);
-                        urls.push(url.trim());
-                    }
+            const images = Array.from(document.querySelectorAll('img'));
+            for (const image of images) {
+                const srcset = (image.getAttribute('srcset') || '')
+                    .split(',')[0].trim().split(/\\s+/)[0];
+                const sources = [
+                    image.currentSrc,
+                    image.getAttribute('data-src'),
+                    image.getAttribute('data-lazy-src'),
+                    image.getAttribute('src'),
+                    srcset
+                ];
+                const url = sources.find(value =>
+                    typeof value === 'string' &&
+                    /^https?:\\/\\//i.test(value.trim())
+                );
+                if (!url) continue;
+                const cleanUrl = url.trim();
+                if (/googlelogo|google\\.com\\/images\\/branding|favicon|sprite/i.test(cleanUrl)) {
+                    continue;
+                }
+                const host = (() => {
+                    try { return new URL(cleanUrl).hostname.toLowerCase(); }
+                    catch (_) { return ''; }
+                })();
+                const knownThumb =
+                    /encrypted-tbn[0-9]*\\.gstatic\\.com$/.test(host) ||
+                    /(^|\\.)googleusercontent\\.com$/.test(host);
+                const inResultCard =
+                    !!image.closest(selector) ||
+                    !!image.closest('a[href*="/imgres"], a[href*="imgurl="]');
+                const alt = (image.getAttribute('alt') || '').trim();
+                const rect = image.getBoundingClientRect();
+                if (!inResultCard && !knownThumb &&
+                    !(alt && rect.width >= 48 && rect.height >= 48)) {
+                    continue;
+                }
+                if (!seen.has(cleanUrl)) {
+                    seen.add(cleanUrl);
+                    urls.push(cleanUrl);
                 }
             }
             return urls.slice(0, 100);
-        }"""
+        })()"""
         values = None
         try:
             values = page.evaluate(thumbnail_script)
@@ -1425,7 +1478,18 @@ class PlaywrightImagesScraper(Scraper):
                     seen.add(value)
                     output.append(value)
         if output:
+            print(
+                "scrape: Google thumbnail fallback extracted "
+                f"{len(output)} image URL(s) from the live DOM",
+                flush=True,
+            )
             return output
+
+        print(
+            "scrape: Google live DOM thumbnail scan returned no candidates; "
+            "checking rendered result HTML",
+            flush=True,
+        )
 
         class ThumbnailParser(HTMLParser):
             _result_classes = {"isv-r", "eA0Zlc", "H8Rx8c", "wXeWr"}
@@ -1456,17 +1520,36 @@ class PlaywrightImagesScraper(Scraper):
                 self.stack.append((tag.lower(), is_result))
                 if is_result:
                     self.card_depth += 1
-                if tag.lower() != "img" or not self.card_depth:
+                if tag.lower() != "img":
                     return
                 srcset = values.get("srcset", "").split(",")[0].strip().split()
-                for name in ("src", "data-src", "data-lazy-src"):
-                    value = values.get(name, "").strip()
-                    if value.startswith(("http://", "https://")):
-                        self.urls.append(value)
-                        break
-                else:
-                    if srcset and srcset[0].startswith(("http://", "https://")):
-                        self.urls.append(srcset[0])
+                value = next(
+                    (
+                        values.get(name, "").strip()
+                        for name in ("src", "data-src", "data-lazy-src")
+                        if values.get(name, "").strip().startswith(("http://", "https://"))
+                    ),
+                    srcset[0] if srcset and srcset[0].startswith(("http://", "https://")) else "",
+                )
+                if not value:
+                    return
+                parsed_host = (urlparse(value).hostname or "").lower().rstrip(".")
+                known_thumbnail_host = (
+                    parsed_host.startswith("encrypted-tbn")
+                    and parsed_host.endswith(".gstatic.com")
+                ) or parsed_host.endswith(".googleusercontent.com")
+                alt = values.get("alt", "").strip()
+                try:
+                    width = int(values.get("width", "0"))
+                    height = int(values.get("height", "0"))
+                except ValueError:
+                    width = height = 0
+                if (
+                    self.card_depth
+                    or known_thumbnail_host
+                    or (alt and width >= 48 and height >= 48)
+                ):
+                    self.urls.append(value)
 
             def handle_startendtag(self, tag, attrs):
                 self.handle_starttag(tag, attrs)
@@ -1497,6 +1580,18 @@ class PlaywrightImagesScraper(Scraper):
             if self._valid_google_thumbnail_candidate(value, seen):
                 seen.add(value)
                 output.append(value)
+        if output:
+            print(
+                "scrape: Google thumbnail fallback extracted "
+                f"{len(output)} image URL(s) from rendered HTML",
+                flush=True,
+            )
+        else:
+            print(
+                "scrape: Google thumbnail fallback found no usable image URLs "
+                "in live DOM or rendered HTML",
+                flush=True,
+            )
         return output
 
     @staticmethod

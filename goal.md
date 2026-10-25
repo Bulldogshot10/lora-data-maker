@@ -156,3 +156,30 @@ Needs verification: compileall and pytest have not been run in this environment;
 2. Run python -m pytest -q tests/test_scraper.py -k "browser_click_recovery or thumbnail_fallback or does_not_fallback_to_rendered_thumbnails".
 3. Run python -m pytest -q tests/test_scraper.py and inspect any actual failing traceback before adjusting code.
 4. Repeat the original Google/X11 query. Confirm logs show browser-assisted clicks, then a marked thumbnail fallback if original URLs still cannot be recovered; confirm the fallback image is downloaded and appears in the raw dataset.
+
+
+## Session checkpoint / handoff (2026-10-25, Playwright evaluate execution fix)
+
+### User-reported failure after previous patch
+The user retried the updated scraper and still saw no results:
+`Playwright google search failed after 4 attempts: Playwright google image search returned no parseable original or fallback thumbnail image URLs`.
+They report the scraper continues scrolling and produces no candidate.
+
+### Root-cause finding
+Inspection of the pinned `playwright-termux` Page.evaluate implementation shows it wraps source strings beginning with `() =>` as a function expression but does not invoke that function. The previous code passed arrow-function strings for live source extraction, click recovery, and thumbnail DOM scanning. Those expressions could therefore return no serializable array / no truthy click result, leaving fallback dependent on the narrow HTML card selectors. This explains why the prior fallback could fail despite being called.
+
+### Changes in this follow-up
+- src/lora_data_maker/scrapers/playwright.py: converted live source extraction, browser-click recovery, and thumbnail scanning scripts to immediately invoked arrow expressions (`(() => {...})()`). Browser click recovery also probes eligible image elements when known card classes are absent. Thumbnail extraction now scans all live `img` nodes, checks known Google thumbnail hosts and named/rendered images, filters obvious branding, and prints explicit counts/failure diagnostics. The rendered-HTML fallback also accepts known thumbnail hosts or named images with explicit dimensions.
+- tests/test_scraper.py: added assertions that DOM and click scripts are immediate invocations and a regression for a thumbnail in unknown result-card markup.
+- goal.md: recorded the user's observed failure and the concrete adapter-level cause; runtime validation remains pending.
+
+### Feature status
+**Implemented in source, needs verification:** live source extraction, browser click recovery, and thumbnail DOM scanning now execute as JavaScript expressions instead of returning arrow-function objects; generic thumbnail fallback is less dependent on Google CSS class names.
+
+**Needs verification:** compileall, focused pytest, full scraper tests, and live Termux/X11 Google scraping have not run in this environment. The user's current device session is the authoritative check for whether the original case is fixed.
+
+### Next steps
+1. Pull latest main on Termux.
+2. Run `python -m compileall -q src tests`.
+3. Run `python -m pytest -q tests/test_scraper.py -k "browser_click_recovery or thumbnail_fallback or live_dom_when_outer_html_has_none"`.
+4. Re-run the original query. Logs should now show whether browser click recovery runs and either how many live DOM/HTML thumbnails were extracted or an explicit "found no usable image URLs" diagnostic. If still empty, inspect a safe dump of current image src hostnames/alt/dimensions and result-link href patterns from the live DOM, excluding cookies/tokens.

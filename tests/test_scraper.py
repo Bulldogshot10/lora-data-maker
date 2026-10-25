@@ -1308,6 +1308,8 @@ def test_playwright_google_browser_click_recovery_finds_original_url():
 
         def evaluate(self, expression):
             if "data-ldm-google-probed" in expression:
+                assert expression.lstrip().startswith("(() =>")
+                assert expression.rstrip().endswith("()")
                 self.clicks += 1
                 return self.clicks == 1
             if expression == "location.href":
@@ -1345,11 +1347,33 @@ def test_playwright_google_thumbnail_fallback_uses_live_dom_automation():
     class FakePage:
         def evaluate(self, expression):
             assert "const roots = Array.from(document.querySelectorAll(selector))" in expression
+            assert expression.lstrip().startswith("(() =>")
+            assert expression.rstrip().endswith("()")
             return [
                 thumbnail,
                 "https://www.google.com/images/branding/googlelogo/2x/googlelogo_light_color_92x30dp.png",
                 "data:image/gif;base64,R0lGODlh",
             ]
+
+    scraper = PlaywrightImagesScraper(provider="google")
+    assert scraper._extract_google_thumbnail_urls_from_page(
+        FakePage(),
+        "<html></html>",
+    ) == [thumbnail]
+
+
+def test_playwright_google_thumbnail_fallback_finds_unknown_result_card_markup():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    thumbnail = "https://images.examplecdn.com/thumbnails/portrait.webp"
+
+    class FakePage:
+        def evaluate(self, expression):
+            assert expression.lstrip().startswith("(() =>")
+            assert expression.rstrip().endswith("()")
+            # Current page has no recognized Google card class. Browser DOM
+            # scanning should still accept a named, rendered image element.
+            return [thumbnail]
 
     scraper = PlaywrightImagesScraper(provider="google")
     assert scraper._extract_google_thumbnail_urls_from_page(
