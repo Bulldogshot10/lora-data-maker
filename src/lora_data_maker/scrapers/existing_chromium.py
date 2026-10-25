@@ -175,14 +175,111 @@ class ExistingChromium:
         self._pages.append(page)
         return page
 
+    @staticmethod
+    def _x11_socket_path(display: str) -> Path:
+        """Return the Termux X11 Unix socket path for a DISPLAY value."""
+        display_number = display.rsplit(":", 1)[-1].split(".", 1)[0]
+        if not display_number.isdigit():
+            raise ScraperError(
+                f"unsupported Termux:X11 display {display!r}; use a value such as ':1'"
+            )
+        tmpdir = os.environ.get("TMPDIR", "").strip() or "/tmp"
+        return Path(tmpdir) / ".X11-unix" / f"X{display_number}"
+
+    def _ensure_display(self) -> str:
+        """Start Termux:X11 and open its Android activity on first Google scrape."""
+        display = os.environ.get("DISPLAY", "").strip()
+        if display:
+            return display
+
+        display = os.environ.get("LORA_DATA_MAKER_X11_DISPLAY", ":1").strip() or ":1"
+        socket_path = self._x11_socket_path(display)
+        termux_x11 = shutil.which("termux-x11")
+        if not termux_x11:
+            raise ScraperError(
+                "Google scraping needs Termux:X11, but termux-x11 was not found. "
+                "Install the Termux:X11 Android app and its Termux package "
+                "(pkg install x11-repo termux-x11-nightly), then tap scrape again."
+            )
+
+        am = shutil.which("am")
+        if not am and Path("/system/bin/am").is_file():
+            am = "/system/bin/am"
+        if not am:
+            raise ScraperError(
+                "could not find Android am to open Termux:X11. "
+                "Run the WebUI from the Termux app, not from a Linux container."
+            )
+
+        try:
+            activity = subprocess.run(
+                [
+                    am,
+                    "start",
+                    "--user",
+                    "0",
+                    "-n",
+                    "com.termux.x11/com.termux.x11.MainActivity",
+                ],
+                check=False,
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ScraperError(
+                f"could not open the Termux:X11 Android app automatically: {exc}"
+            ) from exc
+        if activity.returncode != 0:
+            details = (activity.stderr or activity.stdout or "").strip()
+            hint = f" Details: {details}" if details else ""
+            raise ScraperError(
+                "Android could not open Termux:X11. Make sure the app is installed "
+                "and launchable, then retry scrape." + hint
+            )
+
+        process = None
+        if not socket_path.exists():
+            env = os.environ.copy()
+            env["DISPLAY"] = display
+            try:
+                process = subprocess.Popen(
+                    [termux_x11, display],
+                    env=env,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    start_new_session=True,
+                )
+            except OSError as exc:
+                raise ScraperError(
+                    f"could not start the Termux:X11 display server: {exc}"
+                ) from exc
+
+            deadline = time.monotonic() + 10.0
+            while time.monotonic() < deadline and not socket_path.exists():
+                if process.poll() is not None:
+                    raise ScraperError(
+                        "Termux:X11 exited before its display socket became ready. "
+                        "Check that the Termux:X11 Android app and "
+                        "termux-x11-nightly package are both installed."
+                    )
+                time.sleep(0.2)
+
+        if not socket_path.exists():
+            raise ScraperError(
+                f"Termux:X11 did not become ready on {display} within 10 seconds. "
+                "Keep the Termux:X11 app installed and retry scrape."
+            )
+
+        # The WebUI server may have started before X11; update its process
+        # environment before Chromium is launched in this scrape worker.
+        os.environ["DISPLAY"] = display
+        return display
+
     def _launch_browser(self) -> None:
         """Start visible Termux Chromium with a persistent, local-only CDP profile."""
-        if not os.environ.get("DISPLAY", "").strip():
-            raise ScraperError(
-                "Termux:X11 display is not active (DISPLAY is unset). Open "
-                "Termux:X11, then start its display in Termux with "
-                "`termux-x11 :1 &` and `export DISPLAY=:1` before scraping."
-            )
+        self._ensure_display()
 
         executable = (
             self.executable

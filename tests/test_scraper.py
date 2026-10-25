@@ -1842,7 +1842,58 @@ def test_existing_chromium_launches_visible_browser_with_local_cdp(
     assert profile.is_dir()
 
 
-def test_existing_chromium_requires_termux_x11_when_launching(
+def test_existing_chromium_starts_termux_x11_when_display_is_unset(
+    monkeypatch, tmp_path
+):
+    from types import SimpleNamespace
+
+    from lora_data_maker.scrapers import existing_chromium as module
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    monkeypatch.setenv("LORA_DATA_MAKER_X11_DISPLAY", ":1")
+    socket_path = tmp_path / ".X11-unix" / "X1"
+    calls = {}
+
+    def fake_which(name):
+        return {"termux-x11": "/mock/termux-x11", "am": "/mock/am"}.get(name)
+
+    def fake_run(args, **kwargs):
+        calls["activity"] = args
+        return SimpleNamespace(returncode=0, stdout="Starting", stderr="")
+
+    class FakeProcess:
+        def poll(self):
+            return None
+
+    def fake_popen(args, **kwargs):
+        calls["server"] = args
+        calls["server_kwargs"] = kwargs
+        socket_path.parent.mkdir(parents=True, exist_ok=True)
+        socket_path.touch()
+        return FakeProcess()
+
+    monkeypatch.setattr(module.shutil, "which", fake_which)
+    monkeypatch.setattr(module.subprocess, "run", fake_run)
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+
+    browser = ExistingChromium(
+        user_data_dir=tmp_path / "google-profile",
+        auto_launch=True,
+        executable="/mock/chromium-browser",
+    )
+    assert browser._ensure_display() == ":1"
+    assert module.os.environ["DISPLAY"] == ":1"
+    assert calls["activity"] == [
+        "/mock/am", "start", "--user", "0", "-n",
+        "com.termux.x11/com.termux.x11.MainActivity",
+    ]
+    assert calls["server"] == ["/mock/termux-x11", ":1"]
+    assert calls["server_kwargs"]["env"]["DISPLAY"] == ":1"
+
+
+def test_existing_chromium_reports_missing_termux_x11_package(
     monkeypatch, tmp_path
 ):
     import pytest
@@ -1851,14 +1902,15 @@ def test_existing_chromium_requires_termux_x11_when_launching(
     from lora_data_maker.scrapers.existing_chromium import ExistingChromium
 
     monkeypatch.delenv("DISPLAY", raising=False)
+    monkeypatch.setattr(existing_chromium_module.shutil, "which", lambda name: None)
     browser = ExistingChromium(
         user_data_dir=tmp_path / "google-profile",
         auto_launch=True,
         executable="/mock/chromium-browser",
     )
 
-    with pytest.raises(ScraperError, match="DISPLAY"):
-        browser._launch_browser()
+    with pytest.raises(ScraperError, match="termux-x11"):
+        browser._ensure_display()
 
 
 def test_playwright_google_defaults_to_persistent_chromium_profile(

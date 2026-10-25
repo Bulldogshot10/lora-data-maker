@@ -52,7 +52,7 @@ Termux does not use the upstream Playwright browser bundle directly. The upstrea
 Install it with:
 
 ~~~bash
-pkg install x11-repo chromium
+pkg install x11-repo termux-x11-nightly chromium
 python -m pip install ".[playwright]"
 ~~~
 
@@ -71,18 +71,14 @@ Test Google:
 lora-data-maker scrape playwright-google "julia russian woman" --count 10
 ~~~
 
-The Google backend now launches a **visible Termux Chromium window** automatically when its local debugging endpoint is not already running. It uses a persistent profile at `$XDG_DATA_HOME/lora-data-maker/google-profile` (normally `~/.local/share/lora-data-maker/google-profile`). Sign into Google in that window once; the profile keeps the local browser session for future searches. You do not need to put a Google password, cookie, or token in the project config.
+When you tap **scrape images** in the WebUI (or run the Google CLI scraper), the Google backend opens the Termux:X11 Android app, starts its display, and launches a **visible Termux Chromium window** automatically if the debugging endpoint is not already running. Both the Termux:X11 Android app and the `termux-x11-nightly` package must be installed. It uses a persistent profile at `$XDG_DATA_HOME/lora-data-maker/google-profile` (normally `~/.local/share/lora-data-maker/google-profile`). Sign into Google in that window once; the profile keeps the local browser session for future searches. You do not need to put a Google password, cookie, or token in the project config.
 
 If you already have a dedicated Chromium profile, set `CHROME_USER_DATA_DIR` to that profile before running the scraper. Set `CHROME_DEBUG_PORT` to change the local CDP port (default 9222), or `CHROME_AUTO_LAUNCH=0` to require an already-running browser. The backend only connects to a loopback CDP endpoint.
 
 **Security:** CDP is a privileged browser-control endpoint. Use a dedicated Chromium profile for scraping, keep `--remote-debugging-address=127.0.0.1`, and never expose port 9222 on a LAN, through a tunnel, or via a reverse proxy. Treat the profile directory as sensitive because it contains login cookies and session state. The WebUI itself has no user login; leave it on localhost. See the repository's [Security Policy](../SECURITY.md).
 
 ~~~bash
-# Open the Termux:X11 Android app, then start its display in Termux:
-termux-x11 :1 &
-export DISPLAY=:1
-
-# This opens the visible Chromium window automatically on first use.
+# First use: this starts Termux:X11 and opens the visible Chromium window.
 lora-data-maker scrape playwright-google "julia russian woman" --count 10
 ~~~
 
@@ -94,7 +90,7 @@ To start the WebUI from the same X11-enabled Termux session, run:
 ./mk.sh
 ~~~
 
-Select `playwright-google` in the WebUI. The browser stays open after a scrape so the signed-in session can be reused. Check `curl -s http://127.0.0.1:9222/json/version` when troubleshooting. Google verification/consent pages can still block scraping; this backend reuses your local signed-in session but does not automate or bypass verification challenges.
+Select `playwright-google` in the WebUI and tap **scrape images**. The WebUI starts Termux:X11 and opens the browser automatically when needed. The browser stays open after a scrape so the signed-in session can be reused. If Android prevents the app from being opened automatically, bring Termux:X11 to the foreground once and retry. Check `curl -s http://127.0.0.1:9222/json/version` when troubleshooting. Google verification/consent pages can still block scraping; this backend reuses your local signed-in session but does not automate or bypass verification challenges.
 
 ## Quality/text-filter runtime
 

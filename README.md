@@ -166,14 +166,16 @@ python -m pip install ".[chromium]"
 For Playwright image-search support on Termux:
 
 ~~~bash
-pkg install x11-repo chromium
+pkg install x11-repo termux-x11-nightly chromium
 python -m pip install ".[playwright]"
 ~~~
 
 The Playwright backend uses the native Termux Chromium package through the
 Termux-specific Playwright/CDP adapter. It does not run `playwright install`
-or download a glibc browser bundle. The Google backend launches a visible
-Chromium window through Termux:X11 and reuses a persistent local profile at
+or download a glibc browser bundle. On the first Google scrape, the app opens Termux:X11 and starts its display
+automatically, then launches a visible Chromium window. Install both the
+Termux:X11 Android app and the `termux-x11-nightly` Termux package first.
+The scraper reuses a persistent local profile at
 `$XDG_DATA_HOME/lora-data-maker/google-profile` (normally
 `~/.local/share/lora-data-maker/google-profile`). Sign in to Google in that
 window once; the browser session is reused for later searches. No Google
