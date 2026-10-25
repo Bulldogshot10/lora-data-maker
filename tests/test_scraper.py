@@ -2002,6 +2002,7 @@ def test_existing_chromium_defaults_to_private_persistent_google_profile(
         tmp_path / "data" / "lora-data-maker" / "google-profile"
     ).resolve()
     assert browser.auto_launch is True
+    assert browser.initial_url == "https://www.google.com/search?udm=2"
 
 
 def test_existing_chromium_launches_visible_browser_with_local_cdp(
@@ -2024,7 +2025,7 @@ def test_existing_chromium_launches_visible_browser_with_local_cdp(
         return FakeProcess()
 
     monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
-    search_url = "https://www.google.com/search?tbm=isch&q=julia+russian+woman"
+    search_url = "https://www.google.com/search?udm=2&q=julia+russian+woman"
     browser = ExistingChromium(
         user_data_dir=profile,
         port=9222,
