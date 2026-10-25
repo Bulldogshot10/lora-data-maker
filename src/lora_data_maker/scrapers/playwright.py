@@ -350,7 +350,14 @@ class PlaywrightImagesScraper(Scraper):
                 page = browser.new_page()
                 try:
                     stage = "waiting for matching search results"
+                    try:
+                        page.bring_to_front()
+                    except Exception:
+                        pass
+                    cleanup_network = self._setup_page_network_controls(page)
+                    stage = "waiting for matching search results"
                     self._goto(page, search_url)
+                    self._wait_for_dynamic_results(page)
 
                     seen: set[str] = set()
                     results: list[ImageResult] = []
@@ -441,12 +448,19 @@ class PlaywrightImagesScraper(Scraper):
 
                         stage = f"scrolling result page (scroll {scroll_no})"
                         try:
+                            prior_dom_count = self._result_dom_count(page)
                             page.evaluate(
                                 "window.scrollTo(0, "
                                 "Math.max(document.documentElement?.scrollHeight || 0, "
                                 "document.body?.scrollHeight || 0))"
                             )
-                            if self.delay:
+                            if prior_dom_count:
+                                self._wait_for_dynamic_growth(
+                                    page,
+                                    prior_count=prior_dom_count,
+                                    timeout=min(max(self.delay, 0.5) + 0.5, 2.0),
+                                )
+                            elif self.delay:
                                 stage = f"waiting after scroll {scroll_no}"
                                 page.wait_for_timeout(
                                     int(max(self.delay, 0.5) * 1000)
@@ -465,6 +479,10 @@ class PlaywrightImagesScraper(Scraper):
                     return results
                 finally:
                     try:
+                        cleanup_network()
+                    except Exception:
+                        pass
+                    try:
                         page.close()
                     except Exception:
                         pass
@@ -475,6 +493,156 @@ class PlaywrightImagesScraper(Scraper):
                 f"Playwright {self.provider} browser error during {stage}: "
                 f"{type(exc).__name__}: {exc}"
             ) from exc
+
+    TRACKING_URL_PATTERNS = (
+        "*://www.google-analytics.com/*",
+        "*://*.google-analytics.com/*",
+        "*://*.googletagmanager.com/*",
+        "*://*.doubleclick.net/*",
+        "*://*.googlesyndication.com/*",
+        "*://*.googleadservices.com/*",
+        "*://*.clarity.ms/*",
+        "*://*.hotjar.com/*",
+    )
+
+    def _setup_page_network_controls(self, page):
+        """Use playwright-termux Network events and block analytics, not search or image resources."""
+        network = getattr(page, "network", None)
+        if network is None:
+            return lambda: None
+
+        stats = {"requests": 0, "responses": 0, "errors": {}}
+
+        def on_request(request):
+            stats["requests"] += 1
+
+        def on_response(response):
+            stats["responses"] += 1
+            try:
+                status = int(response.status or 0)
+                host = (urlparse(response.url or "").hostname or "").lower()
+            except (TypeError, ValueError):
+                return
+            if status < 400:
+                return
+            stats["errors"][status] = stats["errors"].get(status, 0) + 1
+            if status in {403, 429, 503}:
+                print(
+                    f"scrape: browser network HTTP {status} from {host or 'unknown host'}",
+                    flush=True,
+                )
+
+        request_registered = False
+        response_registered = False
+        try:
+            network.on_request(on_request)
+            request_registered = True
+            network.on_response(on_response)
+            response_registered = True
+            # Network.setBlockedURLs is a Chromium CDP control exposed by the
+            # adapter session. Keep image/script/document/captcha traffic intact.
+            page.session.send(
+                "Network.setBlockedURLs",
+                {"urls": list(self.TRACKING_URL_PATTERNS)},
+            )
+            print(
+                "scrape: Playwright network monitor enabled; analytics requests blocked",
+                flush=True,
+            )
+        except Exception as exc:
+            print(
+                f"scrape: network controls partially unavailable: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+
+        def cleanup():
+            if request_registered:
+                try:
+                    network.off_request(on_request)
+                except Exception:
+                    pass
+            if response_registered:
+                try:
+                    network.off_response(on_response)
+                except Exception:
+                    pass
+            if stats["requests"] or stats["responses"]:
+                errors = ", ".join(
+                    f"HTTP {status}: {count}"
+                    for status, count in sorted(stats["errors"].items())
+                )
+                print(
+                    "scrape: browser network summary "
+                    f"requests={stats['requests']} responses={stats['responses']}"
+                    + (f" errors=({errors})" if errors else ""),
+                    flush=True,
+                )
+            try:
+                network.disable()
+            except Exception:
+                pass
+
+        return cleanup
+
+    def _result_selector(self) -> str:
+        return "a.iusc" if self.provider == "bing" else "div.isv-r"
+
+    def _result_dom_count(self, page) -> int:
+        """Count provider result cards through playwright-termux Locator."""
+        try:
+            locator = page.locator(self._result_selector())
+            count = locator.count()
+            return int(count) if count is not None else 0
+        except Exception:
+            return 0
+
+    def _wait_for_dynamic_results(self, page) -> int:
+        """Wait briefly for the provider's dynamic result grid using Locator APIs."""
+        selector = self._result_selector()
+        count = self._result_dom_count(page)
+        if count:
+            return count
+        try:
+            page.wait_for_selector(
+                selector,
+                timeout=int(min(max(self.timeout, 0.5), 3.0) * 1000),
+                state="attached",
+            )
+        except Exception:
+            # Google can expose valid ou payloads before its cards finish rendering,
+            # and verification pages intentionally have no result-card selector.
+            pass
+        count = self._result_dom_count(page)
+        if count:
+            print(
+                f"scrape: Playwright waited for dynamic {self.provider} results "
+                f"({count} DOM cards)",
+                flush=True,
+            )
+        return count
+
+    def _wait_for_dynamic_growth(
+        self,
+        page,
+        *,
+        prior_count: int,
+        timeout: float,
+    ) -> int:
+        """After scrolling, wait for lazy-loaded cards instead of sleeping blindly."""
+        deadline = time.monotonic() + max(0.0, timeout)
+        current_count = self._result_dom_count(page)
+        while current_count <= prior_count and time.monotonic() < deadline:
+            if self.cancel_event is not None and self.cancel_event.is_set():
+                raise ScraperCancelledError("scrape cancelled")
+            time.sleep(0.1)
+            current_count = self._result_dom_count(page)
+        if current_count > prior_count:
+            print(
+                f"scrape: Playwright dynamic grid grew {prior_count}->{current_count}",
+                flush=True,
+            )
+        return current_count
 
     @staticmethod
     def _is_google_verification_error(error: BaseException) -> bool:
