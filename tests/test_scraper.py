@@ -2574,6 +2574,7 @@ def test_playwright_google_recovers_when_page_navigate_ack_times_out(result_url)
     assert page.session.navigation_calls == 1
     assert page._url == result_url
 
+
 def test_playwright_google_waits_on_generic_blocked_page_url():
     import pytest
 
