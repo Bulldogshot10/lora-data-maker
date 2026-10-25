@@ -1243,6 +1243,33 @@ def test_playwright_google_extracts_only_google_thumbnails():
     ]
 
 
+def test_playwright_google_extracts_thumbnails_from_rendered_img_markup():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    # Rendered Google Images pages may expose thumbnails in img attributes
+    # without any serialized "tu" fields.
+    body = """
+    <html><body>
+      <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn%3Afirst">
+      <img data-src="https://lh3.googleusercontent.com/second-thumb">
+      <picture>
+        <source srcset="
+          https://encrypted-tbn1.gstatic.com/images?q=tbn%3Athird 1x,
+          https://encrypted-tbn2.gstatic.com/images?q=tbn%3Afourth 2x
+        ">
+      </picture>
+      <img src="https://cdn.example.com/original.jpg">
+    </body></html>
+    """
+
+    assert PlaywrightImagesScraper._extract_google_thumbnail_urls(body) == [
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Afirst",
+        "https://lh3.googleusercontent.com/second-thumb",
+        "https://encrypted-tbn1.gstatic.com/images?q=tbn%3Athird",
+        "https://encrypted-tbn2.gstatic.com/images?q=tbn%3Afourth",
+    ]
+
+
 def test_playwright_google_ignores_challenge_markers_inside_valid_results():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
