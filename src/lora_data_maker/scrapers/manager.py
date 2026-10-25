@@ -20,6 +20,12 @@ from .google import DEFAULT_USER_AGENT, GoogleImagesScraper
 from .playwright import PlaywrightImagesScraper
 
 
+def _is_google_original_unavailable(error: Exception) -> bool:
+    """Allow cached Google thumbnail fallback only for stale/blocked originals."""
+    message = str(error).lower()
+    return "403 client error" in message or "404 client error" in message
+
+
 class ScraperManager:
     def __init__(
         self,
@@ -145,6 +151,7 @@ class ScraperManager:
                 if result.image_url in self.archive or result.image_url in known_url_set:
                     continue
 
+                downloaded = None
                 try:
                     downloaded = self.downloader.download(
                         result.image_url,
@@ -152,28 +159,79 @@ class ScraperManager:
                         index=next_index,
                         archive=self.archive,
                         cancel_event=cancel_event,
-                    )
-                    if downloaded is None:
-                        continue
-                    downloads.append(downloaded)
-                    next_index += 1
-                    message = f"downloaded {len(downloads)}/{count}"
-                    if progress is not None:
-                        progress(len(downloads), count, message)
-                    print(
-                        f"scrape: {message}",
-                        flush=True,
+                        **(
+                            {"referer": "https://www.google.com/"}
+                            if self.backend == "playwright-google"
+                            else {}
+                        ),
                     )
                 except ScraperCancelledError:
                     self.cancelled = True
                     break
                 except ScraperError as exc:
-                    failures.append((result, str(exc)))
-                    print(
-                        f"scrape: skipped failed image: {result.image_url} :: {exc}",
-                        flush=True,
+                    fallback_urls = result.metadata.get("fallback_image_urls", [])
+                    can_use_google_fallback = (
+                        self.backend == "playwright-google"
+                        and _is_google_original_unavailable(exc)
+                        and isinstance(fallback_urls, list)
                     )
+                    fallback_error: ScraperError | None = None
+
+                    if can_use_google_fallback:
+                        for fallback_url in fallback_urls:
+                            if not isinstance(fallback_url, str):
+                                continue
+                            if fallback_url in self.archive or fallback_url in known_url_set:
+                                continue
+                            try:
+                                downloaded = self.downloader.download(
+                                    fallback_url,
+                                    self.output_dir,
+                                    index=next_index,
+                                    archive=self.archive,
+                                    cancel_event=cancel_event,
+                                    referer="https://www.google.com/",
+                                )
+                                if downloaded is not None:
+                                    print(
+                                        "scrape: original Google image returned "
+                                        "403/404; using its Google thumbnail fallback",
+                                        flush=True,
+                                    )
+                                    break
+                            except ScraperCancelledError:
+                                self.cancelled = True
+                                break
+                            except ScraperError as thumbnail_exc:
+                                fallback_error = thumbnail_exc
+
+                    if self.cancelled:
+                        break
+                    if downloaded is None:
+                        error_message = str(exc)
+                        if fallback_error is not None:
+                            error_message += (
+                                f"; Google thumbnail fallback failed: {fallback_error}"
+                            )
+                        failures.append((result, error_message))
+                        print(
+                            f"scrape: skipped failed image: {result.image_url} :: "
+                            f"{error_message}",
+                            flush=True,
+                        )
+                        continue
+
+                if downloaded is None:
                     continue
+                downloads.append(downloaded)
+                next_index += 1
+                message = f"downloaded {len(downloads)}/{count}"
+                if progress is not None:
+                    progress(len(downloads), count, message)
+                print(
+                    f"scrape: {message}",
+                    flush=True,
+                )
 
                 if len(downloads) >= count:
                     break
