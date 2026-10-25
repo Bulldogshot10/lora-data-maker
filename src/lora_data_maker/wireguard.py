@@ -99,6 +99,18 @@ def validate_wireguard_config(content: bytes | str) -> str:
     except ValueError as exc:
         raise ValueError("WireGuard Address must contain valid IP interface addresses") from exc
 
+    dns_servers = interface.get("dns", "")
+    if not dns_servers:
+        raise ValueError(
+            "WireGuard [Interface] is missing DNS; add your VPN provider's DNS IP "
+            "to avoid using the device's system resolver"
+        )
+    try:
+        for dns_server in dns_servers.split(","):
+            ipaddress.ip_address(dns_server.strip())
+    except ValueError as exc:
+        raise ValueError("WireGuard DNS must contain IP addresses") from exc
+
     has_endpoint = False
     for peer in peers:
         public_key = peer.get("publickey")
@@ -244,9 +256,10 @@ class WireGuardConfigStore:
         return self.public_state()
 
     def is_enabled(self) -> bool:
+        # Preserve the user's opt-in even if the file disappears or becomes
+        # invalid: the job then fails closed instead of silently scraping direct.
         try:
-            state = self._read_settings()
-            return bool(state.get("enabled")) and self.config_path.is_file() and not self.config_path.is_symlink()
+            return bool(self._read_settings().get("enabled"))
         except (OSError, ValueError):
             return False
 
