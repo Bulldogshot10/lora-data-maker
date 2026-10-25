@@ -1368,10 +1368,7 @@ def test_playwright_google_rejects_verification_page():
         )
 
 
-def test_playwright_scraper_uses_termux_chromium(monkeypatch):
-    import sys
-    import types
-
+def test_playwright_bing_uses_playwright_termux_page_apis(monkeypatch):
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
     class FakeSession:
@@ -1403,7 +1400,6 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
         def __init__(self):
             self.closed = False
             self.session = FakeSession()
-            self.urls = []
 
         def content(self):
             return (
@@ -1427,6 +1423,12 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
             self.page = FakePage()
             self.closed = False
 
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            self.close()
+
         def new_page(self):
             return self.page
 
@@ -1434,32 +1436,13 @@ def test_playwright_scraper_uses_termux_chromium(monkeypatch):
             self.closed = True
 
     browser = FakeBrowser()
-
-    class FakeChromium:
-        def __init__(self, *, headless):
-            assert headless is True
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, exc_type, exc, tb):
-            browser.close()
-
-        def new_page(self):
-            return browser.new_page()
-
-    monkeypatch.setitem(
-        sys.modules,
-        "playwright_termux",
-        types.SimpleNamespace(Chromium=FakeChromium),
-    )
-
     scraper = PlaywrightImagesScraper(
         provider="bing",
         retries=0,
         delay=0,
         max_scrolls=1,
     )
+    monkeypatch.setattr(scraper, "_create_browser", lambda initial_url=None: browser)
     results = list(scraper.search("julia", limit=1))
 
     assert [item.image_url for item in results] == [
@@ -2403,6 +2386,8 @@ def test_playwright_google_quality_gate_rejects_blurry_download(tmp_path):
                     draw.line((0, y, 511, y), fill="black", width=3)
             image.save(path, format="PNG")
             data = path.read_bytes()
+            if archive is not None:
+                archive.add(url)
             return DownloadResult(
                 url=url,
                 path=path,
@@ -2420,3 +2405,5 @@ def test_playwright_google_quality_gate_rejects_blurry_download(tmp_path):
     assert len(failures) == 1
     assert failures[0][0].image_url == blurry_url
     assert "too blurry" in failures[0][1]
+    assert blurry_url not in manager.archive
+    assert sharp_url in manager.archive
