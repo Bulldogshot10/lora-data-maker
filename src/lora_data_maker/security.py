@@ -88,12 +88,13 @@ def assert_safe_outbound_url(
     *,
     allow_loopback: bool = False,
     api_base: bool = False,
+    resolve_dns: bool = True,
 ) -> str:
     """Fail closed on unsafe outbound destinations and DNS results.
 
     Every DNS answer must be globally routable, except for an explicitly
-    allowed loopback endpoint. DNS is checked immediately before each request,
-    including each redirect hop.
+    allowed loopback endpoint. When resolve_dns is false, callers must already
+    be using a trusted proxy that resolves target hostnames remotely.
     """
     raw = str(value or "").strip()
     if api_base:
@@ -146,6 +147,11 @@ def assert_safe_outbound_url(
 
     if normalized_host.endswith((".local", ".internal", ".lan", ".home.arpa")):
         raise ValueError("local network hostnames are blocked")
+
+    if not resolve_dns:
+        if loopback_name:
+            raise ValueError("localhost outbound destinations are blocked")
+        return raw
 
     try:
         answers = socket.getaddrinfo(
