@@ -42,6 +42,14 @@ def test_image_expression_uses_selected_css_selector_and_invoked_iife():
     assert "naturalWidth" in expression
 
 
+def test_scroll_expression_moves_one_viewport_instead_of_jumping_to_page_end():
+    expression = PlaywrightSiteScraper._scroll_expression()
+    assert "window.scrollY" in expression
+    assert "window.innerHeight" in expression
+    assert "Math.min" in expression
+    assert "document.documentElement?.scrollHeight" in expression
+
+
 def test_normalize_candidate_resolves_relative_url_and_retains_image_metadata():
     result = PlaywrightSiteScraper._normalize_candidate(
         {"url": "/media/large.jpg", "width": 1024, "height": 768, "alt": "portrait"},
@@ -57,6 +65,32 @@ def test_normalize_candidate_resolves_relative_url_and_retains_image_metadata():
         {"url": "data:image/png;base64,abc", "width": 512, "height": 512},
         "https://example.com/gallery",
     ) is None
+
+
+def test_manager_copies_site_cookies_to_memory_only_cookie_jar(tmp_path):
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    manager = ScraperManager(
+        backend="playwright-site",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+    )
+    manager.scraper.cookies = [{
+        "name": "sessionid",
+        "value": "not-to-be-persisted",
+        "domain": ".example.com",
+        "path": "/",
+        "secure": True,
+        "expires": -1,
+    }]
+
+    manager._sync_site_cookies()
+    cookie = manager.downloader.session.cookies.get(
+        "sessionid", domain=".example.com", path="/"
+    )
+    assert cookie == "not-to-be-persisted"
+    assert not list((tmp_path / "raw").iterdir())
+    assert not list((tmp_path / "cache").iterdir())
 
 
 def test_site_scraper_reuses_browser_session_and_captures_cookies(monkeypatch):

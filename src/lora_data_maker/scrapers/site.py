@@ -262,6 +262,16 @@ class PlaywrightSiteScraper:
         # Some SPA pages keep transitioning and never settle at "complete".
         # The extractor below can still read their current DOM.
 
+    @staticmethod
+    def _scroll_expression() -> str:
+        """Scroll one viewport at a time so intermediate lazy-loaded images fire."""
+        return (
+            "window.scrollTo(0, Math.min((window.scrollY || 0) + "
+            "Math.max(window.innerHeight || 0, 600), "
+            "Math.max(document.documentElement?.scrollHeight || 0, "
+            "document.body?.scrollHeight || 0)))"
+        )
+
     def _capture(self, url: str, limit: int) -> list[ImageResult]:
         browser = create_site_browser(timeout=self.timeout, auto_launch=False, headless=False)
         results: list[ImageResult] = []
@@ -337,11 +347,7 @@ class PlaywrightSiteScraper:
                     if stagnant_rounds >= 3:
                         break
 
-                    page.evaluate(
-                        "window.scrollTo(0, Math.max(window.scrollY + "
-                        "Math.max(window.innerHeight || 0, 600), "
-                        "document.documentElement?.scrollHeight || 0))"
-                    )
+                    page.evaluate(self._scroll_expression())
                     if self.delay:
                         page.wait_for_timeout(int(min(self.delay, 5.0) * 1000))
             finally:
@@ -368,6 +374,10 @@ class PlaywrightSiteScraper:
                 )
             except ScraperError as exc:
                 last_error = exc
+            except Exception as exc:
+                last_error = ScraperError(
+                    f"browser capture error: {type(exc).__name__}: {exc}"
+                )
             if attempt < self.retries:
                 print(
                     f"scrape: playwright-site retry={attempt + 1}/{self.retries}: "

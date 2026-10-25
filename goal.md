@@ -354,3 +354,9 @@ Not implemented: automatic interactive natural-language agent actions on arbitra
 2. Run python -m pytest -q tests/test_playwright_site.py tests/test_scraper.py.
 3. Test lora-data-maker playwright-browser --url https://example.com/login in Termux:X11, complete login, then run lora-data-maker scrape playwright-site https://example.com/gallery --count 20.
 4. Check that protected image downloads succeed with session cookies and that validate/process apply the configured crop/resize. If image elements are not selected, inspect the page and retry with an accurate CSS --selector.
+
+### Review follow-up (2026-10-25, site-scroll/error handling)
+- Manual source review found that the first version jumped directly to the bottom of long pages. Changed the website scraper to scroll one viewport at a time so intermediate lazy-loaded images have a chance to load before the next capture pass.
+- Generic page-evaluation/CDP exceptions are now converted to ScraperError and run through the configured retry/error path rather than escaping as an unhandled CLI exception.
+- Added unit coverage for viewport-sized scrolling and for transferring browser cookies into the in-memory HTTP cookie jar without writing project files.
+- Validation remains pending: GitHub Actions status currently returns no checks for the feature commit, and local git clone failed because this environment cannot resolve github.com (Could not resolve host: github.com). No test pass is claimed. After pulling the new main, run python -m compileall -q src tests and python -m pytest -q tests/test_playwright_site.py tests/test_scraper.py.
