@@ -739,28 +739,16 @@ class PlaywrightImagesScraper(Scraper):
 
     @staticmethod
     def _extract_google_urls(page_html: str) -> list[str]:
-        lowered = page_html.lower()
-        if any(
-            marker in lowered
-            for marker in (
-                "our systems have detected unusual traffic",
-                "detected unusual traffic from your computer network",
-                "before you continue to google",
-                "/sorry/",
-            )
-        ):
-            raise ScraperError(
-                "Google returned a consent/verification page; "
-                "the scraper does not bypass verification challenges"
-            )
-
         urls: list[str] = []
         seen: set[str] = set()
 
         # Google image results commonly embed the original URL in an "ou"
         # field. Prefer it so thumbnails are never sent to the downloader.
+        # Do this before block-page detection: Google result HTML can contain
+        # consent/challenge wording in scripts or hidden templates even when
+        # the actual Images results are valid.
         pattern = re.compile(
-            r"""["']ou["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
+            r"""["']ou["']\\s*:\\s*["']((?:\\\\.|[^"'])+)["']"""
         )
         for raw in pattern.findall(page_html):
             value = PlaywrightImagesScraper._decode_json_string(raw)
@@ -770,6 +758,32 @@ class PlaywrightImagesScraper(Scraper):
 
         if urls:
             return urls
+
+        # Inspect visible page text only. Searching the entire HTML document
+        # creates false positives from script payloads, hidden templates, and
+        # incidental "/sorry/" strings in otherwise valid result markup.
+        challenge_markup = re.sub(
+            r"(?is)<(script|style|noscript)\\b[^>]*>.*?</\\1\\s*>",
+            " ",
+            page_html,
+        )
+        visible_text = html.unescape(
+            re.sub(r"(?s)<[^>]+>", " ", challenge_markup)
+        ).casefold()
+        if any(
+            marker in visible_text
+            for marker in (
+                "our systems have detected unusual traffic",
+                "detected unusual traffic from your computer network",
+                "before you continue to google",
+                "automated queries",
+                "unusual traffic",
+            )
+        ):
+            raise ScraperError(
+                "Google returned a consent/verification page; "
+                "the scraper does not bypass verification challenges"
+            )
 
         # Fallback for markup variants. Reuse the legacy parser's layered
         # extraction rather than duplicating its URL heuristics.
