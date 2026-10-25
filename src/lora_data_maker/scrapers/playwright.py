@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 import os
 import re
 import socket
@@ -68,12 +69,24 @@ class _BingResultParser(HTMLParser):
                     if value:
                         parts.append(value)
 
-        if tag != "a" or "iusc" not in classes:
+        if tag != "a":
             return
 
         payload = attr_map.get("m")
         if not payload:
             return
+        if "iusc" not in classes:
+            # Bing occasionally changes result-card classes while keeping its
+            # structured metadata attribute. Accept only image-shaped payloads.
+            try:
+                data = json.loads(html.unescape(payload))
+            except (TypeError, ValueError):
+                return
+            if not isinstance(data, dict) or not any(
+                isinstance(data.get(key), str)
+                for key in ("murl", "turl", "thumbnail")
+            ):
+                return
 
         if self._result_container_depth:
             self.payloads.append(payload)
@@ -402,19 +415,49 @@ class PlaywrightImagesScraper(Scraper):
                                 if not candidates:
                                     print(
                                         "scrape: Google original URLs were not parseable; "
-                                        "trying browser-assisted result clicks",
+                                        "caching thumbnails before browser automation",
+                                        flush=True,
+                                    )
+                                    thumbnail_candidates = self._extract_google_thumbnail_urls_from_page(
+                                        page,
+                                        page_html,
+                                    )
+                                    print(
+                                        "scrape: cached "
+                                        f"{len(thumbnail_candidates)} pre-click thumbnail candidate(s)",
+                                        flush=True,
+                                    )
+                                    print(
+                                        "scrape: trying browser-assisted Google result clicks",
                                         flush=True,
                                     )
                                     candidates = self._recover_google_original_urls_with_browser(
                                         page,
                                         page_html,
+                                        search_url=search_url,
                                     )
-                                if not candidates:
-                                    candidates = self._extract_google_thumbnail_urls_from_page(
-                                        page,
-                                        page_html,
-                                    )
-                                    if candidates:
+                                    used_thumbnail_fallback = False
+                                    if not candidates:
+                                        if not thumbnail_candidates:
+                                            try:
+                                                current_html = page.content() or page_html
+                                            except Exception:
+                                                current_html = page_html
+                                            thumbnail_candidates = self._extract_google_thumbnail_urls_from_page(
+                                                page,
+                                                current_html,
+                                            )
+                                        candidates = thumbnail_candidates
+                                        used_thumbnail_fallback = bool(candidates)
+                                    if used_thumbnail_fallback and candidates:
+                                        candidate_metadata = {
+                                            image_url: {
+                                                "image_source": "google_thumbnail_fallback",
+                                                "google_thumbnail_fallback": True,
+                                                "original_url_unavailable": True,
+                                            }
+                                            for image_url in candidates
+                                        }
                                         candidate_metadata = {
                                             image_url: {
                                                 "image_source": "google_thumbnail_fallback",
@@ -462,6 +505,18 @@ class PlaywrightImagesScraper(Scraper):
                                                 "query_terms_total": candidate_details[image_url].get("query_terms_total", 0),
                                             }
                                             if image_url in candidate_details
+                                            else {}
+                                        ),
+                                        **(
+                                            {
+                                                "image_source": "bing_thumbnail_fallback",
+                                                "bing_thumbnail_fallback": True,
+                                                "original_url_unavailable": True,
+                                            }
+                                            if (
+                                                image_url in candidate_details
+                                                and candidate_details[image_url].get("thumbnail_fallback")
+                                            )
                                             else {}
                                         ),
                                         **candidate_metadata.get(image_url, {}),
@@ -630,10 +685,56 @@ class PlaywrightImagesScraper(Scraper):
         return "a.iusc" if self.provider == "bing" else "div.isv-r"
 
     def _result_dom_count(self, page) -> int:
-        """Count provider result cards through playwright-termux Locator."""
+        """Count provider results with a selector-independent DOM fallback."""
         try:
             locator = page.locator(self._result_selector())
             count = locator.count()
+            if count is not None and int(count) > 0:
+                return int(count)
+        except Exception:
+            pass
+
+        if self.provider == "bing":
+            expression = """(() => Array.from(document.querySelectorAll('a[m]'))
+                .filter(anchor => {
+                    try {
+                        const data = JSON.parse(anchor.getAttribute('m') || '{}');
+                        return data && (
+                            typeof data.murl === 'string' ||
+                            typeof data.turl === 'string' ||
+                            typeof data.thumbnail === 'string'
+                        );
+                    } catch (_) {
+                        return false;
+                    }
+                }).length)()"""
+        else:
+            expression = """(() => {
+                const cardSelectors = [
+                    'div.isv-r', 'div.eA0Zlc', 'div.H8Rx8c',
+                    'div.wXeWr', 'div[data-ri]', 'div[role="listitem"]'
+                ].join(',');
+                return Array.from(document.querySelectorAll('img')).filter(image => {
+                    const src = image.currentSrc ||
+                        image.getAttribute('data-src') ||
+                        image.getAttribute('data-lazy-src') ||
+                        image.getAttribute('src') || '';
+                    if (!/^https?:\\/\\//i.test(src)) return false;
+                    const host = (() => {
+                        try { return new URL(src).hostname.toLowerCase(); }
+                        catch (_) { return ''; }
+                    })();
+                    const knownThumb =
+                        /encrypted-tbn[0-9]*\\.gstatic\\.com$/.test(host) ||
+                        /(^|\\.)googleusercontent\\.com$/.test(host);
+                    const rect = image.getBoundingClientRect();
+                    const namedVisible = !!(image.getAttribute('alt') || '').trim() &&
+                        rect.width >= 48 && rect.height >= 48;
+                    return knownThumb || !!image.closest(cardSelectors) || namedVisible;
+                }).length;
+            })()"""
+        try:
+            count = page.evaluate(expression)
             return int(count) if count is not None else 0
         except Exception:
             return 0
@@ -1122,17 +1223,43 @@ class PlaywrightImagesScraper(Scraper):
             if not isinstance(data, dict):
                 continue
 
-            image_url = data.get("murl")
-            if not isinstance(image_url, str) or not image_url.startswith(("http://", "https://")):
-                continue
-            host = (urlparse(image_url).hostname or "").lower().rstrip(".")
-            if (
-                host == "bing.com"
-                or host.endswith(".bing.com")
-                or host == "bing.net"
-                or host.endswith(".bing.net")
-                or image_url in seen
-            ):
+            source_url = data.get("murl")
+            image_url: str | None = None
+            thumbnail_fallback = False
+            if isinstance(source_url, str) and source_url.startswith(("http://", "https://")):
+                source_host = (urlparse(source_url).hostname or "").lower().rstrip(".")
+                if not (
+                    source_host == "bing.com"
+                    or source_host.endswith(".bing.com")
+                    or source_host == "bing.net"
+                    or source_host.endswith(".bing.net")
+                ):
+                    image_url = source_url
+
+            if image_url is None:
+                thumbnail_url = (
+                    data.get("turl")
+                    or data.get("thumbnail")
+                    or data.get("thumbnailUrl")
+                )
+                if not isinstance(thumbnail_url, str) or not thumbnail_url.startswith(
+                    ("http://", "https://")
+                ):
+                    continue
+                thumbnail_parsed = urlparse(thumbnail_url)
+                thumbnail_host = (thumbnail_parsed.hostname or "").lower().rstrip(".")
+                if (
+                    not thumbnail_host
+                    or thumbnail_host == "bing.com"
+                    or thumbnail_host.endswith(".bing.com")
+                    or thumbnail_parsed.username is not None
+                    or thumbnail_parsed.password is not None
+                ):
+                    continue
+                image_url = thumbnail_url
+                thumbnail_fallback = True
+
+            if image_url in seen:
                 continue
 
             title = str(data.get("t") or data.get("title") or "").strip()
@@ -1169,6 +1296,7 @@ class PlaywrightImagesScraper(Scraper):
                     "description": description,
                     "matched_terms": len(matched_terms),
                     "query_terms_total": len(query_terms),
+                    "thumbnail_fallback": thumbnail_fallback,
                 }
             )
 
@@ -1228,6 +1356,22 @@ class PlaywrightImagesScraper(Scraper):
     ) -> list[str]:
         """Read original URLs from rendered Google markup and live DOM attributes."""
         page_url = self._current_page_url(page) or fallback_url
+        parsed_page_url = urlparse(page_url)
+        page_query = parse_qs(parsed_page_url.query)
+        current_page_sources = (
+            page_query.get("imgurl", [])
+            or page_query.get("mediaurl", [])
+        )
+        page_source_urls = []
+        page_source_seen: set[str] = set()
+        for value in current_page_sources:
+            candidate = html.unescape(str(value)).strip()
+            if self._valid_image_candidate(candidate, page_source_seen):
+                page_source_seen.add(candidate)
+                page_source_urls.append(candidate)
+        if page_source_urls:
+            return page_source_urls
+
         try:
             candidates = self._extract_google_original_urls(
                 page_html,
@@ -1262,9 +1406,19 @@ class PlaywrightImagesScraper(Scraper):
                     return linkedSources.concat(explicitSources);
                 })()"""
             )
-        except Exception:
+        except Exception as exc:
+            print(
+                "scrape: Google live source-link inspection failed: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
             return []
         if not isinstance(values, list):
+            print(
+                "scrape: Google live source-link inspection returned "
+                f"{type(values).__name__}, expected a list",
+                flush=True,
+            )
             return []
 
         seen: set[str] = set()
@@ -1288,12 +1442,59 @@ class PlaywrightImagesScraper(Scraper):
                     output.append(candidate)
         return output
 
+    def _restore_google_results_page(self, page, search_url: str) -> bool:
+        """Restore the query result grid if a result click navigated away from it."""
+        current_url = self._current_page_url(page)
+        current = urlparse(current_url)
+        requested = urlparse(search_url)
+        current_host = (current.hostname or "").lower()
+        on_google_host = (
+            current_host == "google.com" or current_host.endswith(".google.com")
+        )
+        current_params = parse_qs(current.query)
+        requested_query = " ".join(
+            parse_qs(requested.query).get("q", [""])[0].split()
+        ).casefold()
+        current_query = " ".join(current_params.get("q", [""])[0].split()).casefold()
+        is_images_search = (
+            on_google_host
+            and current.path == requested.path
+            and (
+                current_params.get("udm", [""])[0] == "2"
+                or current_params.get("tbm", [""])[0] == "isch"
+            )
+            and current_query == requested_query
+        )
+        if is_images_search:
+            return False
+
+        print(
+            "scrape: Playwright Google result click left the search grid; "
+            "restoring the query before continuing",
+            flush=True,
+        )
+        try:
+            self._goto(page, search_url)
+            return True
+        except ScraperCancelledError:
+            raise
+        except ScraperError as exc:
+            if self._is_google_verification_error(exc):
+                raise
+            print(
+                "scrape: could not restore Google search after result click: "
+                f"{exc}",
+                flush=True,
+            )
+            return False
+
     def _recover_google_original_urls_with_browser(
         self,
         page,
         page_html: str,
         *,
         max_clicks: int = 3,
+        search_url: str | None = None,
     ) -> list[str]:
         """Click rendered Google image cards and re-inspect the live browser DOM."""
         click_script = """(() => {
@@ -1375,7 +1576,15 @@ class PlaywrightImagesScraper(Scraper):
                         f"{len(candidates)} original image URL(s)",
                         flush=True,
                     )
+                    if search_url:
+                        self._restore_google_results_page(page, search_url)
                     return candidates
+                if search_url and self._restore_google_results_page(page, search_url):
+                    # Navigation cleared the DOM's probed markers. Use cached
+                    # pre-click thumbnails instead of clicking the first result again.
+                    break
+            except ScraperCancelledError:
+                raise
             except ScraperError as exc:
                 if self._is_google_verification_error(exc):
                     raise

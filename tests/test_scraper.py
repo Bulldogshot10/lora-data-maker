@@ -1593,6 +1593,172 @@ def test_playwright_google_rejects_verification_page():
         )
 
 
+def test_playwright_google_extracts_source_from_current_imgres_url():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    original = "https://cdn.example.com/from-imgres.jpg"
+
+    class FakePage:
+        _url = (
+            "https://www.google.com/imgres?imgurl="
+            "https%3A%2F%2Fcdn.example.com%2Ffrom-imgres.jpg"
+        )
+
+        def evaluate(self, expression):
+            if expression == "location.href":
+                return self._url
+            raise AssertionError("current imgres URL should be parsed before DOM access")
+
+    scraper = PlaywrightImagesScraper(provider="google")
+    assert scraper._extract_google_original_urls_from_page(
+        FakePage(),
+        "<html><body><img src='https://encrypted-tbn0.gstatic.com/thumb.jpg'></body></html>",
+    ) == [original]
+
+
+def test_playwright_google_caches_thumbnails_before_click_navigation(monkeypatch):
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    thumbnail = "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Acached"
+    calls = []
+
+    class FakePage:
+        network = None
+        _url = "https://www.google.com/search?q=portrait&udm=2"
+
+        def bring_to_front(self):
+            pass
+
+        def content(self):
+            return (
+                "<html><body><img src='" + thumbnail + "'></body></html>"
+                if self._url.startswith("https://www.google.com/search")
+                else "<html><body><img src='https://cdn.example.com/detail.jpg'></body></html>"
+            )
+
+        def evaluate(self, expression):
+            if expression == "location.href":
+                return self._url
+            if "window.scrollTo" in expression:
+                return None
+            return []
+
+        def wait_for_timeout(self, _timeout):
+            pass
+
+        def close(self):
+            pass
+
+    page = FakePage()
+
+    class FakeBrowser:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def new_page(self):
+            return page
+
+    scraper = PlaywrightImagesScraper(
+        provider="google", retries=0, delay=0, max_scrolls=1
+    )
+    monkeypatch.setattr(scraper, "_create_browser", lambda initial_url=None: FakeBrowser())
+    monkeypatch.setattr(scraper, "_goto", lambda _page, _url: None)
+    monkeypatch.setattr(scraper, "_wait_for_dynamic_results", lambda _page: 0)
+    monkeypatch.setattr(scraper, "_result_dom_count", lambda _page: 0)
+    monkeypatch.setattr(scraper, "_setup_page_network_controls", lambda _page: lambda: None)
+    monkeypatch.setattr(scraper, "_extract_google_original_urls_from_page", lambda _page, _html: [])
+
+    def cache_thumbnails(_page, _html):
+        calls.append(("thumbnail-cache", page._url))
+        assert page._url.startswith("https://www.google.com/search")
+        return [thumbnail]
+
+    def click_recovery(_page, _html, *, search_url):
+        calls.append(("browser-click", page._url))
+        page._url = "https://cdn.example.com/detail.jpg"
+        return []
+
+    monkeypatch.setattr(scraper, "_extract_google_thumbnail_urls_from_page", cache_thumbnails)
+    monkeypatch.setattr(scraper, "_recover_google_original_urls_with_browser", click_recovery)
+
+    results = list(scraper.search("portrait", limit=1))
+
+    assert [item.image_url for item in results] == [thumbnail]
+    assert calls[0][0] == "thumbnail-cache"
+    assert calls[1][0] == "browser-click"
+    assert results[0].metadata["google_thumbnail_fallback"] is True
+
+
+def test_playwright_google_browser_recovery_does_not_swallow_cancellation():
+    import pytest
+    from lora_data_maker.scrapers.base import ScraperCancelledError
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakePage:
+        def evaluate(self, _expression):
+            raise ScraperCancelledError("cancelled from browser interaction")
+
+    scraper = PlaywrightImagesScraper(provider="google", retries=0)
+    with pytest.raises(ScraperCancelledError, match="cancelled from browser interaction"):
+        scraper._recover_google_original_urls_with_browser(
+            FakePage(),
+            "<html></html>",
+        )
+
+
+def test_playwright_bing_extracts_structured_payload_when_iusc_class_changes():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = """
+    <ul class="dgControl_list">
+      <li>
+        <a class="image-card-new" m='{"murl":"https://cdn.example.com/julia.jpg","t":"Julia Patty portrait"}'></a>
+      </li>
+    </ul>
+    """
+    results = PlaywrightImagesScraper._extract_bing_results(body, "Julia Patty portrait")
+    assert [item["image_url"] for item in results] == ["https://cdn.example.com/julia.jpg"]
+
+
+def test_playwright_bing_uses_turl_when_original_murl_is_unavailable():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    thumbnail = "https://tse1.mm.bing.net/th?id=OIP.example"
+    body = (
+        '<ul class="dgControl_list"><li><a class="iusc" m=\''
+        '{"murl":"https://tse1.mm.bing.net/source.jpg",'
+        '"turl":"' + thumbnail + '","t":"Julia Patty portrait"}'
+        + "'></a></li></ul>"
+    )
+    results = PlaywrightImagesScraper._extract_bing_results(body, "Julia Patty portrait")
+    assert len(results) == 1
+    assert results[0]["image_url"] == thumbnail
+    assert results[0]["thumbnail_fallback"] is True
+
+
+def test_playwright_result_dom_count_falls_back_when_provider_css_changes():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakeLocator:
+        def count(self):
+            return 0
+
+    class FakePage:
+        def locator(self, _selector):
+            return FakeLocator()
+
+        def evaluate(self, expression):
+            assert expression.lstrip().startswith("(() =>")
+            assert expression.rstrip().endswith("()")
+            return 3
+
+    scraper = PlaywrightImagesScraper(provider="bing")
+    assert scraper._result_dom_count(FakePage()) == 3
+
+
 def test_playwright_bing_uses_playwright_termux_page_apis(monkeypatch):
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 

@@ -183,3 +183,37 @@ Inspection of the pinned `playwright-termux` Page.evaluate implementation shows 
 2. Run `python -m compileall -q src tests`.
 3. Run `python -m pytest -q tests/test_scraper.py -k "browser_click_recovery or thumbnail_fallback or live_dom_when_outer_html_has_none"`.
 4. Re-run the original query. Logs should now show whether browser click recovery runs and either how many live DOM/HTML thumbnails were extracted or an explicit "found no usable image URLs" diagnostic. If still empty, inspect a safe dump of current image src hostnames/alt/dimensions and result-link href patterns from the live DOM, excluding cookies/tokens.
+
+
+## Session checkpoint / handoff (2026-10-25, cross-provider Playwright audit)
+
+### User scope
+Audit both Playwright Google and Playwright Bing because repeated narrow fixes did not resolve scraping. Identify source/adapter conflicts and repeatable bugs, not just add more selectors/retries. Target branch: main; no new branch.
+
+### Audit findings and fixes in this commit
+- Google fallback order was unsafe: browser automation clicked a result before caching thumbnail URLs. If the click navigated to a preview/detail URL, the later fallback inspected the wrong DOM. The search loop now caches thumbnails before clicking, tries to recover the original URL, and only selects the cached thumbnails if original recovery fails.
+- Google original URL parsing now reads imgurl/mediaurl from the current /imgres URL. Browser-click recovery restores the search grid after navigation away so later scrolls do not remain on a detail page.
+- Google browser recovery previously caught ScraperCancelledError through its ScraperError handler. Cancellation is now re-raised.
+- Google and Bing dynamic result counts now have a DOM-based fallback when provider CSS classes stop matching.
+- Bing parsing accepts structured image payloads when the iusc class changes, and selects turl as a marked fallback when murl is unavailable or points to a Bing cache URL.
+- Added regression tests for Google /imgres extraction, thumbnail caching before clicks, cancellation propagation, Bing class changes, Bing turl fallback, and selector-independent DOM counts.
+- docs/TROUBLESHOOTING.md updated with the current recovery order.
+
+### Feature status
+**Implemented in source, needs verification:** Google source-first -> browser recovery -> cached thumbnail flow; Google search-page restoration after result clicks; cancellation propagation; selector-independent DOM counts; Bing structured payload parsing and turl fallback.
+
+**Needs verification:** New audit tests and live Termux/X11 runs of both Google and Bing. Prior CI showed the earlier Google fallback tests passed, but the full suite currently has two pre-existing clean/quality failures; current commit CI must be inspected after push.
+
+### CI baseline failure discovered
+- Core smoke for ab688ce6a2ed1663623fdf41eb40c94f4c59c7f8 failed at Run tests: 366 passed, 2 failed, 2 skipped, 1 deselected. Compileall passed.
+- The same two tests failed on the immediately preceding commit c2072848874d453d7c18588ea876eae892137891, so these failures predate this audit patch:
+  - tests/test_clean.py::test_clean_exact_duplicate_and_quality_filter: expected exact_duplicates=1, but CleanSummary reported exact_duplicates=0 and quality_rejected=4.
+  - tests/test_clean.py::test_clean_quality_rejection_happens_before_perceptual_dedup: expected the sharp fixture to be validated, but it was rejected.
+- These are outside Playwright scope and remain a separate red-CI blocker. Do not claim the whole suite is green.
+
+### Next steps
+1. Check the core smoke run for this commit and inspect its exact failure summary.
+2. Fix any new scraper-specific regression from its traceback; run tests/test_scraper.py focused and full.
+3. Re-run Playwright Google on Termux/X11. Logs should show pre-click thumbnail caching, browser click attempts, and either recovered originals or selected cached thumbnails.
+4. Run Playwright Bing with a normal murl and missing/invalid murl payloads; verify turl fallback downloads and metadata marks the fallback.
+5. Diagnose the two already-failing tests in tests/test_clean.py separately after scraper validation.
