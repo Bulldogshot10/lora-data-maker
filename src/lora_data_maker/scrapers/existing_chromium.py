@@ -94,6 +94,7 @@ class ExistingChromium:
         *,
         timeout: float,
         initial_url: str = DEFAULT_GOOGLE_IMAGES_URL,
+        headless: bool = False,
     ) -> "ExistingChromium":
         profile = os.environ.get("CHROME_USER_DATA_DIR", "").strip()
         if not profile:
@@ -127,6 +128,7 @@ class ExistingChromium:
             auto_launch=auto_launch,
             executable=executable,
             initial_url=initial_url,
+            headless=headless,
         )
 
     def connect(self) -> "ExistingChromium":
