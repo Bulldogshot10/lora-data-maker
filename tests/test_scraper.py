@@ -1902,7 +1902,8 @@ def test_existing_chromium_reports_missing_termux_x11_package(
     from lora_data_maker.scrapers.existing_chromium import ExistingChromium
 
     monkeypatch.delenv("DISPLAY", raising=False)
-    monkeypatch.setattr(existing_chromium_module.shutil, "which", lambda name: None)
+    from lora_data_maker.scrapers import existing_chromium as module
+    monkeypatch.setattr(module.shutil, "which", lambda name: None)
     browser = ExistingChromium(
         user_data_dir=tmp_path / "google-profile",
         auto_launch=True,
