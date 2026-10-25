@@ -37,6 +37,9 @@ class ExistingChromium:
         auto_launch: bool = False,
         executable: str | None = None,
         initial_url: str = DEFAULT_GOOGLE_IMAGES_URL,
+        proxy_server: str | None = None,
+        headless: bool = False,
+        shutdown_on_close: bool = False,
     ) -> None:
         profile = Path(user_data_dir).expanduser().resolve()
         if not str(user_data_dir).strip():
@@ -57,9 +60,33 @@ class ExistingChromium:
         self.auto_launch = auto_launch
         self.executable = executable
         self.initial_url = initial_url
+        self.proxy_server = self._validate_proxy_server(proxy_server) if proxy_server else None
+        self.headless = bool(headless)
+        self.shutdown_on_close = bool(shutdown_on_close)
         self.process = None
         self.cdp = None
         self._pages = []
+
+    @staticmethod
+    def _validate_proxy_server(value: str) -> str:
+        parsed = urlsplit(value)
+        try:
+            port = parsed.port
+        except ValueError as exc:
+            raise ValueError("proxy_server must be a local HTTP proxy URL") from exc
+        if (
+            parsed.scheme != "http"
+            or parsed.hostname not in {"127.0.0.1", "localhost"}
+            or port is None
+            or not 1 <= port <= 65535
+            or parsed.username is not None
+            or parsed.password is not None
+            or parsed.path not in {"", "/"}
+            or parsed.query
+            or parsed.fragment
+        ):
+            raise ValueError("proxy_server must be a local HTTP proxy URL")
+        return value.rstrip("/")
 
     @classmethod
     def from_environment(
@@ -377,8 +404,9 @@ class ExistingChromium:
         return display
 
     def _launch_browser(self) -> None:
-        """Start visible Termux Chromium with a persistent, local-only CDP profile."""
-        self._ensure_display()
+        """Start Termux Chromium with local CDP and optional per-session proxy."""
+        if not self.headless:
+            self._ensure_display()
 
         executable = (
             self.executable
@@ -411,6 +439,14 @@ class ExistingChromium:
             "--new-window",
             self.initial_url,
         ]
+        if self.headless:
+            args.append("--headless=new")
+        if self.proxy_server:
+            args.extend([
+                f"--proxy-server={self.proxy_server}",
+                "--disable-quic",
+                "--force-webrtc-ip-handling-policy=disable_non_proxied_udp",
+            ])
         try:
             self.process = subprocess.Popen(
                 args,
@@ -541,6 +577,20 @@ class ExistingChromium:
             except Exception:
                 pass
             self.cdp = None
+
+        if self.shutdown_on_close and self.process is not None:
+            process, self.process = self.process, None
+            try:
+                process.terminate()
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                try:
+                    process.kill()
+                    process.wait(timeout=2)
+                except Exception:
+                    pass
+            except OSError:
+                pass
 
     def __enter__(self) -> "ExistingChromium":
         return self.connect()
