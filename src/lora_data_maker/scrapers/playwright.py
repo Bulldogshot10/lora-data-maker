@@ -768,7 +768,7 @@ class PlaywrightImagesScraper(Scraper):
                         raw_urls.append(value)
                     elif key == "srcset":
                         raw_urls.extend(
-                            re.findall(r"https?://[^\\s,]+", value)
+                            re.findall(r"https?://[^\s,]+", value)
                         )
 
         try:
