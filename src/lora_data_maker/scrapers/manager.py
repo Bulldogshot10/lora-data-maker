@@ -21,9 +21,14 @@ from .playwright import PlaywrightImagesScraper
 
 
 def _is_google_original_unavailable(error: Exception) -> bool:
-    """Allow cached Google thumbnail fallback only for stale/blocked originals."""
-    message = str(error).lower()
-    return "403 client error" in message or "404 client error" in message
+    """Allow cached Google thumbnail fallback for blocked, stale, or HTML responses."""
+    message = str(error).casefold()
+    is_forbidden = "403" in message and "forbidden" in message
+    is_not_found = "404" in message and (
+        "not found" in message or "client error" in message
+    )
+    returned_non_image = "did not return an image" in message
+    return is_forbidden or is_not_found or returned_non_image
 
 
 class ScraperManager:
@@ -99,9 +104,13 @@ class ScraperManager:
                 + ", ".join(SCRAPER_BACKENDS)
             )
 
+        # Google originals are frequently hotlink-blocked or stale.
+        # Limit only this backend to two retries before trying its cached
+        # thumbnail; keep all other backends on the configured retry count.
+        download_retries = 2 if backend == "playwright-google" else retries
         self.downloader = ImageDownloader(
             timeout=timeout,
-            retries=retries,
+            retries=download_retries,
             delay=delay,
             user_agent=effective_user_agent,
         )
