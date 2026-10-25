@@ -226,6 +226,14 @@ class ScraperManager:
                             downloaded.path.unlink(missing_ok=True)
                         except OSError:
                             pass
+                        try:
+                            self.archive.discard(result.image_url)
+                        except ScraperError as exc:
+                            print(
+                                f"scrape: warning: could not unarchive rejected "
+                                f"image URL: {exc}",
+                                flush=True,
+                            )
                         message = f"scrape quality filter rejected image: {rejection_reason}"
                         failures.append((result, message))
                         print(
