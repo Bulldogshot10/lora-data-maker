@@ -61,6 +61,13 @@ def laplacian_variance(
             offset=0,
         )
     )
+    # Pillow's edge handling creates artificial gradients around the image
+    # boundary for a zero-sum Laplacian kernel. Exclude that one-pixel rim so
+    # a flat/blurred image is not mistakenly rated sharp from border artifacts.
+    if filtered.width > 2 and filtered.height > 2:
+        filtered = filtered.crop(
+            (1, 1, filtered.width - 1, filtered.height - 1)
+        )
     return float(ImageStat.Stat(filtered).var[0])
 
 
