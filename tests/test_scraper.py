@@ -2407,3 +2407,141 @@ def test_playwright_google_quality_gate_rejects_blurry_download(tmp_path):
     assert "too blurry" in failures[0][1]
     assert blurry_url not in manager.archive
     assert sharp_url in manager.archive
+
+
+def test_playwright_native_network_monitor_blocks_only_tracking_hosts():
+    from types import SimpleNamespace
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakeNetwork:
+        def __init__(self):
+            self.request_callback = None
+            self.response_callback = None
+            self.disabled = False
+
+        def on_request(self, callback):
+            self.request_callback = callback
+
+        def on_response(self, callback):
+            self.response_callback = callback
+
+        def off_request(self, callback):
+            assert callback is self.request_callback
+            self.request_callback = None
+
+        def off_response(self, callback):
+            assert callback is self.response_callback
+            self.response_callback = None
+
+        def disable(self):
+            self.disabled = True
+
+    class FakeSession:
+        def __init__(self):
+            self.calls = []
+
+        def send(self, method, params=None, timeout=None):
+            self.calls.append((method, params))
+            return {}
+
+    class FakePage:
+        def __init__(self):
+            self.network = FakeNetwork()
+            self.session = FakeSession()
+
+    scraper = PlaywrightImagesScraper(provider="google")
+    page = FakePage()
+    cleanup = scraper._setup_page_network_controls(page)
+
+    assert page.network.request_callback is not None
+    assert page.network.response_callback is not None
+    blocked_calls = [
+        params for method, params in page.session.calls
+        if method == "Network.setBlockedURLs"
+    ]
+    assert len(blocked_calls) == 1
+    blocked_urls = blocked_calls[0]["urls"]
+    assert "*://*.googletagmanager.com/*" in blocked_urls
+    assert "*://*.doubleclick.net/*" in blocked_urls
+    assert not any("gstatic.com" in url for url in blocked_urls)
+    assert not any("google.com/*" == url for url in blocked_urls)
+
+    page.network.request_callback(
+        SimpleNamespace(url="https://www.google.com/search?q=portrait")
+    )
+    page.network.response_callback(
+        SimpleNamespace(status=403, url="https://www.google.com/sorry/index")
+    )
+    cleanup()
+
+    assert page.network.disabled
+    assert page.network.request_callback is None
+    assert page.network.response_callback is None
+
+
+def test_playwright_bing_uses_a_persistent_authenticated_profile(monkeypatch, tmp_path):
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    monkeypatch.setenv("LORA_DATA_MAKER_HEADLESS", "1")
+    monkeypatch.setenv("CHROME_BING_DEBUG_PORT", "9235")
+    monkeypatch.delenv("CHROME_BING_USER_DATA_DIR", raising=False)
+    scraper = PlaywrightImagesScraper(provider="bing")
+    browser = scraper._create_browser(scraper._build_url("portrait"))
+
+    assert isinstance(browser, ExistingChromium)
+    assert browser.user_data_dir == (
+        tmp_path / "data" / "lora-data-maker" / "bing-profile"
+    ).resolve()
+    assert browser.port == 9235
+    assert browser.headless is True
+    assert browser.auto_launch is True
+    browser.close()
+
+
+def test_download_archive_discards_quality_rejected_url(tmp_path):
+    archive = DownloadArchive(tmp_path / "downloads.txt")
+    rejected = "https://example.com/blur.jpg"
+    retained = "https://example.com/sharp.jpg"
+    archive.add(rejected)
+    archive.add(retained)
+
+    assert archive.discard(rejected) is True
+    assert archive.discard(rejected) is False
+    assert rejected not in archive
+    assert retained in archive
+    assert (tmp_path / "downloads.txt").read_text(encoding="utf-8").splitlines() == [
+        retained
+    ]
+
+
+def test_playwright_locator_waits_for_dynamic_result_grid():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakeLocator:
+        def __init__(self, page, selector):
+            self.page = page
+            self.selector = selector
+
+        def count(self):
+            return self.page.count
+
+    class FakePage:
+        def __init__(self):
+            self.count = 0
+            self.waited = None
+
+        def locator(self, selector):
+            return FakeLocator(self, selector)
+
+        def wait_for_selector(self, selector, *, timeout, state):
+            self.waited = (selector, timeout, state)
+            self.count = 4
+
+    scraper = PlaywrightImagesScraper(provider="bing", timeout=5)
+    page = FakePage()
+
+    assert scraper._wait_for_dynamic_results(page) == 4
+    assert page.waited == ("a.iusc", 3000, "attached")
