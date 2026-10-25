@@ -1163,6 +1163,7 @@ def test_playwright_google_ignores_challenge_markers_inside_valid_results():
       <head>
         <script>
           var hiddenTemplate = "Before you continue to Google";
+          var staleRedirectPath = "/sorry/";
           var imageData = {"ou":"https://cdn.example.com/original.jpg"};
         </script>
       </head>
