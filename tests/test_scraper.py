@@ -294,7 +294,7 @@ def test_scraper_manager_skips_failed_downloads_and_continues(tmp_path):
 
 
 
-def test_playwright_google_manager_only_downloads_thumbnail_url(tmp_path):
+def test_playwright_google_manager_downloads_original_url_not_thumbnail(tmp_path):
     from lora_data_maker.scrapers.base import ImageResult, ScraperError
     from lora_data_maker.scrapers.manager import ScraperManager
 
@@ -311,12 +311,11 @@ def test_playwright_google_manager_only_downloads_thumbnail_url(tmp_path):
 
     class FakeScraper:
         def search(self, query, *, limit):
-            # Google extraction supplies the thumbnail as image_url. Any legacy
-            # original URL in metadata is deliberately ignored by the manager.
+            # Google source extraction emits the ou source image, never tu cache.
             yield ImageResult(
-                thumbnail,
+                original,
                 query=query,
-                metadata={"original_url": original},
+                metadata={"thumbnail_url": thumbnail},
             )
 
     manager.scraper = FakeScraper()
@@ -335,9 +334,8 @@ def test_playwright_google_manager_only_downloads_thumbnail_url(tmp_path):
 
     assert downloads == []
     assert len(failures) == 1
-    assert failures[0][0].image_url == thumbnail
-    assert calls == [(thumbnail, "https://www.google.com/")]
-
+    assert failures[0][0].image_url == original
+    assert calls == [(original, "https://www.google.com/")]
 
 
 def test_scraper_manager_preserves_downloads_when_search_fails(tmp_path):
@@ -1268,7 +1266,7 @@ def test_scraper_manager_forwards_safe_search_to_google_backends(tmp_path):
     assert google_manager.scraper.safe == "off"
 
 
-def test_playwright_google_extracts_only_google_thumbnails():
+def test_playwright_google_extracts_original_urls_and_never_thumbnail_cache():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
     body = r'''
@@ -1282,62 +1280,53 @@ def test_playwright_google_extracts_only_google_thumbnails():
         "tu":"https://lh3.googleusercontent.com/example-thumb"
       };
       var third = {
-        "ou":"https://cdn.example.com/not-used.webp",
+        "ou":"https://cdn.example.com/original-third.webp",
         "tu":"https://unrelated.example.com/not-a-google-thumb.jpg"
       };
-      var duplicate = {
+      var thumbnailOnly = {
         "tu":"https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample"
       };
     </script>
     '''
 
-    assert PlaywrightImagesScraper._extract_google_thumbnail_urls(body) == [
-        "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample",
-        "https://lh3.googleusercontent.com/example-thumb",
+    assert PlaywrightImagesScraper._extract_google_original_urls(body) == [
+        "https://cdn.example.com/original.jpg",
+        "https://images.example.net/portrait.png",
+        "https://cdn.example.com/original-third.webp",
     ]
 
 
-def test_playwright_google_extracts_thumbnails_from_rendered_img_markup():
+def test_playwright_google_does_not_fallback_to_rendered_thumbnails():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
-    # Rendered Google Images pages may expose thumbnails in img attributes
-    # without any serialized "tu" fields.
+    # DOM img/src attributes are display thumbnails, not source-image URLs.
+    # Without an ou source payload, reject these candidates instead of saving
+    # a potentially tiny preview as a training image.
     body = """
     <html><body>
       <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn%3Afirst">
-      <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn%3Afirst">
       <img data-src="https://lh3.googleusercontent.com/second-thumb">
-      <picture>
-        <source srcset="
-          https://encrypted-tbn1.gstatic.com/images?q=tbn%3Athird 1x,
-          https://encrypted-tbn2.gstatic.com/images?q=tbn%3Afourth 2x
-        ">
-      </picture>
-      <img src="https://cdn.example.com/original.jpg">
+      <img src="https://cdn.example.com/display-thumb.jpg">
     </body></html>
     """
 
-    assert PlaywrightImagesScraper._extract_google_thumbnail_urls(body) == [
-        "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Afirst",
-        "https://lh3.googleusercontent.com/second-thumb",
-        "https://encrypted-tbn1.gstatic.com/images?q=tbn%3Athird",
-        "https://encrypted-tbn2.gstatic.com/images?q=tbn%3Afourth",
-    ]
+    assert PlaywrightImagesScraper._extract_google_original_urls(body) == []
 
 
-def test_playwright_google_decodes_escaped_urls_and_rejects_non_google_hosts():
+def test_playwright_google_decodes_original_urls_and_rejects_thumbnail_hosts():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
     body = r'''
     <script>
-      {"tu":"https:\/\/encrypted-tbn0.gstatic.com\/images?q=tbn%3Aone\u0026x\u003d2"}
-      {"tu":"http:\/\/lh3.googleusercontent.com\/not-https"}
-      {"tu":"https:\/\/encrypted-tbn0.gstatic.com.evil.example\/spoof"}
+      {"ou":"https:\/\/cdn.example.com\/photo.jpg?x\u003d1\u0026y\u003d2"}
+      {"ou":"http:\/\/cdn.example.net\/legacy-photo.jpg"}
+      {"ou":"https:\/\/encrypted-tbn0.gstatic.com\/images?q=tbn%3Aone"}
     </script>
     '''
 
-    assert PlaywrightImagesScraper._extract_google_thumbnail_urls(body) == [
-        "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aone&x=2"
+    assert PlaywrightImagesScraper._extract_google_original_urls(body) == [
+        "https://cdn.example.com/photo.jpg?x=1&y=2",
+        "http://cdn.example.net/legacy-photo.jpg",
     ]
 
 
@@ -1362,8 +1351,8 @@ def test_playwright_google_ignores_challenge_markers_inside_valid_results():
     </html>
     '''
 
-    assert PlaywrightImagesScraper._extract_google_thumbnail_urls(body) == [
-        "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample"
+    assert PlaywrightImagesScraper._extract_google_original_urls(body) == [
+        "https://cdn.example.com/original.jpg"
     ]
 
 
@@ -1374,7 +1363,7 @@ def test_playwright_google_rejects_verification_page():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
     with pytest.raises(ScraperError, match="verification"):
-        PlaywrightImagesScraper._extract_google_thumbnail_urls(
+        PlaywrightImagesScraper._extract_google_original_urls(
             "Our systems have detected unusual traffic from your computer network"
         )
 
@@ -2268,7 +2257,7 @@ def test_playwright_google_waits_for_manual_verification_without_retry(monkeypat
     )
     result_html = """
     <html><head><script>
-      {"tu":"https://encrypted-tbn0.gstatic.com/images?q=tbn%3Averified"}
+      {"ou":"https://cdn.example.com/verified.jpg","tu":"https://encrypted-tbn0.gstatic.com/images?q=tbn%3Averified"}
     </script></head><body>Google Images results</body></html>
     """
 
@@ -2322,7 +2311,7 @@ def test_playwright_google_waits_for_manual_verification_without_retry(monkeypat
     results = list(scraper.search("julia portrait", limit=1))
 
     assert [item.image_url for item in results] == [
-        "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Averified"
+        "https://cdn.example.com/verified.jpg"
     ]
     assert len(browser_starts) == 1
     assert page.reads == 2
