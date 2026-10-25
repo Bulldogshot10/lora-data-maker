@@ -38,6 +38,32 @@ class DownloadArchive:
         self._urls.add(url)
         return True
 
+    def discard(self, url: str) -> bool:
+        """Remove a rejected URL from the persistent archive so it can be retried."""
+        if url not in self._urls:
+            return False
+
+        remaining = self._urls - {url}
+        temporary = self.path.with_name(self.path.name + ".tmp")
+        try:
+            with temporary.open("w", encoding="utf-8") as handle:
+                for item in sorted(remaining):
+                    handle.write(item)
+                    handle.write("\n")
+                handle.flush()
+            temporary.replace(self.path)
+        except OSError as exc:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+            raise ScraperError(
+                f"could not update download archive: {self.path}"
+            ) from exc
+
+        self._urls = remaining
+        return True
+
     @property
     def urls(self) -> frozenset[str]:
         return frozenset(self._urls)
