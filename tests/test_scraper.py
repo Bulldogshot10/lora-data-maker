@@ -293,11 +293,16 @@ def test_scraper_manager_skips_failed_downloads_and_continues(tmp_path):
 
 
 @pytest.mark.parametrize(
-    ("status_code", "reason"),
-    [(403, "Forbidden"), (404, "Not Found")],
+    "failure_message",
+    [
+        "download failed after 4 attempts: 403 Client Error: Forbidden for url: {url}",
+        "download failed after 4 attempts: 404 Not Found for url: {url}",
+        "URL did not return an image: {url} (content-type: text/html)",
+    ],
+    ids=["403-forbidden", "404-not-found", "non-image-html"],
 )
-def test_playwright_google_retries_original_403_or_404_with_thumbnail(
-    tmp_path, status_code, reason
+def test_playwright_google_falls_back_to_thumbnail_after_original_failure(
+    tmp_path, failure_message
 ):
     from pathlib import Path
 
@@ -312,7 +317,9 @@ def test_playwright_google_retries_original_403_or_404_with_thumbnail(
         output_dir=tmp_path / "raw",
         cache_dir=tmp_path / "cache",
         delay=0,
+        retries=5,
     )
+    assert manager.downloader.retries == 2
 
     class FakeScraper:
         def search(self, query, *, limit):
@@ -332,10 +339,7 @@ def test_playwright_google_retries_original_403_or_404_with_thumbnail(
         ):
             calls.append((url, referer))
             if url == original:
-                raise ScraperError(
-                    "download failed after 4 attempts: "
-                    f"{status_code} Client Error: {reason} for url: " + original
-                )
+                raise ScraperError(failure_message.format(url=original))
             return DownloadResult(
                 url=url,
                 path=Path(output_dir) / f"{index:06d}.jpg",
