@@ -324,3 +324,33 @@ Google Images can embed original image URLs inside `AF_initDataCallback` script 
 3. Test a Google custom date range separately.
 4. If tuple count is zero, capture a bounded safe diagnostic: `AF_initDataCallback` occurrence count, dimensional URL tuple count before host filtering, and a few source hostnames/dimension values. Do not dump full page content, cookies, tokens, or logged-in session state.
 5. If original URLs are extracted but saved image dimensions are still thumbnail-sized, trace the original URL and downloaded image dimensions through downloader/manager independently.
+
+
+## Session checkpoint / handoff (2026-10-25, authenticated Playwright website capture)
+
+### User request and scope
+On the existing main branch, add a Playwright start mode that opens a visible browser without scraping so the user can sign into a website, then scrape images from authenticated pages with sequential scrolling and optional CSS-selector scoping, reusing the existing dataset crop/resize pipeline. Do not create/switch branches or open a PR.
+
+### Changes in this commit
+- Added src/lora_data_maker/scrapers/site.py: dedicated persistent website profile and CDP port, manual login-browser startup helper, HTTP(S) page URL validation, rendered-image DOM extraction, lazy-load scrolling, optional CSS selector, per-page metadata, and in-memory CDP cookie capture for authenticated image downloads.
+- Added the playwright-site backend to the built-in scraper registry and manager. Browser cookies are copied into the per-run requests cookie jar only while downloading; no cookie data is written to files, config, manifest, logs, or the repository.
+- Added CLI command lora-data-maker playwright-browser --url URL and --selector CSS for scrape playwright-site URL.
+- Added tests/test_playwright_site.py and updated README/CLI/Termux instructions.
+- Crop/resize remains the existing processing stage and uses project configuration; the website scrape writes files into raw/.
+
+### Feature status
+Implemented in source, needs verification: dedicated persistent browser profile; no-scrape browser launch; generic HTTP(S) page scraper; lazy-scroll DOM capture; CSS-selector scoping; in-memory browser-cookie transfer for protected image downloads.
+
+Needs verification: compileall, focused tests, full core test suite, live Termux:X11 login and protected-image download, and confirmation that the target site exposes usable image elements/original URLs. The code has not yet been run on the user's device in this session.
+
+Not implemented: automatic interactive natural-language agent actions on arbitrary websites; current controls are URL + CSS selector, and image cropping uses the existing dataset processing configuration.
+
+### Validation
+- Read root AGENTS.md, agent.md, goal.md, relevant scraper/CLI/adapter source, tests, README, CLI docs, and Termux install docs before implementation.
+- Automated tests were added but have not been executed locally in this connector-only environment. No CI or live-device pass is claimed.
+
+### Next steps
+1. Pull the updated main branch and run python -m compileall -q src tests.
+2. Run python -m pytest -q tests/test_playwright_site.py tests/test_scraper.py.
+3. Test lora-data-maker playwright-browser --url https://example.com/login in Termux:X11, complete login, then run lora-data-maker scrape playwright-site https://example.com/gallery --count 20.
+4. Check that protected image downloads succeed with session cookies and that validate/process apply the configured crop/resize. If image elements are not selected, inspect the page and retry with an accurate CSS --selector.

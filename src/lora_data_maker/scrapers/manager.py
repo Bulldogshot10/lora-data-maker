@@ -18,6 +18,7 @@ from .duckduckgo import DuckDuckGoImagesScraper
 from .downloader import DownloadResult, ImageDownloader
 from .google import DEFAULT_USER_AGENT, GoogleImagesScraper
 from .playwright import PlaywrightImagesScraper
+from .site import PlaywrightSiteScraper
 from ..processing.quality import evaluate_quality
 
 
@@ -40,6 +41,7 @@ class ScraperManager:
         min_image_width: int = 384,
         min_image_height: int = 384,
         min_blur_score: float = 100.0,
+        selector: str | None = None,
     ) -> None:
         if not isinstance(safe_search, bool):
             raise ScraperError("safe_search must be a boolean")
@@ -53,6 +55,10 @@ class ScraperManager:
         self.min_image_width = int(min_image_width)
         self.min_image_height = int(min_image_height)
         self.min_blur_score = float(min_blur_score)
+        if selector is not None and not selector.strip():
+            raise ScraperError("selector must not be empty")
+        if selector and backend != "playwright-site":
+            raise ScraperError("--selector is supported only by the playwright-site backend")
         if proxy_url and backend not in {"playwright-bing", "playwright-google"}:
             raise ScraperError("WireGuard proxy is supported only by Playwright backends")
         self.output_dir = Path(output_dir).expanduser().resolve()
@@ -113,6 +119,14 @@ class ScraperManager:
                 date_to=date_to,
                 proxy_url=proxy_url,
                 safe_search=safe_search,
+            )
+        elif backend == "playwright-site":
+            self.scraper = PlaywrightSiteScraper(
+                timeout=timeout,
+                retries=retries,
+                delay=delay,
+                max_scrolls=max_scrolls,
+                selector=selector,
             )
         elif backend == "direct":
             self.scraper = DirectURLScraper()
@@ -175,6 +189,8 @@ class ScraperManager:
         try:
             candidates = self.scraper.search(query, limit=search_limit)
             for result in candidates:
+                if self.backend == "playwright-site":
+                    self._sync_site_cookies()
                 if cancel_event is not None and cancel_event.is_set():
                     self.cancelled = True
                     break
@@ -192,7 +208,8 @@ class ScraperManager:
                         **(
                             {"referer": "https://www.google.com/"}
                             if self.backend == "playwright-google"
-                            else {}
+                            else ({"referer": result.page_url or query}
+                                  if self.backend == "playwright-site" else {})
                         ),
                     )
                 except ScraperCancelledError:
@@ -299,6 +316,26 @@ class ScraperManager:
                     f"scrape finished: downloaded {len(downloads)}/{count}",
                 )
         return downloads, failures
+
+    def _sync_site_cookies(self) -> None:
+        """Copy browser cookies into the per-run HTTP jar without persisting them."""
+        for cookie in getattr(self.scraper, "cookies", ()):
+            if not isinstance(cookie, dict):
+                continue
+            name, value = cookie.get("name"), cookie.get("value")
+            if not isinstance(name, str) or not name or not isinstance(value, str):
+                continue
+            options: dict[str, object] = {
+                "path": cookie.get("path") if isinstance(cookie.get("path"), str) else "/",
+                "secure": bool(cookie.get("secure", False)),
+            }
+            domain = cookie.get("domain")
+            if isinstance(domain, str) and domain:
+                options["domain"] = domain
+            expires = cookie.get("expires")
+            if isinstance(expires, (int, float)) and expires > 0:
+                options["expires"] = int(expires)
+            self.downloader.session.cookies.set(name, value, **options)
 
     def _next_index(self) -> int:
         highest = 0

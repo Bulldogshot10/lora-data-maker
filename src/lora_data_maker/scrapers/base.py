@@ -27,6 +27,7 @@ SCRAPER_BACKENDS = (
     "chromium",
     "playwright-bing",
     "playwright-google",
+    "playwright-site",
     "direct",
 )
 

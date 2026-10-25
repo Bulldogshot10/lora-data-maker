@@ -121,6 +121,25 @@ def build_parser() -> argparse.ArgumentParser:
         default=".",
         help="project directory (default: current directory)",
     )
+    scrape_parser.add_argument(
+        "--selector",
+        default=None,
+        help="CSS selector for image elements (only for playwright-site; default: img)",
+    )
+
+    browser_parser = subparsers.add_parser(
+        "playwright-browser",
+        help="launch a persistent visible Playwright browser for manual website login",
+    )
+    browser_parser.add_argument(
+        "--url",
+        default="https://www.google.com/",
+        help="initial page to open in the dedicated website profile",
+    )
+    browser_parser.add_argument(
+        "--timeout", type=float, default=5.0,
+        help="CDP connect timeout in seconds (default: 5)",
+    )
 
     validate_parser = subparsers.add_parser(
         "validate", help="validate image files in the project's raw directory"
@@ -990,6 +1009,18 @@ def command_pack(args: argparse.Namespace) -> int:
 
 
 
+def command_playwright_browser(args: argparse.Namespace) -> int:
+    from .scrapers.site import open_login_browser, site_debug_port
+
+    profile = open_login_browser(args.url, timeout=args.timeout)
+    print("Playwright website browser started; no scraping was run.")
+    print(f"profile: {profile}")
+    print(f"CDP: 127.0.0.1:{site_debug_port()}")
+    print("Log in in the visible Chromium window, then scrape a page with:")
+    print("  lora-data-maker scrape playwright-site https://example.com/gallery --count 100")
+    return 0
+
+
 def command_scrape(args: argparse.Namespace) -> int:
     root = find_project_root(args.path)
     config = load_config(root / "config.toml")
@@ -1052,6 +1083,7 @@ def command_scrape(args: argparse.Namespace) -> int:
         date_from=date_from,
         date_to=date_to,
         safe_search=safe_search,
+        selector=getattr(args, "selector", None),
     )
     known_urls = {
         record.source_url
@@ -1158,6 +1190,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             return command_info(args)
         if args.command == "scrape":
             return command_scrape(args)
+        if args.command == "playwright-browser":
+            return command_playwright_browser(args)
         if args.command == "validate":
             return command_validate(args)
         if args.command == "reconcile":

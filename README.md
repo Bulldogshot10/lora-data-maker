@@ -311,6 +311,23 @@ lora-data-maker scrape playwright-google "julia portrait" --date-from 2019-04-01
 
 Bing and Playwright Google date filters are also available in the WebUI as **any date**, **specific year**, or **custom range**. The date filter controls appear when either Playwright backend is selected. Google uses `after:`/`before:` query operators, which filter indexed page dates and do not guarantee the date the original photo was taken. The scraper is add-only and uses the manifest to avoid re-downloading known source URLs. A running WebUI scrape can be cancelled, and downloads completed before cancellation are preserved.
 
+## Authenticated website capture with Playwright
+
+You can launch Playwright-Termux without starting a scrape, sign in to a site manually, then capture image elements from a page using that persistent session:
+
+~~~bash
+# Launch a visible browser for manual login (no scraping happens here).
+lora-data-maker playwright-browser --url https://example.com/login
+
+# After login, capture image elements from a gallery/page.
+lora-data-maker scrape playwright-site https://example.com/gallery --count 100
+
+# Scope capture to the page's gallery image elements if needed.
+lora-data-maker scrape playwright-site https://example.com/gallery --selector "article.gallery img" --count 100
+~~~
+
+The website browser has its own persistent profile at \`~/.local/share/lora-data-maker/playwright-site-profile\` by default, using loopback CDP port \`9224\`. Override with \`CHROME_SITE_USER_DATA_DIR\` or \`CHROME_SITE_DEBUG_PORT\`. Treat the profile as sensitive login state. The session cookies are used in-memory for authenticated image downloads and are never written to project config, manifest, or repository. Captures land in \`raw/\`; continue through \`validate\`, \`clean\`, and \`process\` (or the relevant \`build\` stages) to apply the dataset crop/resize and optional face-crop configuration.
+
 ## Dataset layout
 
 A project created with `init` contains:

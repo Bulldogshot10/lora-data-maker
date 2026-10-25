@@ -39,12 +39,37 @@ lora-data-maker info [path]
 Download images through a built-in backend.
 
 ~~~bash
-lora-data-maker scrape {google,duckduckgo,chromium,playwright-bing,playwright-google,direct} [query] [--count COUNT] [--year YEAR | --date-from YYYY-MM-DD --date-to YYYY-MM-DD] [--path PATH]
+lora-data-maker scrape {google,duckduckgo,chromium,playwright-bing,playwright-google,playwright-site,direct} [query-or-url] [--count COUNT] [--year YEAR | --date-from YYYY-MM-DD --date-to YYYY-MM-DD] [--selector CSS] [--path PATH]
 ~~~
 
 Google uses query text with the legacy HTTP parser. DuckDuckGo uses query text and its image JSON endpoint. Chromium mode uses DuckDuckGo Images first, then local headless Chromium for Bing Images. The Playwright backends use the Termux-native Chromium CDP adapter directly for Bing or Google Images. Direct uses a text file containing source URLs. `--year` and `--date-from/--date-to` apply to `playwright-bing` and `playwright-google`; omit both to search any date. Google applies `after:` and `before:` operators to the query, which filter indexed page dates rather than EXIF/photo-capture dates.
 
+For a website that requires login, first launch the dedicated persistent visible browser with:
+
+~~~bash
+lora-data-maker playwright-browser --url https://example.com/login
+~~~
+
+Sign in manually, then capture images from an authenticated page:
+
+~~~bash
+lora-data-maker scrape playwright-site https://example.com/gallery --count 100
+lora-data-maker scrape playwright-site https://example.com/gallery --selector "article.gallery img" --count 100
+~~~
+
+The website browser has its own profile, separate from Google/Bing. It walks rendered image elements and lazy-loads by scrolling. Browser cookies are copied only to the current process HTTP cookie jar for protected image downloads; they are not written to the dataset or repository. The selector defaults to \`img\`. Captures land in \`raw/\`; use the existing validate/clean/process stages or the normal build pipeline to apply configured crop/resize and optional face crop.
+
 Scrape is add-only. Known manifest source URLs and archived URLs are skipped.
+
+## playwright-browser
+
+Start a visible persistent Playwright-Termux Chromium session without starting a scrape. The browser process stays open after the command returns so you can sign in or complete a site's manual checks:
+
+~~~bash
+lora-data-maker playwright-browser --url https://example.com/login
+~~~
+
+The dedicated website profile defaults to \`~/.local/share/lora-data-maker/playwright-site-profile\` and CDP port \`9224\`. Override them with \`CHROME_SITE_USER_DATA_DIR\` and \`CHROME_SITE_DEBUG_PORT\`. Keep the CDP port on loopback and treat the profile as sensitive login state.
 
 ## reconcile
 
