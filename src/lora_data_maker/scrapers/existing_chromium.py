@@ -191,7 +191,7 @@ class ExistingChromium:
                 raw = (entry / "cmdline").read_bytes()
             except OSError:
                 continue
-            argv = [part.decode("utf-8", errors="replace") for part in raw.split(b"\\0") if part]
+            argv = [part.decode("utf-8", errors="replace") for part in raw.split(b"\0") if part]
             if not argv or "chrom" not in Path(argv[0]).name.lower():
                 continue
             # Only the parent browser owns the debugging listener. Never
