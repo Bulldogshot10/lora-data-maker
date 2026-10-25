@@ -31,9 +31,11 @@ For direct scraping, provide a text file with one URL per line.
 
 Zero new downloads during an incremental run can simply mean every returned source URL is already known.
 
-## Playwright Google downloads thumbnails only
+## Playwright Google source images and quality filtering
 
-The `playwright-google` backend downloads the cached thumbnail URLs embedded in Google Images results (`tu`), not source-page/original image URLs (`ou`). This avoids source hosts' hotlink protections and stale original links. Google thumbnails are often lower resolution than the originals, and some thumbnails may still be unavailable or blocked.
+The `playwright-google` backend extracts the source-image URL (`ou`) from Google Images results and does not fall back to cached thumbnails (`tu`) or rendered `img/src` previews. If a source host blocks direct downloads, that candidate is skipped rather than saving a low-resolution preview.
+
+Before a Playwright Google image enters the dataset, the scraper checks that both dimensions are at least 384 pixels and that its Laplacian-variance blur score is at least 100 (measured after downsampling to 256 pixels). This is a heuristic quality gate: very soft-focus images can be rejected, and sharp-looking images with large simple edges can still pass. The Google backend checks up to 10 candidates per requested image to compensate for rejected or inaccessible sources. Other backends keep their existing selection behavior.
 
 ## Scraper source is blocked or returns no candidates
 
