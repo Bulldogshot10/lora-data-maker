@@ -84,18 +84,24 @@ Test Google:
 lora-data-maker scrape playwright-google "julia russian woman" --count 10
 ~~~
 
-When you tap **scrape images** in the WebUI (or run the Google CLI scraper), the Google backend opens the Termux:X11 Android app, starts its display, and launches a **visible Termux Chromium window** automatically if the debugging endpoint is not already running. Both the Termux:X11 Android app and the `termux-x11-nightly` package must be installed. It uses a persistent profile at `$XDG_DATA_HOME/lora-data-maker/google-profile` (normally `~/.local/share/lora-data-maker/google-profile`). Sign into Google in that window once; the profile keeps the local browser session for future searches. You do not need to put a Google password, cookie, or token in the project config.
+When you tap **scrape images** in the WebUI (or run a Playwright CLI scraper), the browser opens a persistent Chromium profile. On Termux, a visible window is used by default so you can sign in or finish a consent/verification challenge yourself. The browser profile keeps cookies and session state between runs; no Google password or cookie needs to be placed in the project config.
 
-If you already have a dedicated Chromium profile, set `CHROME_USER_DATA_DIR` to that profile before running the scraper. Set `CHROME_DEBUG_PORT` to change the local CDP port (default 9222), or `CHROME_AUTO_LAUNCH=0` to require an already-running browser. The backend only connects to a loopback CDP endpoint.
+Default profiles and loopback CDP ports are:
+- Google: $XDG_DATA_HOME/lora-data-maker/google-profile (normally ~/.local/share/lora-data-maker/google-profile), port 9222
+- Bing: $XDG_DATA_HOME/lora-data-maker/bing-profile, port 9233
+- WireGuard: separate persistent profiles named playwright-google-wireguard-profile or playwright-bing-wireguard-profile, so cookies are retained between proxied runs without reusing the non-proxy browser profile
 
-**Security:** CDP is a privileged browser-control endpoint. Use a dedicated Chromium profile for scraping, keep `--remote-debugging-address=127.0.0.1`, and never expose port 9222 on a LAN, through a tunnel, or via a reverse proxy. Treat the profile directory as sensitive because it contains login cookies and session state. The WebUI itself has no user login; leave it on localhost. See the repository's [Security Policy](../SECURITY.md).
+For a custom Google profile, set CHROME_USER_DATA_DIR; for Bing use CHROME_BING_USER_DATA_DIR. The CDP ports can be changed with CHROME_DEBUG_PORT and CHROME_BING_DEBUG_PORT. CHROME_AUTO_LAUNCH=0 requires an already-running compatible browser. Set LORA_DATA_MAKER_HEADLESS=1 to force headless mode; manual challenge completion needs a visible window, so keep the default headed mode when using Google/WireGuard verification. On ordinary Linux without a display, headless mode is selected automatically unless DISPLAY is set.
+
+The scraper uses the adapter's locator API to wait for dynamically rendered result cards and newly loaded cards after scrolling. Its network monitor logs significant browser-side HTTP errors and blocks common analytics/tracker endpoints only; it does not block page scripts, image downloads, or consent/verification resources. Google verification challenges pause the current job until you finish them in the visible Chromium window; the scraper then resumes the same search session. The WebUI's **cancel** action can stop a job that is waiting.
+
+**Security:** CDP is a privileged browser-control endpoint. Keep the default CDP listeners on loopback (127.0.0.1) and never expose ports 9222/9233 on a LAN, through a tunnel, or via a reverse proxy. Treat the profile directories as sensitive because they contain login cookies and session state. The WebUI itself has no user login; leave it on localhost. See the repository's [Security Policy](../SECURITY.md).
 
 ~~~bash
-# First use: this starts Termux:X11 and opens the visible Chromium window.
+# First use opens a visible persistent Chromium session on Termux:X11.
 lora-data-maker scrape playwright-google "julia russian woman" --count 10
+lora-data-maker scrape playwright-bing "julia russian woman" --count 10
 ~~~
-
-Sign into Google in the visible Chromium window. The scraper opens its search in another tab and reuses the same local profile on later runs. If Google blocks the first search while you are signing in, finish login and rerun the command. The profile and its cookies stay under your Termux home, outside the repository.
 
 To start the WebUI from the same X11-enabled Termux session, run:
 
@@ -103,7 +109,7 @@ To start the WebUI from the same X11-enabled Termux session, run:
 ./mk.sh
 ~~~
 
-Select `playwright-google` in the WebUI and tap **scrape images**. The WebUI starts Termux:X11 and opens the browser automatically when needed. The browser stays open after a scrape so the signed-in session can be reused. If Android prevents the app from being opened automatically, bring Termux:X11 to the foreground once and retry. Check `curl -s http://127.0.0.1:9222/json/version` when troubleshooting. Google verification/consent pages can still block scraping; this backend reuses your local signed-in session but does not automate or bypass verification challenges.
+If Android prevents Termux:X11 from opening automatically, bring the Termux:X11 app to the foreground once and retry. To inspect the local Google CDP endpoint, run curl -s http://127.0.0.1:9222/json/version; Bing defaults to port 9233. Sign into the provider in its own profile once. A WireGuard-enabled run uses a separate profile, so sign into that proxied profile separately if the provider requires authentication.
 
 ## Quality/text-filter runtime
 
