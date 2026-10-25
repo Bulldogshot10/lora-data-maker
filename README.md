@@ -172,12 +172,17 @@ python -m pip install ".[playwright]"
 
 The Playwright backend uses the native Termux Chromium package through the
 Termux-specific Playwright/CDP adapter. It does not run `playwright install`
-or download a glibc browser bundle. For authenticated Google searches, the
-backend can attach to an already-running Chromium using `CHROME_USER_DATA_DIR`
-and the local CDP port (9222 by default); see [Termux installation notes](docs/INSTALL_TERMUX.md).
-A CDP endpoint grants powerful control over the browser and its signed-in accounts.
-Use a dedicated profile, bind debugging to `127.0.0.1`, and never expose the port
-through a LAN address, tunnel, or reverse proxy. Read [SECURITY.md](SECURITY.md).
+or download a glibc browser bundle. The Google backend launches a visible
+Chromium window through Termux:X11 and reuses a persistent local profile at
+`$XDG_DATA_HOME/lora-data-maker/google-profile` (normally
+`~/.local/share/lora-data-maker/google-profile`). Sign in to Google in that
+window once; the browser session is reused for later searches. No Google
+password, cookie, or token is stored in the repository or dataset config.
+Set `CHROME_USER_DATA_DIR` to choose a dedicated profile, or
+`CHROME_AUTO_LAUNCH=0` to attach only to an already-running browser. The CDP
+endpoint binds to `127.0.0.1`; never expose its port through a LAN, tunnel,
+or reverse proxy. Read [SECURITY.md](SECURITY.md) and
+[Termux installation notes](docs/INSTALL_TERMUX.md).
 
 For tagging support:
 

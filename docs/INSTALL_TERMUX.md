@@ -71,26 +71,30 @@ Test Google:
 lora-data-maker scrape playwright-google "julia russian woman" --count 10
 ~~~
 
-By default the Google backend starts a temporary browser session. To search with a Google account already signed into Chromium, start Chromium yourself with remote debugging, then run the WebUI or CLI with `CHROME_USER_DATA_DIR` set to the same profile directory.
+The Google backend now launches a **visible Termux Chromium window** automatically when its local debugging endpoint is not already running. It uses a persistent profile at `$XDG_DATA_HOME/lora-data-maker/google-profile` (normally `~/.local/share/lora-data-maker/google-profile`). Sign into Google in that window once; the profile keeps the local browser session for future searches. You do not need to put a Google password, cookie, or token in the project config.
+
+If you already have a dedicated Chromium profile, set `CHROME_USER_DATA_DIR` to that profile before running the scraper. Set `CHROME_DEBUG_PORT` to change the local CDP port (default 9222), or `CHROME_AUTO_LAUNCH=0` to require an already-running browser. The backend only connects to a loopback CDP endpoint.
 
 **Security:** CDP is a privileged browser-control endpoint. Use a dedicated Chromium profile for scraping, keep `--remote-debugging-address=127.0.0.1`, and never expose port 9222 on a LAN, through a tunnel, or via a reverse proxy. Treat the profile directory as sensitive because it contains login cookies and session state. The WebUI itself has no user login; leave it on localhost. See the repository's [Security Policy](../SECURITY.md).
 
 ~~~bash
-# Open the Termux:X11 app, then start the X11 server/browser:
+# Open the Termux:X11 Android app, then start its display in Termux:
 termux-x11 :1 &
 export DISPLAY=:1
-export CHROME_USER_DATA_DIR="$HOME/.local/share/lora-data-maker/google-profile"
-chromium-browser --user-data-dir="$CHROME_USER_DATA_DIR" --remote-debugging-port=9222 --remote-debugging-address=127.0.0.1
+
+# This opens the visible Chromium window automatically on first use.
+lora-data-maker scrape playwright-google "julia russian woman" --count 10
 ~~~
 
-Sign into Google in that Chromium window. In a second Termux session, set the same profile path and start the WebUI:
+Sign into Google in the visible Chromium window. The scraper opens its search in another tab and reuses the same local profile on later runs. If Google blocks the first search while you are signing in, finish login and rerun the command. The profile and its cookies stay under your Termux home, outside the repository.
+
+To start the WebUI from the same X11-enabled Termux session, run:
 
 ~~~bash
-export CHROME_USER_DATA_DIR="$HOME/.local/share/lora-data-maker/google-profile"
 ./mk.sh
 ~~~
 
-Select `playwright-google` in the WebUI. The backend attaches to the local CDP session rather than launching a fresh anonymous browser. Check that `curl -s http://127.0.0.1:9222/json/version` returns JSON when troubleshooting. Google verification/consent pages can still block scraping; the authenticated session only reuses the profile you opened.
+Select `playwright-google` in the WebUI. The browser stays open after a scrape so the signed-in session can be reused. Check `curl -s http://127.0.0.1:9222/json/version` when troubleshooting. Google verification/consent pages can still block scraping; this backend reuses your local signed-in session but does not automate or bypass verification challenges.
 
 ## Quality/text-filter runtime
 

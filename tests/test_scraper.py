@@ -1445,32 +1445,39 @@ def test_existing_chromium_discovers_local_cdp_endpoint(monkeypatch, tmp_path):
     profile.mkdir()
 
     class FakeResponse:
-        def __enter__(self):
-            return self
+        status = 200
 
-        def __exit__(self, exc_type, exc, tb):
-            return None
-
-        def read(self):
+        def read(self, limit):
+            assert limit == 1024 * 1024 + 1
             return b'{"webSocketDebuggerUrl":"ws://127.0.0.1:9222/devtools/browser/test"}'
 
-    def fake_urlopen(url, timeout):
-        assert url == "http://127.0.0.1:9222/json/version"
-        assert 0 < timeout <= 5.0
-        return FakeResponse()
+    class FakeConnection:
+        def __init__(self, host, port, timeout):
+            assert host == "127.0.0.1"
+            assert port == 9222
+            assert 0 < timeout <= 5.0
 
-    monkeypatch.setattr(module, "urlopen", fake_urlopen)
+        def request(self, method, path, headers=None):
+            assert method == "GET"
+            assert path == "/json/version"
+            assert headers == {"Connection": "close"}
+
+        def getresponse(self):
+            return FakeResponse()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(module, "HTTPConnection", FakeConnection)
 
     browser = ExistingChromium(
         user_data_dir=profile,
         port=9222,
         timeout=20,
     )
-    assert (
-        browser._discover_websocket_url()
-        == "ws://127.0.0.1:9222/devtools/browser/test"
+    assert browser._discover_websocket_url() == (
+        "ws://127.0.0.1:9222/devtools/browser/test"
     )
-
 
 def test_existing_chromium_rejects_remote_websocket_url(monkeypatch, tmp_path):
     import pytest
@@ -1482,21 +1489,32 @@ def test_existing_chromium_rejects_remote_websocket_url(monkeypatch, tmp_path):
     profile.mkdir()
 
     class FakeResponse:
-        def __enter__(self):
-            return self
+        status = 200
 
-        def __exit__(self, exc_type, exc, tb):
-            return None
-
-        def read(self):
+        def read(self, limit):
+            assert limit == 1024 * 1024 + 1
             return b'{"webSocketDebuggerUrl":"wss://attacker.example:9222/devtools/browser/test"}'
 
-    monkeypatch.setattr(module, "urlopen", lambda url, timeout: FakeResponse())
+    class FakeConnection:
+        def __init__(self, host, port, timeout):
+            assert host == "127.0.0.1"
+            assert port == 9222
+
+        def request(self, method, path, headers=None):
+            assert method == "GET"
+            assert path == "/json/version"
+
+        def getresponse(self):
+            return FakeResponse()
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(module, "HTTPConnection", FakeConnection)
     browser = ExistingChromium(user_data_dir=profile, port=9222, timeout=3)
 
     with pytest.raises(module.ScraperError, match="non-local"):
         browser._discover_websocket_url()
-
 
 def test_existing_chromium_rejects_non_local_cdp_host(tmp_path):
     import pytest
@@ -1764,3 +1782,97 @@ def test_playwright_bing_readiness_reports_verification_page():
 
     with pytest.raises(ScraperError, match="verification/block page"):
         scraper._goto(FakePage(), scraper._build_url("julia"))
+
+
+
+def test_existing_chromium_defaults_to_private_persistent_google_profile(
+    monkeypatch, tmp_path
+):
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    monkeypatch.delenv("CHROME_USER_DATA_DIR", raising=False)
+    monkeypatch.delenv("CHROME_AUTO_LAUNCH", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+
+    browser = ExistingChromium.from_environment(timeout=20)
+
+    assert browser.user_data_dir == (
+        tmp_path / "data" / "lora-data-maker" / "google-profile"
+    ).resolve()
+    assert browser.auto_launch is True
+
+
+def test_existing_chromium_launches_visible_browser_with_local_cdp(
+    monkeypatch, tmp_path
+):
+    from lora_data_maker.scrapers import existing_chromium as module
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    monkeypatch.setenv("DISPLAY", ":1")
+    profile = tmp_path / "private-google-profile"
+    calls = {}
+
+    class FakeProcess:
+        def poll(self):
+            return None
+
+    def fake_popen(args, **kwargs):
+        calls["args"] = args
+        calls["kwargs"] = kwargs
+        return FakeProcess()
+
+    monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+    browser = ExistingChromium(
+        user_data_dir=profile,
+        port=9222,
+        auto_launch=True,
+        executable="/mock/chromium-browser",
+    )
+
+    browser._launch_browser()
+
+    args = calls["args"]
+    assert args[0] == "/mock/chromium-browser"
+    assert f"--user-data-dir={profile.resolve()}" in args
+    assert "--remote-debugging-port=9222" in args
+    assert "--remote-debugging-address=127.0.0.1" in args
+    assert "https://www.google.com/" in args
+    assert calls["kwargs"]["stdout"] is module.subprocess.DEVNULL
+    assert calls["kwargs"]["stderr"] is module.subprocess.DEVNULL
+    assert profile.is_dir()
+
+
+def test_existing_chromium_requires_termux_x11_when_launching(
+    monkeypatch, tmp_path
+):
+    import pytest
+
+    from lora_data_maker.scrapers.base import ScraperError
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+
+    monkeypatch.delenv("DISPLAY", raising=False)
+    browser = ExistingChromium(
+        user_data_dir=tmp_path / "google-profile",
+        auto_launch=True,
+        executable="/mock/chromium-browser",
+    )
+
+    with pytest.raises(ScraperError, match="DISPLAY"):
+        browser._launch_browser()
+
+
+def test_playwright_google_defaults_to_persistent_chromium_profile(
+    monkeypatch, tmp_path
+):
+    from lora_data_maker.scrapers.existing_chromium import ExistingChromium
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    monkeypatch.delenv("CHROME_USER_DATA_DIR", raising=False)
+    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+    browser = PlaywrightImagesScraper(provider="google")._create_browser()
+
+    assert isinstance(browser, ExistingChromium)
+    assert browser.auto_launch is True
+    assert browser.user_data_dir == (
+        tmp_path / "data" / "lora-data-maker" / "google-profile"
+    ).resolve()

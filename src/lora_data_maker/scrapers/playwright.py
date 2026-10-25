@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import html
-import os
 import re
 import time
 from datetime import date
@@ -222,7 +221,7 @@ class PlaywrightImagesScraper(Scraper):
         ) from last_error
 
     def _create_browser(self):
-        if self.provider == "google" and os.environ.get("CHROME_USER_DATA_DIR", "").strip():
+        if self.provider == "google":
             try:
                 return ExistingChromium.from_environment(timeout=self.timeout)
             except ValueError as exc:
