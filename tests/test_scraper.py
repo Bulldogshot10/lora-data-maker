@@ -1270,6 +1270,22 @@ def test_playwright_google_extracts_thumbnails_from_rendered_img_markup():
     ]
 
 
+def test_playwright_google_decodes_escaped_urls_and_rejects_non_google_hosts():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    body = r'''
+    <script>
+      {"tu":"https:\/\/encrypted-tbn0.gstatic.com\/images?q=tbn%3Aone\u0026x\u003d2"}
+      {"tu":"http:\/\/lh3.googleusercontent.com\/not-https"}
+      {"tu":"https:\/\/encrypted-tbn0.gstatic.com.evil.example\/spoof"}
+    </script>
+    '''
+
+    assert PlaywrightImagesScraper._extract_google_thumbnail_urls(body) == [
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aone&x=2"
+    ]
+
+
 def test_playwright_google_ignores_challenge_markers_inside_valid_results():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
