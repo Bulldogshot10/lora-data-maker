@@ -289,6 +289,7 @@ class PlaywrightImagesScraper(Scraper):
                             candidates = list(candidate_details)
                         else:
                             candidates = self._extract_google_urls(page_html)
+                            google_fallbacks = self._extract_google_fallbacks(page_html)
 
                         for image_url in candidates:
                             if image_url in seen:
@@ -312,6 +313,11 @@ class PlaywrightImagesScraper(Scraper):
                                                 "query_terms_total": candidate_details[image_url].get("query_terms_total", 0),
                                             }
                                             if image_url in candidate_details
+                                            else {}
+                                        ),
+                                        **(
+                                            {"fallback_image_urls": google_fallbacks.get(image_url, [])}
+                                            if self.provider == "google"
                                             else {}
                                         ),
                                     },
@@ -736,6 +742,53 @@ class PlaywrightImagesScraper(Scraper):
             urls.append(image_url)
 
         return urls
+
+    @staticmethod
+    def _extract_google_fallbacks(page_html: str) -> dict[str, list[str]]:
+        """Map original Google image URLs to their cached Google thumbnails."""
+        original_pattern = re.compile(
+            r"""["']ou["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
+        )
+        thumbnail_pattern = re.compile(
+            r"""["']tu["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
+        )
+        originals = list(original_pattern.finditer(page_html))
+        fallbacks: dict[str, list[str]] = {}
+        for index, original_match in enumerate(originals):
+            original_url = PlaywrightImagesScraper._decode_json_string(
+                original_match.group(1)
+            )
+            segment_end = (
+                originals[index + 1].start()
+                if index + 1 < len(originals)
+                else min(len(page_html), original_match.end() + 3000)
+            )
+            segment = page_html[original_match.end():segment_end]
+            thumbnail_match = thumbnail_pattern.search(segment)
+            if not thumbnail_match:
+                continue
+
+            thumbnail_url = PlaywrightImagesScraper._decode_json_string(
+                thumbnail_match.group(1)
+            )
+            if not original_url.startswith(("http://", "https://")):
+                continue
+            if not thumbnail_url.startswith(("http://", "https://")):
+                continue
+            thumbnail_host = (urlparse(thumbnail_url).hostname or "").lower().rstrip(".")
+            is_google_thumbnail = (
+                thumbnail_host == "gstatic.com"
+                or thumbnail_host.endswith(".gstatic.com")
+                or thumbnail_host == "googleusercontent.com"
+                or thumbnail_host.endswith(".googleusercontent.com")
+            )
+            if not is_google_thumbnail or thumbnail_url == original_url:
+                continue
+            urls = fallbacks.setdefault(original_url, [])
+            if thumbnail_url not in urls:
+                urls.append(thumbnail_url)
+
+        return fallbacks
 
     @staticmethod
     def _extract_google_urls(page_html: str) -> list[str]:
