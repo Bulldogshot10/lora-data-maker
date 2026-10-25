@@ -748,7 +748,7 @@ class PlaywrightImagesScraper(Scraper):
         # consent/challenge wording in scripts or hidden templates even when
         # the actual Images results are valid.
         pattern = re.compile(
-            r"""["']ou["']\\s*:\\s*["']((?:\\\\.|[^"'])+)["']"""
+            r"""["']ou["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
         )
         for raw in pattern.findall(page_html):
             value = PlaywrightImagesScraper._decode_json_string(raw)
@@ -763,7 +763,7 @@ class PlaywrightImagesScraper(Scraper):
         # creates false positives from script payloads, hidden templates, and
         # incidental "/sorry/" strings in otherwise valid result markup.
         challenge_markup = re.sub(
-            r"(?is)<(script|style|noscript)\\b[^>]*>.*?</\\1\\s*>",
+            r"(?is)<(script|style|noscript)\b[^>]*>.*?</\1\s*>",
             " ",
             page_html,
         )
