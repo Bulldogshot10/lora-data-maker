@@ -18,6 +18,7 @@ from .duckduckgo import DuckDuckGoImagesScraper
 from .downloader import DownloadResult, ImageDownloader
 from .google import DEFAULT_USER_AGENT, GoogleImagesScraper
 from .playwright import PlaywrightImagesScraper
+from ..processing.quality import evaluate_quality
 
 
 class ScraperManager:
@@ -36,12 +37,22 @@ class ScraperManager:
         date_to: str | None = None,
         proxy_url: str | None = None,
         safe_search: bool = False,
+        min_image_width: int = 384,
+        min_image_height: int = 384,
+        min_blur_score: float = 100.0,
     ) -> None:
         if not isinstance(safe_search, bool):
             raise ScraperError("safe_search must be a boolean")
+        if min_image_width < 1 or min_image_height < 1:
+            raise ScraperError("minimum scraped image dimensions must be positive")
+        if min_blur_score < 0:
+            raise ScraperError("min_blur_score cannot be negative")
         self.backend = backend
         self.proxy_url = proxy_url
         self.safe_search = safe_search
+        self.min_image_width = int(min_image_width)
+        self.min_image_height = int(min_image_height)
+        self.min_blur_score = float(min_blur_score)
         if proxy_url and backend not in {"playwright-bing", "playwright-google"}:
             raise ScraperError("WireGuard proxy is supported only by Playwright backends")
         self.output_dir = Path(output_dir).expanduser().resolve()
@@ -193,6 +204,37 @@ class ScraperManager:
                     continue
                 if downloaded is None:
                     continue
+
+                # Google source URLs are now preferred over cached thumbnails,
+                # but a source can still serve a genuinely blurred or tiny image.
+                # Screen Playwright Google downloads before they enter the
+                # manifest/raw dataset; keep other backends' established behavior.
+                if self.backend == "playwright-google":
+                    try:
+                        quality = evaluate_quality(
+                            downloaded.path,
+                            min_width=self.min_image_width,
+                            min_height=self.min_image_height,
+                            blur_threshold=self.min_blur_score,
+                        )
+                        rejection_reason = quality.reason if not quality.valid else None
+                    except Exception as exc:
+                        rejection_reason = f"image quality check failed: {exc}"
+
+                    if rejection_reason:
+                        try:
+                            downloaded.path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                        message = f"scrape quality filter rejected image: {rejection_reason}"
+                        failures.append((result, message))
+                        print(
+                            f"scrape: skipped low-quality image: "
+                            f"{result.image_url} :: {message}",
+                            flush=True,
+                        )
+                        continue
+
                 downloads.append(downloaded)
                 next_index += 1
                 message = f"downloaded {len(downloads)}/{count}"
