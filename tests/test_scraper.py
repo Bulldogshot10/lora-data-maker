@@ -2256,3 +2256,49 @@ def test_playwright_google_defaults_to_persistent_chromium_profile(
     assert browser.user_data_dir == (
         tmp_path / "data" / "lora-data-maker" / "google-profile"
     ).resolve()
+
+
+def test_playwright_google_waits_for_manual_verification_without_retry(monkeypatch):
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    challenge_html = (
+        "<html><body>Our systems have detected unusual traffic "
+        "from your computer network</body></html>"
+    )
+    result_html = """
+    <html><head><script>
+      {"tu":"https://encrypted-tbn0.gstatic.com/images?q=tbn%3Averified"}
+    </script></head><body>Google Images results</body></html>
+    """
+
+    class FakePage:
+        _url = "https://www.google.com/sorry/index"
+
+        def __init__(self):
+            self.reads = 0
+
+        def content(self):
+            self.reads += 1
+            return challenge_html if self.reads == 1 else result_html
+
+    monkeypatch.setattr(
+        "lora_data_maker.scrapers.playwright.time.sleep",
+        lambda _seconds: None,
+    )
+    scraper = PlaywrightImagesScraper(
+        provider="google",
+        retries=4,
+        delay=0,
+    )
+    page = FakePage()
+
+    candidates = scraper._wait_for_google_verification(
+        page,
+        query="julia portrait",
+        initial_html=challenge_html,
+    )
+
+    assert candidates == [
+        "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Averified"
+    ]
+    assert page.reads == 2
