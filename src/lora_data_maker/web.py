@@ -860,6 +860,15 @@ dialog::backdrop{background:rgba(15,20,28,.45);backdrop-filter:blur(4px)}
               <input id="scrape_date_to" type="date" min="1970-01-01">
             </div>
           </div>
+          <div class="form-grid" style="margin-top:12px">
+            <div class="field" style="grid-column:1/-1">
+              <label style="display:flex;align-items:center;gap:8px" for="scrape_safe_search">
+                <input id="scrape_safe_search" type="checkbox">
+                enable SafeSearch filter
+              </label>
+              <div class="field-note">off lets Google / Playwright Bing return explicit results; other backends use their own defaults.</div>
+            </div>
+          </div>
           <section class="card" id="wireguard-panel" style="margin-top:14px;padding:12px;border:1px solid #aaa;box-shadow:none;background:var(--surface)">
             <div class="card-title-row">
               <div class="card-title">WireGuard VPN</div>
@@ -1178,7 +1187,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_models_reload,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file,#wireguard-file,#wireguard-enabled,#wireguard-upload,#wireguard-clear").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#scrape_safe_search,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_models_reload,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file,#wireguard-file,#wireguard-enabled,#wireguard-upload,#wireguard-clear").forEach(el=>{
     if(el)el.disabled=busy;
   });
   const vlmOnly=$("caption_backend").value==="vlm";
@@ -1448,6 +1457,7 @@ function applySettings(s,force=false){
   $("scrape_year").value=Number(scraper.year||0)>0?String(scraper.year):"";
   $("scrape_date_from").value=scraper.date_from||"";
   $("scrape_date_to").value=scraper.date_to||"";
+  $("scrape_safe_search").checked=scraper.safe_search===true;
   syncScrapeDateUI();
   $("face_crop").checked=!!s.processing.face_crop;
   $("face_padding").value=s.processing.face_padding;
@@ -1681,6 +1691,7 @@ async function saveSettings(){
         scrape_year:scrapeDateMode==="year"?scrapeYear:0,
         scrape_date_from:scrapeDateMode==="range"?scrapeDateFrom:(scrapeDateMode==="year"?scrapeYear+"-01-01":""),
         scrape_date_to:scrapeDateMode==="range"?scrapeDateTo:(scrapeDateMode==="year"?scrapeYear+"-12-31":""),
+        scrape_safe_search:$("scrape_safe_search").checked,
         processing_enabled:$("processing_enabled").checked,
         mode:$("mode").value,
         width:width,
@@ -2188,7 +2199,7 @@ $("wireguard-clear").addEventListener("click",removeWireGuardConfig);
 $("scrape_date_mode").addEventListener("change",syncScrapeDateUI);
 syncWireGuardUI();
 [
-  "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count",
+  "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count","scrape_safe_search",
   "mode","width","height","quality","caption_backend","caption_runtime","caption_chat_format","caption_model_path","caption_mmproj_path","caption_api_model","caption_api_base_url","caption_max_tokens","face_crop","face_padding","person_check",
   "max_persons","person_threshold","min_subject_area","min_subject_visibility",
   "text_check","text_confidence","text_min_area_ratio"
@@ -2785,6 +2796,7 @@ def create_app(
                     "year": 0,
                     "date_from": "",
                     "date_to": "",
+                    "safe_search": False,
                 },
                 "quality": {
                     "person_check": False,
@@ -2894,6 +2906,7 @@ def create_app(
                 "year": int(cfg.get("scraper", {}).get("year", 0) or 0),
                 "date_from": str(cfg.get("scraper", {}).get("date_from", "") or ""),
                 "date_to": str(cfg.get("scraper", {}).get("date_to", "") or ""),
+                "safe_search": bool(cfg.get("scraper", {}).get("safe_search", False)),
             },
             "quality": {
                 "person_check": bool(cfg.get("quality", {}).get("person_check", False)),
@@ -3352,6 +3365,7 @@ def create_app(
             "face_crop": False,
             "person_check": current_quality.get("person_check", False),
             "text_check": current_quality.get("text_check", True),
+            "scrape_safe_search": current_scraper.get("safe_search", False),
         }
         for boolean_name, boolean_default in boolean_defaults.items():
             boolean_value = payload.get(boolean_name, boolean_default)
@@ -3360,6 +3374,10 @@ def create_app(
         face_crop = payload.get("face_crop", False)
         person_check = payload.get("person_check", current_quality.get("person_check", False))
         text_check = payload.get("text_check", current_quality.get("text_check", True))
+        scrape_safe_search = payload.get(
+            "scrape_safe_search",
+            current_scraper.get("safe_search", False),
+        )
         if (
             not name
             or not subject
@@ -3544,6 +3562,7 @@ def create_app(
                 "year": scrape_year,
                 "date_from": scrape_date_from,
                 "date_to": scrape_date_to,
+                "safe_search": scrape_safe_search,
             },
             current_root,
         )
@@ -3828,6 +3847,9 @@ def create_app(
                     if not 1970 <= year <= 9998:
                         raise RuntimeError("scraper.year must be between 1970 and 9998")
                     date_from, date_to = f"{year:04d}-01-01", f"{year:04d}-12-31"
+                safe_search = sc.get("safe_search", False)
+                if not isinstance(safe_search, bool):
+                    raise RuntimeError("scraper.safe_search must be a boolean")
                 wireguard_proxy = None
                 try:
                     proxy_url = None
@@ -3851,6 +3873,7 @@ def create_app(
                         date_from=date_from,
                         date_to=date_to,
                         proxy_url=proxy_url,
+                        safe_search=safe_search,
                     )
                     known_urls = {
                         record.source_url
