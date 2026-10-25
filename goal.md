@@ -123,3 +123,8 @@ The user reported `scrape: browser network summary requests=145 responses=144` f
 1. In a checkout of `main`, run `python -m compileall -q src tests`.
 2. Run `pytest -q tests/test_scraper.py -k "playwright_google_builds_direct_google_images_url or recovers_when_page_navigate_ack_times_out"` and then the broader scraper test file.
 3. Re-run the Google scraper on Termux/X11. If the timeout persists, capture the complete final URL from the error and inspect the current document title/body marker plus relevant source-link attributes; do not infer that the live-device bug is fixed from mock tests alone.
+
+
+## Documentation follow-up (2026-10-25)
+
+The user restored the required root `agent.md` after the previous checkpoint. It is now present on `main` (blob SHA: `943c50dca0ac2eb15f8b57825aa7568be94d9ee8`) and has been read. The earlier checkpoint's note that `agent.md` was missing records the situation at that earlier inspection; that documentation blocker is resolved as of this follow-up. No source-code or runtime status is changed by this documentation update.
