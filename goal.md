@@ -128,3 +128,31 @@ The user reported `scrape: browser network summary requests=145 responses=144` f
 ## Documentation follow-up (2026-10-25)
 
 The user restored the required root `agent.md` after the previous checkpoint. It is now present on `main` (blob SHA: `943c50dca0ac2eb15f8b57825aa7568be94d9ee8`) and has been read. The earlier checkpoint's note that `agent.md` was missing records the situation at that earlier inspection; that documentation blocker is resolved as of this follow-up. No source-code or runtime status is changed by this documentation update.
+
+
+## Session checkpoint / handoff (2026-10-25, Google thumbnail fallback)
+
+### Scope
+On the existing main branch, fix the reported case where Playwright Google exhausts retries with no parseable original image URLs. Preserve original-source URLs as the first choice, try click-based browser automation on rendered Google result cards, then download card thumbnail URLs only when source extraction and browser-assisted recovery both fail. Do not create or switch branches.
+
+### Changes
+- src/lora_data_maker/scrapers/playwright.py: add browser-assisted result-card clicks and repeated source URL parsing; add live DOM thumbnail extraction with a result-card-scoped HTML fallback; mark thumbnail results with google_thumbnail_fallback and original_url_unavailable metadata; improve the final no-candidate diagnostic.
+- src/lora_data_maker/scrapers/manager.py: bypass the original-source dimensions/blur quality gate only for results explicitly marked as thumbnail fallback so the requested thumbnail can actually be retained.
+- tests/test_scraper.py: add regressions for browser click recovery, live DOM thumbnail extraction, HTML thumbnail fallback, end-to-end candidate metadata, and quality-gate bypass for marked fallback thumbnails.
+- README.md, docs/TROUBLESHOOTING.md, and RELEASE_NOTES.md: document the new source-first recovery order and thumbnail fallback behavior.
+
+### Feature status
+Implemented in source: original URL parsing remains first; on no original candidates the scraper attempts browser interaction; if that does not recover original URLs, it extracts thumbnail URLs and marks them explicitly; manager retains those marked thumbnails without applying the source-image quality gate.
+
+Needs verification: compileall and pytest have not been run in this environment; live Termux/X11 Google scraping has not been tested. The fallback depends on current Google result-card markup and should be validated against real page DOM.
+
+### Validation
+- Read AGENTS.md, agent.md, goal.md, relevant scraper/manager/downloader source, existing tests, README, troubleshooting docs, and release notes.
+- Added regression tests but did not execute them in this environment; no CI or device success is claimed.
+- This fallback applies when original URL parsing yields no candidates; it does not switch to thumbnails merely because an already-parsed original image URL later fails to download.
+
+### Next steps
+1. In Termux, run python -m compileall -q src tests.
+2. Run python -m pytest -q tests/test_scraper.py -k "browser_click_recovery or thumbnail_fallback or does_not_fallback_to_rendered_thumbnails".
+3. Run python -m pytest -q tests/test_scraper.py and inspect any actual failing traceback before adjusting code.
+4. Repeat the original Google/X11 query. Confirm logs show browser-assisted clicks, then a marked thumbnail fallback if original URLs still cannot be recovered; confirm the fallback image is downloaded and appears in the raw dataset.

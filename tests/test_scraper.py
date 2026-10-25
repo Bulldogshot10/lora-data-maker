@@ -1296,6 +1296,207 @@ def test_playwright_google_extracts_original_urls_and_never_thumbnail_cache():
     ]
 
 
+def test_playwright_google_browser_click_recovery_finds_original_url():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakePage:
+        _url = "https://www.google.com/search?q=portrait&udm=2"
+
+        def __init__(self):
+            self.clicks = 0
+            self.waits = []
+
+        def evaluate(self, expression):
+            if "data-ldm-google-probed" in expression:
+                self.clicks += 1
+                return self.clicks == 1
+            if expression == "location.href":
+                return self._url
+            raise AssertionError("unexpected browser expression")
+
+        def wait_for_timeout(self, timeout):
+            self.waits.append(timeout)
+
+        def content(self):
+            return (
+                '<html><body><script>'
+                '{"ou":"https://cdn.example.com/recovered-original.jpg"}'
+                '</script></body></html>'
+            )
+
+    page = FakePage()
+    scraper = PlaywrightImagesScraper(provider="google", delay=0)
+
+    urls = scraper._recover_google_original_urls_with_browser(
+        page,
+        "<html><body><div class='isv-r'><img src='https://encrypted-tbn0.gstatic.com/images?q=tbn%3Ax'></div></body></html>",
+    )
+
+    assert urls == ["https://cdn.example.com/recovered-original.jpg"]
+    assert page.clicks == 1
+    assert page.waits == [600]
+
+
+def test_playwright_google_thumbnail_fallback_uses_live_dom_automation():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    thumbnail = "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Apreview"
+
+    class FakePage:
+        def evaluate(self, expression):
+            assert "const roots = Array.from(document.querySelectorAll(selector))" in expression
+            return [
+                thumbnail,
+                "https://www.google.com/images/branding/googlelogo/2x/googlelogo_light_color_92x30dp.png",
+                "data:image/gif;base64,R0lGODlh",
+            ]
+
+    scraper = PlaywrightImagesScraper(provider="google")
+    assert scraper._extract_google_thumbnail_urls_from_page(
+        FakePage(),
+        "<html></html>",
+    ) == [thumbnail]
+
+
+def test_playwright_google_thumbnail_fallback_parses_result_cards_if_dom_read_fails():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    thumbnail = "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Apreview"
+
+    class FakePage:
+        def evaluate(self, _expression):
+            raise RuntimeError("CDP evaluate unavailable")
+
+        def content(self):
+            return (
+                '<html><body><div class="isv-r">'
+                f'<img src="{thumbnail}"></div>'
+                '<img src="https://www.google.com/googlelogo.png">'
+                '</body></html>'
+            )
+
+    scraper = PlaywrightImagesScraper(provider="google")
+    assert scraper._extract_google_thumbnail_urls_from_page(
+        FakePage(),
+        "<html></html>",
+    ) == [thumbnail]
+
+
+def test_playwright_google_search_returns_marked_thumbnail_fallback(monkeypatch):
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    thumbnail = "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Afallback"
+    html_without_original = (
+        '<html><body><div class="isv-r"><img src="' + thumbnail + '"></div></body></html>'
+    )
+
+    class FakePage:
+        network = None
+        _url = "https://www.google.com/search?q=portrait&udm=2"
+
+        def bring_to_front(self):
+            pass
+
+        def content(self):
+            return html_without_original
+
+        def evaluate(self, expression):
+            if "const roots = Array.from(document.querySelectorAll(selector))" in expression:
+                return [thumbnail]
+            if "data-ldm-google-probed" in expression:
+                return False
+            if expression == "location.href":
+                return self._url
+            if "Array.from(document.querySelectorAll('a[href]'))" in expression:
+                return []
+            if "window.scrollTo" in expression:
+                return None
+            return []
+
+        def wait_for_timeout(self, _timeout):
+            pass
+
+        def close(self):
+            pass
+
+    page = FakePage()
+
+    class FakeBrowser:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def new_page(self):
+            return page
+
+    scraper = PlaywrightImagesScraper(
+        provider="google", retries=0, delay=0, max_scrolls=1
+    )
+    monkeypatch.setattr(scraper, "_create_browser", lambda initial_url=None: FakeBrowser())
+    monkeypatch.setattr(scraper, "_goto", lambda _page, _url: None)
+    monkeypatch.setattr(scraper, "_wait_for_dynamic_results", lambda _page: 0)
+    monkeypatch.setattr(scraper, "_result_dom_count", lambda _page: 0)
+    monkeypatch.setattr(scraper, "_setup_page_network_controls", lambda _page: lambda: None)
+
+    results = list(scraper.search("portrait", limit=1))
+
+    assert len(results) == 1
+    assert results[0].image_url == thumbnail
+    assert results[0].metadata["google_thumbnail_fallback"] is True
+    assert results[0].metadata["original_url_unavailable"] is True
+
+
+def test_playwright_google_manager_keeps_thumbnail_fallback_without_quality_gate(
+    tmp_path, monkeypatch
+):
+    from pathlib import Path
+
+    from lora_data_maker.scrapers.base import ImageResult
+    from lora_data_maker.scrapers.downloader import DownloadResult
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    thumbnail = "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Apreview"
+    manager = ScraperManager(
+        backend="playwright-google",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        delay=0,
+    )
+
+    class FakeScraper:
+        def search(self, query, *, limit):
+            yield ImageResult(
+                thumbnail,
+                query=query,
+                metadata={"google_thumbnail_fallback": True},
+            )
+
+    class FakeDownloader:
+        def download(self, url, output_dir, *, index, archive=None, cancel_event=None, referer=None):
+            assert url == thumbnail
+            return DownloadResult(
+                url=url,
+                path=Path(output_dir) / f"{index:06d}.jpg",
+                sha256="0" * 64,
+                file_size=12,
+                content_type="image/jpeg",
+            )
+
+    manager.scraper = FakeScraper()
+    manager.downloader = FakeDownloader()
+
+    def should_not_run(*_args, **_kwargs):
+        raise AssertionError("thumbnail fallback should bypass the source quality gate")
+
+    monkeypatch.setattr("lora_data_maker.scrapers.manager.evaluate_quality", should_not_run)
+    downloads, failures = manager.run("portrait", count=1)
+
+    assert [item.url for item in downloads] == [thumbnail]
+    assert failures == []
+
+
 def test_playwright_google_does_not_fallback_to_rendered_thumbnails():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 

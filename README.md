@@ -290,9 +290,11 @@ Termux-native Chromium through the pinned `playwright-termux` adapter. They use
 its Page, Locator, and Network APIs for foreground browser interaction,
 dynamic result-grid waits, lazy-load scrolling, and request/response monitoring.
 The browser profile is persistent for each provider, so consent choices, cookies,
-and sign-in sessions can be reused. Google candidates come from original-source
-URLs (`ou`), never Google's cached thumbnails (`tu`); low-resolution and
-strongly blurred Google downloads are rejected before they enter the dataset.
+and sign-in sessions can be reused. Google candidates prefer original-source URLs
+(`ou`). If source URL parsing fails, Playwright clicks rendered image cards and
+rechecks their live DOM; only if that recovery fails does the scraper use the
+result thumbnail as a marked fallback. Low-resolution and strongly blurred original
+downloads are rejected, while thumbnail fallbacks are retained as a last resort.
 A small set of common analytics/tracker endpoints is blocked, while image,
 document, JavaScript, and verification resources are left available. Navigation
 uses direct CDP only for the initial URL transition because the adapter's stock

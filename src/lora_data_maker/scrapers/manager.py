@@ -205,11 +205,20 @@ class ScraperManager:
                 if downloaded is None:
                     continue
 
-                # Google source URLs are now preferred over cached thumbnails,
-                # but a source can still serve a genuinely blurred or tiny image.
-                # Screen Playwright Google downloads before they enter the
-                # manifest/raw dataset; keep other backends' established behavior.
-                if self.backend == "playwright-google":
+                # Original Google source URLs use the quality gate. A marked
+                # thumbnail fallback is intentionally retained when source URLs
+                # could not be recovered, even if its preview is small or soft.
+                # Other backends keep their established behavior.
+                thumbnail_fallback = bool(
+                    (result.metadata or {}).get("google_thumbnail_fallback")
+                )
+                if self.backend == "playwright-google" and thumbnail_fallback:
+                    print(
+                        "scrape: accepting Google thumbnail fallback because "
+                        "the original image URL could not be recovered",
+                        flush=True,
+                    )
+                elif self.backend == "playwright-google":
                     try:
                         quality = evaluate_quality(
                             downloaded.path,

@@ -10,7 +10,7 @@
 
 - Added authenticated Google Images scraping by attaching to an existing local Chromium/CDP session; verification challenges are not bypassed.
 - Added persistent Playwright-Termux profiles for Google and Bing, locator-based dynamic result waits, network response monitoring, and common analytics request blocking.
-- Google Playwright scraping now prefers original-source URLs over cached thumbnails and rejects tiny/strongly blurred downloads before dataset ingestion.
+- Google Playwright scraping prefers original-source URLs, tries click-based browser recovery when source parsing fails, and uses rendered thumbnails as a last-resort fallback; the original-source quality gate still rejects tiny or strongly blurred downloads.
 - Google consent/verification challenges pause the current job for manual completion, then resume the existing search session.
 - Added Bing publication-date filtering by year or custom range in the CLI and WebUI.
 - Hardened local CDP metadata discovery by rejecting redirects and bounding the response size.

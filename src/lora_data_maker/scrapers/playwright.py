@@ -213,7 +213,11 @@ class PlaywrightImagesScraper(Scraper):
                     for result in results:
                         yield result
                     return
-                url_kind = "original"
+                url_kind = (
+                    "original or fallback thumbnail"
+                    if self.provider == "google"
+                    else "original"
+                )
                 raise ScraperError(
                     f"Playwright {self.provider} image search returned no "
                     f"parseable {url_kind} image URLs"
@@ -382,6 +386,7 @@ class PlaywrightImagesScraper(Scraper):
                             ) from exc
 
                         candidate_details: dict[str, dict[str, object]] = {}
+                        candidate_metadata: dict[str, dict[str, object]] = {}
                         if self.provider == "bing":
                             extracted = self._extract_bing_results(page_html, query)
                             candidate_details = {
@@ -394,6 +399,37 @@ class PlaywrightImagesScraper(Scraper):
                                     page,
                                     page_html,
                                 )
+                                if not candidates:
+                                    print(
+                                        "scrape: Google original URLs were not parseable; "
+                                        "trying browser-assisted result clicks",
+                                        flush=True,
+                                    )
+                                    candidates = self._recover_google_original_urls_with_browser(
+                                        page,
+                                        page_html,
+                                    )
+                                if not candidates:
+                                    candidates = self._extract_google_thumbnail_urls_from_page(
+                                        page,
+                                        page_html,
+                                    )
+                                    if candidates:
+                                        candidate_metadata = {
+                                            image_url: {
+                                                "image_source": "google_thumbnail_fallback",
+                                                "google_thumbnail_fallback": True,
+                                                "original_url_unavailable": True,
+                                            }
+                                            for image_url in candidates
+                                        }
+                                        print(
+                                            "scrape: Google original URL extraction and "
+                                            "browser-assisted recovery failed; "
+                                            f"downloading {len(candidates)} rendered "
+                                            "thumbnail(s) as fallback",
+                                            flush=True,
+                                        )
                             except ScraperError as exc:
                                 if not self._is_google_verification_error(exc):
                                     raise
@@ -428,6 +464,7 @@ class PlaywrightImagesScraper(Scraper):
                                             if image_url in candidate_details
                                             else {}
                                         ),
+                                        **candidate_metadata.get(image_url, {}),
                                     },
                                 )
                             )
@@ -1212,11 +1249,12 @@ class PlaywrightImagesScraper(Scraper):
                     .map(a => a.href)
                     .filter(href => /[?&](imgurl|mediaurl)=/i.test(href))
                     .concat(Array.from(document.querySelectorAll(
-                        '[data-ou], [data-original-url], [data-image-url]'
+                        '[data-ou], [data-original-url], [data-image-url], [data-iurl]'
                     )).map(el =>
                         el.getAttribute('data-ou') ||
                         el.getAttribute('data-original-url') ||
-                        el.getAttribute('data-image-url')
+                        el.getAttribute('data-image-url') ||
+                        el.getAttribute('data-iurl')
                     ).filter(Boolean))"""
             )
         except Exception:
@@ -1244,6 +1282,236 @@ class PlaywrightImagesScraper(Scraper):
                     seen.add(candidate)
                     output.append(candidate)
         return output
+
+    def _recover_google_original_urls_with_browser(
+        self,
+        page,
+        page_html: str,
+        *,
+        max_clicks: int = 3,
+    ) -> list[str]:
+        """Click rendered Google image cards and re-inspect the live browser DOM."""
+        click_script = """() => {
+            const selectors = [
+                'div.isv-r',
+                'div.eA0Zlc',
+                'div.H8Rx8c',
+                'div.wXeWr',
+                'div[data-ri]',
+                'div[role="listitem"]'
+            ].join(',');
+            const cards = Array.from(document.querySelectorAll(selectors));
+            const card = cards.find(el =>
+                !el.hasAttribute('data-ldm-google-probed') &&
+                el.querySelector('img')
+            );
+            if (!card) return false;
+            card.setAttribute('data-ldm-google-probed', '1');
+            const image = card.querySelector('img');
+            (image || card).click();
+            return true;
+        }"""
+        current_html = page_html
+        for attempt in range(1, max_clicks + 1):
+            if self.cancel_event is not None and self.cancel_event.is_set():
+                raise ScraperCancelledError(
+                    "scrape cancelled during Google browser-assisted recovery"
+                )
+            try:
+                clicked = page.evaluate(click_script)
+                if not clicked:
+                    break
+                print(
+                    "scrape: Playwright Google browser-assisted recovery "
+                    f"clicked result {attempt}/{max_clicks}",
+                    flush=True,
+                )
+                page.wait_for_timeout(600)
+                try:
+                    current_html = page.content()
+                except Exception:
+                    current_html = page_html
+                candidates = self._extract_google_original_urls_from_page(
+                    page,
+                    current_html,
+                )
+                if candidates:
+                    print(
+                        "scrape: browser-assisted Google result inspection recovered "
+                        f"{len(candidates)} original image URL(s)",
+                        flush=True,
+                    )
+                    return candidates
+            except ScraperError as exc:
+                if self._is_google_verification_error(exc):
+                    raise
+                print(
+                    "scrape: Google browser-assisted source inspection failed: "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+            except Exception as exc:
+                print(
+                    "scrape: Google browser-assisted click failed: "
+                    f"{type(exc).__name__}: {exc}",
+                    flush=True,
+                )
+                break
+        return []
+
+    def _extract_google_thumbnail_urls_from_page(
+        self,
+        page,
+        page_html: str,
+    ) -> list[str]:
+        """Collect result-card thumbnails only after original-source recovery fails."""
+        thumbnail_script = """() => {
+            const selector = [
+                'div.isv-r',
+                'div.eA0Zlc',
+                'div.H8Rx8c',
+                'div.wXeWr',
+                'div[data-ri]',
+                'div[role="listitem"]',
+                'a[href*="/imgres"]',
+                'a[href*="imgurl="]'
+            ].join(',');
+            const roots = Array.from(document.querySelectorAll(selector));
+            const urls = [];
+            const seen = new Set();
+            for (const root of roots) {
+                for (const image of root.querySelectorAll('img')) {
+                    const srcset = (image.getAttribute('srcset') || '')
+                        .split(',')[0].trim().split(' ')[0];
+                    const sources = [
+                        image.currentSrc,
+                        image.getAttribute('data-src'),
+                        image.getAttribute('data-lazy-src'),
+                        image.getAttribute('src'),
+                        srcset
+                    ];
+                    const url = sources.find(value =>
+                        typeof value === 'string' &&
+                        (value.trim().startsWith('https://') ||
+                         value.trim().startsWith('http://'))
+                    );
+                    if (url && !seen.has(url)) {
+                        seen.add(url);
+                        urls.push(url.trim());
+                    }
+                }
+            }
+            return urls.slice(0, 100);
+        }"""
+        values = None
+        try:
+            values = page.evaluate(thumbnail_script)
+        except Exception as exc:
+            print(
+                "scrape: Google live thumbnail DOM read failed; "
+                "checking rendered HTML instead: "
+                f"{type(exc).__name__}: {exc}",
+                flush=True,
+            )
+
+        seen: set[str] = set()
+        output: list[str] = []
+        if isinstance(values, list):
+            for value in values:
+                if not isinstance(value, str):
+                    continue
+                value = html.unescape(value.strip())
+                if self._valid_google_thumbnail_candidate(value, seen):
+                    seen.add(value)
+                    output.append(value)
+        if output:
+            return output
+
+        class ThumbnailParser(HTMLParser):
+            _result_classes = {"isv-r", "eA0Zlc", "H8Rx8c", "wXeWr"}
+
+            def __init__(self):
+                super().__init__(convert_charrefs=True)
+                self.stack: list[tuple[str, bool]] = []
+                self.card_depth = 0
+                self.urls: list[str] = []
+
+            def handle_starttag(self, tag, attrs):
+                values = {
+                    key.lower(): value
+                    for key, value in attrs
+                    if value is not None
+                }
+                classes = set(values.get("class", "").split())
+                href = values.get("href", "")
+                is_result = (
+                    (tag.lower() == "div" and bool(classes & self._result_classes))
+                    or "data-ri" in values
+                    or values.get("role", "").lower() == "listitem"
+                    or (
+                        tag.lower() == "a"
+                        and ("/imgres" in href or "imgurl=" in href)
+                    )
+                )
+                self.stack.append((tag.lower(), is_result))
+                if is_result:
+                    self.card_depth += 1
+                if tag.lower() != "img" or not self.card_depth:
+                    return
+                srcset = values.get("srcset", "").split(",")[0].strip().split()
+                for name in ("src", "data-src", "data-lazy-src"):
+                    value = values.get(name, "").strip()
+                    if value.startswith(("http://", "https://")):
+                        self.urls.append(value)
+                        break
+                else:
+                    if srcset and srcset[0].startswith(("http://", "https://")):
+                        self.urls.append(srcset[0])
+
+            def handle_startendtag(self, tag, attrs):
+                self.handle_starttag(tag, attrs)
+                self.handle_endtag(tag)
+
+            def handle_endtag(self, tag):
+                tag = tag.lower()
+                for index in range(len(self.stack) - 1, -1, -1):
+                    if self.stack[index][0] != tag:
+                        continue
+                    removed = self.stack[index:]
+                    self.card_depth -= sum(1 for _, is_result in removed if is_result)
+                    del self.stack[index:]
+                    break
+
+        current_html = page_html
+        try:
+            current_html = page.content() or page_html
+        except Exception:
+            pass
+        parser = ThumbnailParser()
+        try:
+            parser.feed(current_html)
+        except Exception:
+            pass
+        for value in parser.urls:
+            value = html.unescape(value.strip())
+            if self._valid_google_thumbnail_candidate(value, seen):
+                seen.add(value)
+                output.append(value)
+        return output
+
+    @staticmethod
+    def _valid_google_thumbnail_candidate(value: str, seen: set[str]) -> bool:
+        if not value.startswith(("http://", "https://")) or value in seen:
+            return False
+        parsed = urlparse(value)
+        host = (parsed.hostname or "").lower().rstrip(".")
+        if not host or parsed.username is not None or parsed.password is not None:
+            return False
+        # Allow actual thumbnail hosts such as gstatic and googleusercontent,
+        # but never collect Google UI artwork hosted on google.com itself.
+        if host == "google.com" or host.endswith(".google.com"):
+            return False
+        return True
 
     @staticmethod
     def _extract_google_original_urls(
@@ -1278,7 +1546,7 @@ class PlaywrightImagesScraper(Scraper):
                     for key, value in attrs
                     if value is not None
                 }
-                for name in ("data-ou", "data-original-url", "data-image-url"):
+                for name in ("data-ou", "data-original-url", "data-image-url", "data-iurl"):
                     value = values.get(name, "").strip()
                     if value and PlaywrightImagesScraper._valid_image_candidate(value, seen):
                         seen.add(value)
