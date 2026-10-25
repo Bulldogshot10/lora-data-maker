@@ -169,7 +169,7 @@ class ScraperManager:
                     self.cancelled = True
                     break
                 except ScraperError as exc:
-                    fallback_urls = result.metadata.get("fallback_image_urls", [])
+                    fallback_urls = (result.metadata or {}).get("fallback_image_urls", [])
                     can_use_google_fallback = (
                         self.backend == "playwright-google"
                         and _is_google_original_unavailable(exc)
