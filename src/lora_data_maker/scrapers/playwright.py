@@ -774,7 +774,10 @@ class PlaywrightImagesScraper(Scraper):
                     "document.querySelectorAll('a.iusc').length, "
                     "document.title, (document.body?.innerText || '').slice(0, 2000)]"
                     if self.provider == "bing"
-                    else "[document.readyState, location.href]"
+                    else (
+                        "[document.readyState, location.href, document.title, "
+                        "(document.body?.innerText || '').slice(0, 1200)]"
+                    )
                 )
                 result = page.session.send(
                     "Runtime.evaluate",
@@ -885,15 +888,48 @@ class PlaywrightImagesScraper(Scraper):
                             current_host == "google.com"
                             or current_host.endswith(".google.com")
                         )
-                        is_google_challenge = (
+                        current_params = parse_qs(current.query)
+                        is_google_search_page = (
                             on_google_host
+                            and current.path == requested_url.path
+                            and current_params.get("tbm", [""])[0] == "isch"
                             and (
-                                current.path.startswith("/sorry")
-                                or current_host == "consent.google.com"
-                                or current.path.startswith("/interstitial")
+                                not requested_query
+                                or " ".join(
+                                    current_params.get("q", [""])[0].split()
+                                ).casefold()
+                                == " ".join(requested_query.split()).casefold()
                             )
                         )
-                        if on_google_host or is_google_challenge:
+                        is_google_challenge = on_google_host and (
+                            current.path.startswith("/sorry")
+                            or current.path.startswith("/interstitial")
+                            or current_host == "consent.google.com"
+                        )
+                        body_text = (
+                            str(value[3]).casefold()
+                            if len(value) >= 4
+                            else ""
+                        )
+                        normalized_body = " ".join(body_text.split())
+                        has_challenge_text = any(
+                            marker in normalized_body
+                            for marker in (
+                                "unusual traffic",
+                                "automated queries",
+                                "verify you are human",
+                                "not a robot",
+                                "request blocked",
+                                "access denied",
+                                "captcha",
+                                "blocked",
+                            )
+                        )
+                        if (
+                            is_google_search_page
+                            or is_google_challenge
+                            or (on_google_host and has_challenge_text)
+                        ):
                             page._url = current_url
                             if navigation_ack_error is not None:
                                 print(
