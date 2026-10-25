@@ -20,6 +20,7 @@ max_scrolls = 30
 year = 0
 date_from = ""
 date_to = ""
+safe_search = false
 
 [validation]
 min_width = 1
