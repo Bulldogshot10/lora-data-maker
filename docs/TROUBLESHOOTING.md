@@ -31,6 +31,10 @@ For direct scraping, provide a text file with one URL per line.
 
 Zero new downloads during an incremental run can simply mean every returned source URL is already known.
 
+## Google Images original URLs return 403 or 404
+
+The `playwright-google` backend requests original image URLs with a Google referrer and browser-like image headers. If an original URL responds with HTTP 403 or 404, it can try the cached Google thumbnail recorded for that result. A thumbnail fallback may be lower resolution; a 404 original may be deleted or moved, and some hosts still block automated downloads, so not every source can be recovered.
+
 ## Scraper source is blocked or returns no candidates
 
 Chromium mode tries DuckDuckGo Images first and Bing Images second. The Playwright backends target Bing or Google directly through Termux-native Chromium. A provider can still return a temporary block, challenge, or empty result set. Google verification pages are treated as source failures. For repeated failures, retry later, reduce request volume, or use a prepared direct URL list.
