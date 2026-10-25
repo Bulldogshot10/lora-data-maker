@@ -241,7 +241,9 @@ def test_scraper_manager_skips_failed_downloads_and_continues(tmp_path):
         output_dir=tmp_path / "raw",
         cache_dir=tmp_path / "cache",
         delay=0,
+        retries=5,
     )
+    assert manager.downloader.retries == 5
 
     results = [
         ImageResult("https://example.com/a.jpg", query="julia"),
