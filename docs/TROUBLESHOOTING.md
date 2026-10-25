@@ -31,9 +31,9 @@ For direct scraping, provide a text file with one URL per line.
 
 Zero new downloads during an incremental run can simply mean every returned source URL is already known.
 
-## Google Images original URLs return 403 or 404
+## Playwright Google downloads thumbnails only
 
-The `playwright-google` backend requests original image URLs with a Google referrer and browser-like image headers. If an original URL responds with HTTP 403 or 404, it can try the cached Google thumbnail recorded for that result. A thumbnail fallback may be lower resolution; a 404 original may be deleted or moved, and some hosts still block automated downloads, so not every source can be recovered.
+The `playwright-google` backend downloads the cached thumbnail URLs embedded in Google Images results (`tu`), not source-page/original image URLs (`ou`). This avoids source hosts' hotlink protections and stale original links. Google thumbnails are often lower resolution than the originals, and some thumbnails may still be unavailable or blocked.
 
 ## Scraper source is blocked or returns no candidates
 
