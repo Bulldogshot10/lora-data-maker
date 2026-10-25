@@ -201,9 +201,10 @@ class PlaywrightImagesScraper(Scraper):
                     for result in results:
                         yield result
                     return
+                url_kind = "Google thumbnail" if self.provider == "google" else "original"
                 raise ScraperError(
                     f"Playwright {self.provider} image search returned no "
-                    "parseable original image URLs"
+                    f"parseable {url_kind} image URLs"
                 )
             except ScraperError as exc:
                 last_error = exc
@@ -288,8 +289,7 @@ class PlaywrightImagesScraper(Scraper):
                             }
                             candidates = list(candidate_details)
                         else:
-                            candidates = self._extract_google_urls(page_html)
-                            google_fallbacks = self._extract_google_fallbacks(page_html)
+                            candidates = self._extract_google_thumbnail_urls(page_html)
 
                         for image_url in candidates:
                             if image_url in seen:
@@ -313,11 +313,6 @@ class PlaywrightImagesScraper(Scraper):
                                                 "query_terms_total": candidate_details[image_url].get("query_terms_total", 0),
                                             }
                                             if image_url in candidate_details
-                                            else {}
-                                        ),
-                                        **(
-                                            {"fallback_image_urls": google_fallbacks.get(image_url, [])}
-                                            if self.provider == "google"
                                             else {}
                                         ),
                                     },
@@ -744,77 +739,35 @@ class PlaywrightImagesScraper(Scraper):
         return urls
 
     @staticmethod
-    def _extract_google_fallbacks(page_html: str) -> dict[str, list[str]]:
-        """Map original Google image URLs to their cached Google thumbnails."""
-        original_pattern = re.compile(
-            r"""["']ou["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
-        )
-        thumbnail_pattern = re.compile(
-            r"""["']tu["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
-        )
-        originals = list(original_pattern.finditer(page_html))
-        fallbacks: dict[str, list[str]] = {}
-        for index, original_match in enumerate(originals):
-            original_url = PlaywrightImagesScraper._decode_json_string(
-                original_match.group(1)
-            )
-            segment_end = (
-                originals[index + 1].start()
-                if index + 1 < len(originals)
-                else min(len(page_html), original_match.end() + 3000)
-            )
-            segment = page_html[original_match.end():segment_end]
-            thumbnail_match = thumbnail_pattern.search(segment)
-            if not thumbnail_match:
-                continue
-
-            thumbnail_url = PlaywrightImagesScraper._decode_json_string(
-                thumbnail_match.group(1)
-            )
-            if not original_url.startswith(("http://", "https://")):
-                continue
-            if not thumbnail_url.startswith(("http://", "https://")):
-                continue
-            thumbnail_host = (urlparse(thumbnail_url).hostname or "").lower().rstrip(".")
-            is_google_thumbnail = (
-                thumbnail_host == "gstatic.com"
-                or thumbnail_host.endswith(".gstatic.com")
-                or thumbnail_host == "googleusercontent.com"
-                or thumbnail_host.endswith(".googleusercontent.com")
-            )
-            if not is_google_thumbnail or thumbnail_url == original_url:
-                continue
-            urls = fallbacks.setdefault(original_url, [])
-            if thumbnail_url not in urls:
-                urls.append(thumbnail_url)
-
-        return fallbacks
-
-    @staticmethod
-    def _extract_google_urls(page_html: str) -> list[str]:
+    def _extract_google_thumbnail_urls(page_html: str) -> list[str]:
+        """Extract only cached Google Images thumbnails, never original image URLs."""
         urls: list[str] = []
         seen: set[str] = set()
-
-        # Google image results commonly embed the original URL in an "ou"
-        # field. Prefer it so thumbnails are never sent to the downloader.
-        # Do this before block-page detection: Google result HTML can contain
-        # consent/challenge wording in scripts or hidden templates even when
-        # the actual Images results are valid.
         pattern = re.compile(
-            r"""["']ou["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
+            r"""["']tu["']\s*:\s*["']((?:\\.|[^"'])+)["']"""
         )
+
         for raw in pattern.findall(page_html):
             value = PlaywrightImagesScraper._decode_json_string(raw)
-            if PlaywrightImagesScraper._valid_image_candidate(value, seen):
+            parsed = urlparse(value)
+            host = (parsed.hostname or "").lower().rstrip(".")
+            is_google_thumbnail = (
+                host == "gstatic.com"
+                or host.endswith(".gstatic.com")
+                or host == "googleusercontent.com"
+                or host.endswith(".googleusercontent.com")
+            )
+            if parsed.scheme != "https" or not is_google_thumbnail:
+                continue
+            if value not in seen:
                 seen.add(value)
                 urls.append(value)
 
         if urls:
             return urls
 
-        # Inspect visible page text only. Searching the entire HTML document
-        # creates false positives from script payloads, hidden templates, and
-        # incidental "/sorry/" strings in otherwise valid result markup.
+        # Detect a blocked Google page only after checking for actual thumbnail
+        # URLs, so challenge wording inside scripts does not reject valid results.
         challenge_markup = re.sub(
             r"(?is)<(script|style|noscript)\b[^>]*>.*?</\1\s*>",
             " ",
@@ -838,19 +791,7 @@ class PlaywrightImagesScraper(Scraper):
                 "the scraper does not bypass verification challenges"
             )
 
-        # Fallback for markup variants. Reuse the legacy parser's layered
-        # extraction rather than duplicating its URL heuristics.
-        try:
-            from .google import GoogleImagesScraper
-
-            for value in GoogleImagesScraper._extract_urls(page_html):
-                if value not in seen:
-                    seen.add(value)
-                    urls.append(value)
-        except Exception:
-            pass
-
-        return urls
+        return []
 
     @staticmethod
     def _decode_json_string(value: str) -> str:
