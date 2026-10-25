@@ -15,7 +15,7 @@ from .base import ScraperError
 DEFAULT_CDP_HOST = "127.0.0.1"
 DEFAULT_CDP_PORT = 9222
 DEFAULT_CDP_TIMEOUT = 5.0
-DEFAULT_GOOGLE_IMAGES_URL = "https://www.google.com/search?tbm=isch"
+DEFAULT_GOOGLE_IMAGES_URL = "https://www.google.com/search?udm=2"
 
 
 class ExistingChromium:
