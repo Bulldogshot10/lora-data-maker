@@ -2528,3 +2528,74 @@ def test_playwright_locator_waits_for_dynamic_result_grid():
 
     assert scraper._wait_for_dynamic_results(page) == 4
     assert page.waited == ("a.iusc", 3000, "attached")
+
+
+def test_playwright_google_recovers_when_page_navigate_ack_times_out():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    class FakeSession:
+        def __init__(self):
+            self.navigation_calls = 0
+
+        def send(self, method, params=None, timeout=None):
+            if method == "Page.navigate":
+                self.navigation_calls += 1
+                raise RuntimeError("Timeout waiting for CDP command: Page.navigate")
+            if method == "Runtime.evaluate":
+                return {
+                    "result": {
+                        "value": [
+                            "complete",
+                            "https://www.google.com/search?tbm=isch&q=portrait",
+                        ]
+                    }
+                }
+            raise AssertionError(f"unexpected CDP method: {method}")
+
+    class FakePage:
+        def __init__(self):
+            self.session = FakeSession()
+            self._url = "about:blank"
+
+    scraper = PlaywrightImagesScraper(
+        provider="google",
+        timeout=1,
+        retries=0,
+        delay=0,
+    )
+    page = FakePage()
+
+    scraper._goto(page, "https://www.google.com/search?tbm=isch&q=portrait")
+
+    assert page.session.navigation_calls == 1
+    assert page._url == "https://www.google.com/search?tbm=isch&q=portrait"
+
+
+def test_playwright_google_waits_on_generic_blocked_page_url():
+    import pytest
+
+    from lora_data_maker.scrapers.base import ScraperError
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    with pytest.raises(ScraperError, match="consent/verification"):
+        PlaywrightImagesScraper._extract_google_original_urls(
+            "<html><body>Blocked</body></html>",
+            page_url="https://www.google.com/sorry/index",
+        )
+
+
+def test_playwright_google_extracts_original_from_imgres_link():
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    page_html = """
+    <html><body>
+      <a class="result" href="/imgres?imgurl=https%3A%2F%2Fcdn.example.com%2Fportrait.jpg&amp;imgrefurl=https%3A%2F%2Fexample.com%2F">
+        <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn%3Athumb">
+      </a>
+    </body></html>
+    """
+
+    assert PlaywrightImagesScraper._extract_google_original_urls(
+        page_html,
+        page_url="https://www.google.com/search?tbm=isch&q=portrait",
+    ) == ["https://cdn.example.com/portrait.jpg"]
