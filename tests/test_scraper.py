@@ -1231,6 +1231,9 @@ def test_playwright_google_extracts_only_google_thumbnails():
         "ou":"https://cdn.example.com/not-used.webp",
         "tu":"https://unrelated.example.com/not-a-google-thumb.jpg"
       };
+      var duplicate = {
+        "tu":"https://encrypted-tbn0.gstatic.com/images?q=tbn%3Aexample"
+      };
     </script>
     '''
 
