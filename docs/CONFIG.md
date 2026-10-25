@@ -40,7 +40,10 @@ max_scrolls = 30
 year = 0
 date_from = ""
 date_to = ""
+safe_search = false
 ~~~
+
+`safe_search = false` disables SafeSearch for the Google and Playwright Google/Bing backends, which allows explicit image results to appear. Set it to `true` to filter them. The WebUI exposes the same option as the **enable SafeSearch filter** checkbox; the default is off.
 
 Built-in backends are google, duckduckgo, chromium, playwright-bing, playwright-google, and direct.
 
