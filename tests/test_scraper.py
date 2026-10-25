@@ -1853,7 +1853,7 @@ def test_existing_chromium_only_matches_its_own_browser_process(tmp_path):
     def write_process(pid, argv):
         process = proc_root / str(pid)
         process.mkdir()
-        (process / "cmdline").write_bytes(b"\\0".join(arg.encode() for arg in argv) + b"\\0")
+        (process / "cmdline").write_bytes(b"\0".join(arg.encode() for arg in argv) + b"\0")
 
     write_process(101, [
         "/data/data/com.termux/files/usr/bin/chromium-browser",
