@@ -1228,6 +1228,26 @@ def test_playwright_google_safesearch_can_be_enabled():
     assert params["safe"] == ["active"]
 
 
+def test_scraper_manager_forwards_safe_search_to_google_backends(tmp_path):
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    playwright_manager = ScraperManager(
+        backend="playwright-google",
+        output_dir=tmp_path / "playwright-raw",
+        cache_dir=tmp_path / "playwright-cache",
+        safe_search=True,
+    )
+    assert playwright_manager.scraper.safe_search is True
+
+    google_manager = ScraperManager(
+        backend="google",
+        output_dir=tmp_path / "google-raw",
+        cache_dir=tmp_path / "google-cache",
+        safe_search=False,
+    )
+    assert google_manager.scraper.safe == "off"
+
+
 def test_playwright_google_extracts_only_google_thumbnails():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
