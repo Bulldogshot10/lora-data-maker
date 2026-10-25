@@ -93,8 +93,9 @@ The new code attempts to check the actual page state after that specific CDP ack
 On the user-selected `main` branch, fix the reported Playwright Google/X11 timeout in which `Page.navigate` acknowledgement times out, the browser records substantial network activity, and `_goto()` ultimately reports that it never reached a Google search/consent page. Keep the change limited to Google Images URL compatibility, regression coverage, troubleshooting guidance, and this handoff. No branch was created or switched.
 
 ### Progress and changed files
-- `src/lora_data_maker/scrapers/playwright.py`: Google Images URL generation now uses `udm=2`; navigation readiness accepts both `udm=2` and legacy `tbm=isch` so redirects/session URLs remain compatible.
-- `tests/test_scraper.py`: URL-builder expectation updated to `udm=2`; the navigation-acknowledgement regression test exercises both modern and legacy Google Images URLs.
+- `src/lora_data_maker/scrapers/playwright.py`: Google Images URL generation and its default startup URL now use `udm=2`; navigation readiness accepts both `udm=2` and legacy `tbm=isch` so redirects/session URLs remain compatible.
+- `src/lora_data_maker/scrapers/existing_chromium.py`: the default Google startup URL now uses `udm=2` too.
+- `tests/test_scraper.py`: URL-builder and default-profile assertions updated to `udm=2`; browser launch URL expectations updated; the navigation-acknowledgement regression test exercises both modern and legacy Google Images URLs.
 - `docs/TROUBLESHOOTING.md`: documented the new URL mode and the false-timeout failure mode this compatibility handles.
 - `goal.md`: checkpoint added; prior project goal and unresolved device-validation notes retained.
 
