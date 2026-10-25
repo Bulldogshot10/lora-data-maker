@@ -1266,13 +1266,19 @@ class PlaywrightImagesScraper(Scraper):
         # rather than a serialized "ou" field: /imgres?imgurl=<original URL>.
         class SourceLinkParser(HTMLParser):
             def handle_starttag(self, tag, attrs):
-                if tag.lower() != "a":
-                    return
                 values = {
                     key.lower(): value
                     for key, value in attrs
                     if value is not None
                 }
+                for name in ("data-ou", "data-original-url", "data-image-url"):
+                    value = values.get(name, "").strip()
+                    if value and PlaywrightImagesScraper._valid_image_candidate(value, seen):
+                        seen.add(value)
+                        urls.append(value)
+
+                if tag.lower() != "a":
+                    return
                 href = values.get("href", "")
                 if not href:
                     return
@@ -1283,12 +1289,6 @@ class PlaywrightImagesScraper(Scraper):
                 for source in source_values:
                     value = html.unescape(source).strip()
                     if PlaywrightImagesScraper._valid_image_candidate(value, seen):
-                        seen.add(value)
-                        urls.append(value)
-
-                for name in ("data-ou", "data-original-url", "data-image-url"):
-                    value = values.get(name, "").strip()
-                    if value and PlaywrightImagesScraper._valid_image_candidate(value, seen):
                         seen.add(value)
                         urls.append(value)
 
@@ -1341,7 +1341,16 @@ class PlaywrightImagesScraper(Scraper):
         short_block_page = (
             on_google_host
             and len(normalized_text) <= 240
-            and normalized_text.strip(" .!:-") in {"blocked", "access denied"}
+            and any(
+                marker in normalized_text
+                for marker in (
+                    "blocked",
+                    "access denied",
+                    "verify you are human",
+                    "not a robot",
+                    "unusual traffic",
+                )
+            )
         )
         if url_challenge or short_block_page or any(
             marker in normalized_text for marker in challenge_markers
