@@ -2327,3 +2327,45 @@ def test_playwright_google_waits_for_manual_verification_without_retry(monkeypat
     assert len(browser_starts) == 1
     assert page.reads == 2
     assert page.closed
+
+
+def test_playwright_google_verification_wait_obeys_cancel_event():
+    import threading
+    import pytest
+
+    from lora_data_maker.scrapers.base import ScraperCancelledError
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    scraper = PlaywrightImagesScraper(provider="google", retries=4)
+    scraper.cancel_event = threading.Event()
+    scraper.cancel_event.set()
+
+    with pytest.raises(ScraperCancelledError, match="cancelled while waiting"):
+        scraper._wait_for_google_verification(
+            object(),
+            query="julia portrait",
+            initial_html=(
+                "Our systems have detected unusual traffic from your computer network"
+            ),
+        )
+
+
+def test_playwright_google_search_does_not_retry_cancellation(monkeypatch):
+    import pytest
+
+    from lora_data_maker.scrapers.base import ScraperCancelledError
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    scraper = PlaywrightImagesScraper(provider="google", retries=4)
+    calls = []
+
+    def cancelled_search(_query, *, limit):
+        calls.append(limit)
+        raise ScraperCancelledError("cancelled")
+
+    monkeypatch.setattr(scraper, "_search_once", cancelled_search)
+
+    with pytest.raises(ScraperCancelledError, match="cancelled"):
+        list(scraper.search("julia portrait", limit=1))
+
+    assert len(calls) == 1
