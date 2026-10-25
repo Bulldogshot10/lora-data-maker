@@ -458,14 +458,6 @@ class PlaywrightImagesScraper(Scraper):
                                             }
                                             for image_url in candidates
                                         }
-                                        candidate_metadata = {
-                                            image_url: {
-                                                "image_source": "google_thumbnail_fallback",
-                                                "google_thumbnail_fallback": True,
-                                                "original_url_unavailable": True,
-                                            }
-                                            for image_url in candidates
-                                        }
                                         print(
                                             "scrape: Google original URL extraction and "
                                             "browser-assisted recovery failed; "

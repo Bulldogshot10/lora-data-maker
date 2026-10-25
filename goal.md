@@ -202,7 +202,7 @@ Audit both Playwright Google and Playwright Bing because repeated narrow fixes d
 ### Feature status
 **Implemented in source, needs verification:** Google source-first -> browser recovery -> cached thumbnail flow; Google search-page restoration after result clicks; cancellation propagation; selector-independent DOM counts; Bing structured payload parsing and turl fallback.
 
-**Needs verification:** New audit tests and live Termux/X11 runs of both Google and Bing. Prior CI showed the earlier Google fallback tests passed, but the full suite currently has two pre-existing clean/quality failures; current commit CI must be inspected after push.
+**Needs verification:** Live Termux/X11 runs of both Google and Bing. Core smoke for audit commit `ebad4504a22fbeccaf7b36a5b1844da7ddad3fee` completed: compileall passed; pytest reported 372 passed, 2 failed, 2 skipped, 1 deselected. All failures were the same two pre-existing clean/quality tests below; no scraper test failed.
 
 ### CI baseline failure discovered
 - Core smoke for ab688ce6a2ed1663623fdf41eb40c94f4c59c7f8 failed at Run tests: 366 passed, 2 failed, 2 skipped, 1 deselected. Compileall passed.
@@ -217,3 +217,10 @@ Audit both Playwright Google and Playwright Bing because repeated narrow fixes d
 3. Re-run Playwright Google on Termux/X11. Logs should show pre-click thumbnail caching, browser click attempts, and either recovered originals or selected cached thumbnails.
 4. Run Playwright Bing with a normal murl and missing/invalid murl payloads; verify turl fallback downloads and metadata marks the fallback.
 5. Diagnose the two already-failing tests in tests/test_clean.py separately after scraper validation.
+
+
+### Validation update (2026-10-25)
+- GitHub Actions core smoke for `ebad4504a22fbeccaf7b36a5b1844da7ddad3fee`: `python -m compileall -q src tests` passed; pytest reported 372 passed, 2 failed, 2 skipped, 1 deselected.
+- Only failures: `tests/test_clean.py::test_clean_exact_duplicate_and_quality_filter` and `tests/test_clean.py::test_clean_quality_rejection_happens_before_perceptual_dedup`. Both also failed in earlier commits `c2072848874d453d7c18588ea876eae892137891` and `ab688ce6a2ed1663623fdf41eb40c94f4c59c7f8`; they are not caused by the current Playwright audit.
+- Added one more regression test for a click navigating to Google `/imgres?imgurl=`, recovering the original source from the current URL, and restoring the search query. That test and the duplicate metadata cleanup are not yet validated by CI.
+- No live Termux/X11 run has been performed; do not claim the user's device failure is fixed until tested there.

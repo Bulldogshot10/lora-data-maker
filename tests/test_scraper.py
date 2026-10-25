@@ -1296,6 +1296,50 @@ def test_playwright_google_extracts_original_urls_and_never_thumbnail_cache():
     ]
 
 
+def test_playwright_google_click_navigation_recovers_source_and_restores_search(monkeypatch):
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    search_url = "https://www.google.com/search?q=portrait&udm=2"
+    original = "https://cdn.example.com/from-click.jpg"
+
+    class FakePage:
+        _url = search_url
+
+        def evaluate(self, expression):
+            if "data-ldm-google-probed" in expression:
+                self._url = (
+                    "https://www.google.com/imgres?imgurl="
+                    "https%3A%2F%2Fcdn.example.com%2Ffrom-click.jpg"
+                )
+                return True
+            if expression == "location.href":
+                return self._url
+            raise AssertionError("unexpected browser expression")
+
+        def wait_for_timeout(self, _timeout):
+            pass
+
+        def content(self):
+            return "<html><body>image detail</body></html>"
+
+    page = FakePage()
+    scraper = PlaywrightImagesScraper(provider="google", delay=0)
+
+    def restore(_page, url):
+        assert url == search_url
+        page._url = url
+
+    monkeypatch.setattr(scraper, "_goto", restore)
+    urls = scraper._recover_google_original_urls_with_browser(
+        page,
+        "<html><body><div class='isv-r'><img src='https://encrypted-tbn0.gstatic.com/thumb.jpg'></div></body></html>",
+        search_url=search_url,
+    )
+
+    assert urls == [original]
+    assert page._url == search_url
+
+
 def test_playwright_google_browser_click_recovery_finds_original_url():
     from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
 
