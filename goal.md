@@ -299,23 +299,28 @@ On the existing `main` branch, fix the Google Images scraper's tendency to choos
 ## Session checkpoint / handoff (2026-10-25, root-cause Google payload parser follow-up)
 
 ### User report
-The earlier Google original-image recovery changes and green CI still did not change the user's live Termux:X11 behavior: `playwright-google` continues to save thumbnails only. Treat the prior live-extraction approach as insufficient; do not close this issue based on mock tests alone.
+The earlier Google original-image recovery changes and green CI still did not change the user's live Termux:X11 behavior: `playwright-google` continued saving thumbnails only. The prior click/viewer-based recovery was insufficient; don't close this issue based on mock tests alone.
 
 ### Root cause found through online source research
-A current Google Images implementation reference explains that the full-resolution URLs are often embedded inside `AF_initDataCallback` script payloads as positional arrays shaped like `["https://source.example/image.jpg", height, width]`, not necessarily `ou: "..." fields and not as result-image `img.src`. Our scraper only looked for named `ou` keys, links with `imgurl`, explicit data attributes, and the displayed viewer image. Thus it could miss original URLs even when the initial rendered HTML already contained them, then deterministically fall back to thumbnails. See [Google Images scraping research (July 26, 2026)](https://status.scrapebadger.com/blog/how-to-scrape-google-images-with-python-in-2026), especially the AF_initDataCallback and URL-dimension tuple sections.
+Google Images can embed original image URLs inside `AF_initDataCallback` script payloads as positional arrays shaped like `["https://source.example/image.jpg", height, width]`, not necessarily `ou: "..." fields and not in result-image `img.src`. The scraper previously searched named `ou` keys, links with `imgurl`, explicit data attributes, and the clicked viewer. It could miss original URLs already present in the result HTML, then deterministically fall back to thumbnails. Background reference: [Google Images scraping research (July 26, 2026)](https://status.scrapebadger.com/blog/how-to-scrape-google-images-with-python-in-2026), especially its AF_initDataCallback and URL-dimension tuple sections.
 
-### Changes prepared in this follow-up
-- `src/lora_data_maker/scrapers/playwright.py`: parse URL + two dimension tuples from page payloads after normalizing JSON-escaped slashes; reject Google-hosted thumbnail/cache candidates from this tuple path; log how many source candidates the result-page extractor found before any thumbnail fallback.
-- `tests/test_scraper.py`: add a focused regression fixture resembling an `AF_initDataCallback` payload with unescaped and escaped source URLs, Google thumbnail CDN entries, Googleusercontent preview entries, and Google UI assets. Expect only the two external original URLs.
-- `docs/TROUBLESHOOTING.md`: document the positional tuple path and put it ahead of viewer clicking/fallback.
+### Changes committed in `73aa5069b07fc0d3e8a59c25d675440dcd0f7802`
+- `src/lora_data_maker/scrapers/playwright.py`: parse URL + two dimension tuples from embedded Google payloads after normalizing JSON-escaped slashes, without relying on brittle nested array indices; reject Google-owned thumbnail/cache URLs from this tuple path; log the tuple-source count and the total original/source candidates before thumbnail fallback.
+- `tests/test_scraper.py`: regression test mirrors an AF_initDataCallback payload containing plain and escaped original URLs, encrypted-tbn thumbnails, googleusercontent previews, and Google UI assets. The test asserts only the two external source URLs survive.
+- `docs/TROUBLESHOOTING.md`: documents the payload tuple extraction path ahead of viewer clicking/fallback.
+- This retains earlier date-filter support for Playwright Google.
 
-### Validation status
-- The new source/test blobs have been prepared in GitHub; commit/CI status is pending. No local Termux/X11 session is accessible from this environment.
-- Previous CI run [40196552900](https://github.com/Bulldogshot10/lora-data-maker/actions/runs/40196552900) was green at 381 passed, 2 skipped, 1 deselected, but it predated this payload-tuple parser and therefore does not validate the new root-cause fix.
-- Runtime status must remain **Needs verification** until the user reruns the query and sees a log like `Google original URL payload tuples yielded N source candidate(s)` and downloaded URLs come from the source hosts, not Google thumbnail/cache hosts.
+### Validation update (2026-10-25)
+- GitHub Actions [core smoke run 40197339993](https://github.com/Bulldogshot10/lora-data-maker/actions/runs/40197339993) completed with **success** on `73aa5069b07fc0d3e8a59c25d675440dcd0f7802`.
+- `python -m compileall -q src tests`: passed.
+- `pytest -q -m "not real_caption_runtime"`: **382 passed, 2 skipped, 1 deselected**, 1 warning. CLI, documentation, init/inspect, and all other core-smoke steps passed.
+- The new regression test passed, which shows the semantic tuple parser now extracts the original source URLs from the tested AF_initDataCallback shape and rejects the tested Google thumbnail/cache hosts.
+- **Live Termux:X11 status: needs verification.** This environment cannot exercise the user's visible Chromium session. CI proves the source parser on a representative fixture; it does not prove Google returns that payload in the user's current session.
+- Google date filtering remains wired through CLI/config/manager/WebUI with `after:` and `before:` query operators; live behavior remains subject to on-device confirmation and reflects indexed result-page dates, not guaranteed photo capture dates.
 
 ### Next steps
-1. Commit parser + regression test + docs and inspect the new GitHub Actions logs.
-2. On Termux, pull `main`, rerun the failing query, and check that the source-candidate log appears before thumbnail fallback.
-3. If the tuple count is zero, collect only a bounded safe diagnostic: counts of `AF_initDataCallback` occurrences, counts of dimensional URL tuples before host filtering, and a few candidate hostnames/dimensions. Do not dump full page content or cookies/session data.
-4. If originals are extracted but downloads still produce small images, trace each URL and downloaded image dimensions in the downloader/manager path separately.
+1. Pull latest `main` on Termux.
+2. Re-run the original query and look for `Google original URL payload tuples yielded N source candidate(s)` before the fallback log. Confirm the resulting downloads are from original source hosts rather than Google thumbnail/cache hosts.
+3. Test a Google custom date range separately.
+4. If tuple count is zero, capture a bounded safe diagnostic: `AF_initDataCallback` occurrence count, dimensional URL tuple count before host filtering, and a few source hostnames/dimension values. Do not dump full page content, cookies, tokens, or logged-in session state.
+5. If original URLs are extracted but saved image dimensions are still thumbnail-sized, trace the original URL and downloaded image dimensions through downloader/manager independently.
