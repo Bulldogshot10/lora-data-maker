@@ -890,10 +890,17 @@ class PlaywrightImagesScraper(Scraper):
                             or current_host.endswith(".google.com")
                         )
                         current_params = parse_qs(current.query)
+                        # Google has moved Images mode from the legacy
+                        # tbm=isch parameter to udm=2. Accept both because
+                        # existing profiles and redirects may still use either.
+                        image_search_mode = (
+                            current_params.get("udm", [""])[0] == "2"
+                            or current_params.get("tbm", [""])[0] == "isch"
+                        )
                         is_google_search_page = (
                             on_google_host
                             and current.path == requested_url.path
-                            and current_params.get("tbm", [""])[0] == "isch"
+                            and image_search_mode
                             and (
                                 not requested_query
                                 or " ".join(
@@ -1028,7 +1035,7 @@ class PlaywrightImagesScraper(Scraper):
             return f"{self.BING_URL}?{urlencode(params)}"
         params = {
             "q": query,
-            "tbm": "isch",
+            "udm": "2",
             "hl": "en",
             "safe": "active" if self.safe_search else "off",
         }
