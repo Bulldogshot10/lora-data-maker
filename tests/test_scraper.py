@@ -1212,6 +1212,20 @@ def test_playwright_google_builds_direct_google_images_url():
     assert params["q"] == ["julia russian woman"]
     assert params["tbm"] == ["isch"]
     assert params["hl"] == ["en"]
+    assert params["safe"] == ["off"]
+
+
+def test_playwright_google_safesearch_can_be_enabled():
+    from urllib.parse import parse_qs, urlparse
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    params = parse_qs(
+        urlparse(
+            PlaywrightImagesScraper(provider="google", safe_search=True)._build_url("julia")
+        ).query
+    )
+    assert params["safe"] == ["active"]
 
 
 def test_playwright_google_extracts_only_google_thumbnails():
@@ -1576,6 +1590,20 @@ def test_playwright_bing_leaves_date_filter_off_by_default():
     params = parse_qs(urlparse(scraper._build_url("julia")).query)
 
     assert "filters" not in params
+    assert params["adlt"] == ["off"]
+
+
+def test_playwright_bing_safesearch_can_be_enabled():
+    from urllib.parse import parse_qs, urlparse
+
+    from lora_data_maker.scrapers.playwright import PlaywrightImagesScraper
+
+    params = parse_qs(
+        urlparse(
+            PlaywrightImagesScraper(provider="bing", safe_search=True)._build_url("julia")
+        ).query
+    )
+    assert params["adlt"] == ["moderate"]
 
 
 def test_playwright_bing_validates_custom_date_range():
