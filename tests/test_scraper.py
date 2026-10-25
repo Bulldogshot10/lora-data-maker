@@ -2362,6 +2362,7 @@ def test_playwright_google_search_does_not_retry_cancellation(monkeypatch):
 
 def test_playwright_google_quality_gate_rejects_blurry_download(tmp_path):
     import hashlib
+    from pathlib import Path
 
     from PIL import Image, ImageDraw
 
