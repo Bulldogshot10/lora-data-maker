@@ -38,6 +38,7 @@ from .processing.text import PPOCRTextDetector
 from .reconcile import reconcile_raw
 from .scrapers import SCRAPER_BACKENDS, ScraperError, ScraperManager
 from .scrapers.base import ScraperCancelledError
+from .wireguard import MAX_WIREGUARD_CONFIG_BYTES, WireGuardConfigStore, WireGuardProxy
 from .taggers import build_tagger, clean_tag_manifest, resolve_tagger_preset, tag_manifest
 MAX_PROVIDER_RESPONSE_BYTES = 5 * 1024 * 1024
 
@@ -859,6 +860,34 @@ dialog::backdrop{background:rgba(15,20,28,.45);backdrop-filter:blur(4px)}
               <input id="scrape_date_to" type="date" min="1970-01-01">
             </div>
           </div>
+          <section class="card" id="wireguard-panel" style="margin-top:14px;padding:12px;border:1px solid #aaa;box-shadow:none;background:var(--surface)">
+            <div class="card-title-row">
+              <div class="card-title">WireGuard VPN</div>
+              <div class="card-kicker">Playwright only</div>
+            </div>
+            <p class="field-note" style="margin:7px 0 11px">uses a local userspace proxy for Playwright scraping only. Android's global VPN/routing is unchanged.</p>
+            <div class="form-grid">
+              <div class="field" style="grid-column:1/-1">
+                <label for="wireguard-file">WireGuard config (.conf)</label>
+                <input id="wireguard-file" type="file" accept=".conf,text/plain">
+              </div>
+              <div class="field">
+                <button type="button" class="action-secondary" id="wireguard-upload">upload config</button>
+              </div>
+              <div class="field">
+                <button type="button" class="action-secondary" id="wireguard-clear">remove config</button>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <label style="display:flex;align-items:center;gap:8px" for="wireguard-enabled">
+                  <input id="wireguard-enabled" type="checkbox">
+                  use WireGuard for Playwright scraping
+                </label>
+              </div>
+              <div class="field" style="grid-column:1/-1">
+                <div class="field-note" id="wireguard-status" role="status">checking WireGuard setup…</div>
+              </div>
+            </div>
+          </section>
           <div class="save-bar">
             <span class="save-note">save scraper settings before starting a run.</span>
             <button type="button" class="action-secondary" data-save>save</button>
@@ -1104,7 +1133,8 @@ const appState={
   toastSeq:0,
   projects:[],
   apiKeysSet:{gemini:false,openai_compatible:false},
-  apiModelCache:{}
+  apiModelCache:{},
+  wireguard:{configured:false,enabled:false,wireproxy_available:false}
 };
 
 async function api(url,opt={}){
@@ -1148,7 +1178,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_models_reload,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_models_reload,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file,#wireguard-file,#wireguard-enabled,#wireguard-upload,#wireguard-clear").forEach(el=>{
     if(el)el.disabled=busy;
   });
   const vlmOnly=$("caption_backend").value==="vlm";
@@ -1371,6 +1401,10 @@ function syncScrapeDateUI(){
     ?"Bing date filtering uses the selected publication date range."
     :"date filters are only available with the Playwright · Bing backend.";
 }
+function syncWireGuardUI(){
+  const supported=["playwright-bing","playwright-google"].includes($("scraper_backend").value);
+  $("wireguard-panel").hidden=!supported;
+}
 function applySettings(s,force=false){
   if(appState.settingsDirty&&!force)return;
   const captionState=s.caption||{};
@@ -1584,6 +1618,7 @@ async function refresh(forceSettings=false){
     if(forceSettings||!appState.settingsDirty)applySettings(s,true);
     $("status-context").textContent=s.project_count+" dataset"+(s.project_count===1?"":"s")+" in workspace";
     updateBusyUI();
+    await refreshWireGuardState();
     return s;
   }catch(e){
     setStatus(e.message,"bad");
@@ -1958,6 +1993,100 @@ async function upload(){
     toast(e.message,"bad");
   }
 }
+async function refreshWireGuardState(){
+  const status=$("wireguard-status");
+  try{
+    const d=await api("/api/wireguard/state");
+    appState.wireguard=d;
+    $("wireguard-enabled").checked=!!d.enabled;
+    const busy=!!(appState.currentJob&&appState.currentJob.status==="running");
+    $("wireguard-file").disabled=busy;
+    $("wireguard-upload").disabled=busy;
+    $("wireguard-clear").disabled=busy||!d.configured;
+    $("wireguard-enabled").disabled=busy||!d.configured;
+    if(!d.configured){
+      status.textContent="No config uploaded. Choose a WireGuard .conf file first.";
+    }else{
+      status.textContent=(d.enabled?"WireGuard enabled for the next Playwright scrape. ":"Config stored privately. ")
+        +(d.filename||"wireguard.conf");
+    }
+    if(!d.wireproxy_available){
+      status.textContent+=" · wireproxy executable not found in PATH.";
+    }
+    syncWireGuardUI();
+  }catch(e){
+    status.textContent="WireGuard status unavailable: "+e.message;
+  }
+}
+async function uploadWireGuardConfig(){
+  if(isBusyOnActiveProject()){
+    toast("wait for the running job to finish first.","bad");
+    return;
+  }
+  const input=$("wireguard-file");
+  const file=input.files[0];
+  if(!file){toast("choose a WireGuard .conf file first.","bad");return;}
+  if(!file.name.toLowerCase().endsWith(".conf")){
+    input.value="";
+    toast("only WireGuard .conf files are accepted.","bad");
+    return;
+  }
+  const form=new FormData();
+  form.append("file",file);
+  try{
+    setStatus("validating and storing WireGuard config...","running");
+    const d=await api("/api/wireguard/config",{method:"POST",body:form});
+    input.value="";
+    appState.wireguard=d;
+    await refreshWireGuardState();
+    setStatus("WireGuard config stored privately","ok");
+    toast("WireGuard config uploaded","ok");
+  }catch(e){
+    setStatus(e.message,"bad");
+    toast(e.message,"bad");
+  }
+}
+async function toggleWireGuard(){
+  const input=$("wireguard-enabled");
+  const requested=input.checked;
+  try{
+    const d=await api("/api/wireguard/settings",{
+      method:"POST",
+      headers:{"content-type":"application/json"},
+      body:JSON.stringify({enabled:requested})
+    });
+    appState.wireguard=d;
+    await refreshWireGuardState();
+    toast(d.enabled?"WireGuard enabled for Playwright":"WireGuard disabled","ok");
+  }catch(e){
+    input.checked=!!appState.wireguard.enabled;
+    toast(e.message,"bad");
+    setStatus(e.message,"bad");
+  }
+}
+async function removeWireGuardConfig(){
+  if(isBusyOnActiveProject()){
+    toast("wait for the running job to finish first.","bad");
+    return;
+  }
+  const accepted=await confirmAction(
+    "remove WireGuard config?",
+    "this permanently deletes the locally stored private config and disables the Playwright VPN.",
+    "remove config",
+    true
+  );
+  if(!accepted)return;
+  try{
+    const d=await api("/api/wireguard/config",{method:"DELETE"});
+    appState.wireguard=d;
+    await refreshWireGuardState();
+    toast("WireGuard config removed","ok");
+    setStatus("WireGuard config removed","ok");
+  }catch(e){
+    toast(e.message,"bad");
+    setStatus(e.message,"bad");
+  }
+}
 async function uploadVlmFile(kind,inputId,pathId,statusId){
   if(!appState.activeProjectPath){toast("create or open a dataset first.","bad");return;}
   if(isBusyOnActiveProject()){toast("this dataset is busy. wait for the current job to finish.","bad");return;}
@@ -2049,8 +2178,15 @@ $("upload-button").addEventListener("click",upload);
 $("files").addEventListener("change",updateFileSummary);
 $("quality").addEventListener("input",()=>{$("qv").textContent=$("quality").value});
 $("caption_max_tokens").addEventListener("input",()=>{$("caption_tokens_value").textContent=$("caption_max_tokens").value});
-$("scraper_backend").addEventListener("change",syncScrapeDateUI);
+$("scraper_backend").addEventListener("change",()=>{
+  syncScrapeDateUI();
+  syncWireGuardUI();
+});
+$("wireguard-upload").addEventListener("click",uploadWireGuardConfig);
+$("wireguard-enabled").addEventListener("change",toggleWireGuard);
+$("wireguard-clear").addEventListener("click",removeWireGuardConfig);
 $("scrape_date_mode").addEventListener("change",syncScrapeDateUI);
+syncWireGuardUI();
 [
   "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count",
   "mode","width","height","quality","caption_backend","caption_runtime","caption_chat_format","caption_model_path","caption_mmproj_path","caption_api_model","caption_api_base_url","caption_max_tokens","face_crop","face_padding","person_check",
@@ -2148,6 +2284,8 @@ class RequestBodyLimitMiddleware:
             return MAX_IMAGE_UPLOAD_REQUEST_BYTES
         if path.startswith("/api/vlm/upload/"):
             return MAX_VLM_UPLOAD_BYTES
+        if path == "/api/wireguard/config":
+            return MAX_WIREGUARD_CONFIG_BYTES + 256 * 1024
         return MAX_JSON_REQUEST_BYTES
 
     async def __call__(self, scope, receive, send) -> None:
@@ -2314,6 +2452,7 @@ def create_app(
     root: Path | str = ".",
     *,
     api_key_store_path: Path | str | None = None,
+    wireguard_store_dir: Path | str | None = None,
 ) -> FastAPI:
     app = FastAPI(title="LoRA Data Maker WebUI")
     app.add_middleware(RequestBodyLimitMiddleware)
@@ -2370,7 +2509,7 @@ def create_app(
             }
             or path.startswith((
                 "/api/vlm/upload/", "/api/run/", "/api/images/",
-                "/api/projects/", "/api/jobs/",
+                "/api/projects/", "/api/jobs/", "/api/wireguard/",
             ))
         )
         if serialized_mutation:
@@ -2394,6 +2533,12 @@ def create_app(
         if api_key_store_path is not None
         else default_api_key_store_path()
     )
+    wireguard_directory = (
+        Path(wireguard_store_dir).expanduser().absolute()
+        if wireguard_store_dir is not None
+        else credential_path.parent / "wireguard"
+    )
+    wireguard_store = WireGuardConfigStore(wireguard_directory)
     for env_name, saved_key in load_api_keys(credential_path).items():
         if not os.environ.get(env_name, "").strip():
             os.environ[env_name] = saved_key
@@ -3558,6 +3703,54 @@ def create_app(
             "filename": filename,
         }
 
+    @app.get("/api/wireguard/state")
+    def wireguard_state():
+        return wireguard_store.public_state()
+
+    @app.post("/api/wireguard/config")
+    async def upload_wireguard_config(file: Annotated[UploadFile, File()]):
+        if jobs.has_running():
+            await file.close()
+            raise HTTPException(409, "cannot change WireGuard config while a job is running")
+        filename = Path(file.filename or "").name
+        if not filename.lower().endswith(".conf"):
+            await file.close()
+            raise HTTPException(400, "upload a WireGuard .conf file")
+        try:
+            content = await file.read(MAX_WIREGUARD_CONFIG_BYTES + 1)
+        finally:
+            await file.close()
+        if len(content) > MAX_WIREGUARD_CONFIG_BYTES:
+            raise HTTPException(413, "WireGuard config must be 64 KiB or smaller")
+        try:
+            return wireguard_store.save_config(content, filename)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(500, "could not save the private WireGuard config") from exc
+
+    @app.post("/api/wireguard/settings")
+    def wireguard_settings(payload: dict[str, Any]):
+        if jobs.has_running():
+            raise HTTPException(409, "cannot change WireGuard settings while a job is running")
+        try:
+            return wireguard_store.set_enabled(payload.get("enabled"))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(500, "could not save WireGuard settings") from exc
+
+    @app.delete("/api/wireguard/config")
+    def delete_wireguard_config():
+        if jobs.has_running():
+            raise HTTPException(409, "cannot remove WireGuard config while a job is running")
+        try:
+            return wireguard_store.clear_config()
+        except ValueError as exc:
+            raise HTTPException(400, str(exc)) from exc
+        except OSError as exc:
+            raise HTTPException(500, "could not remove the private WireGuard config") from exc
+
     @app.post("/api/upload")
     async def upload(files: Annotated[list[UploadFile], File()]):
         current_root = require_active_root()
@@ -3635,32 +3828,48 @@ def create_app(
                     if not 1970 <= year <= 9998:
                         raise RuntimeError("scraper.year must be between 1970 and 9998")
                     date_from, date_to = f"{year:04d}-01-01", f"{year:04d}-12-31"
-                manager = ScraperManager(
-                    backend=backend,
-                    output_dir=ps.raw,
-                    cache_dir=ps.cache,
-                    timeout=timeout,
-                    retries=retries,
-                    delay=delay,
-                    max_scrolls=max_scrolls,
-                    date_from=date_from,
-                    date_to=date_to,
-                )
-                known_urls = {
-                    record.source_url
-                    for record in p.manifest.images.values()
-                    if record.source_url
-                }
+                wireguard_proxy = None
+                try:
+                    proxy_url = None
+                    if (
+                        backend in {"playwright-bing", "playwright-google"}
+                        and wireguard_store.is_enabled()
+                    ):
+                        progress(0, count, "starting WireGuard proxy for Playwright...")
+                        wireguard_proxy = WireGuardProxy(wireguard_store.config_path)
+                        wireguard_proxy.start(cancel_event=cancel_event)
+                        proxy_url = wireguard_proxy.proxy_url
 
-                progress(0, count, f"searching with {backend}...")
-                downloads, failures = manager.run(
-                    query,
-                    count=count,
-                    known_urls=known_urls,
-                    progress=progress,
-                    cancel_event=cancel_event,
-                )
-                search_error = manager.last_search_error
+                    manager = ScraperManager(
+                        backend=backend,
+                        output_dir=ps.raw,
+                        cache_dir=ps.cache,
+                        timeout=timeout,
+                        retries=retries,
+                        delay=delay,
+                        max_scrolls=max_scrolls,
+                        date_from=date_from,
+                        date_to=date_to,
+                        proxy_url=proxy_url,
+                    )
+                    known_urls = {
+                        record.source_url
+                        for record in p.manifest.images.values()
+                        if record.source_url
+                    }
+
+                    progress(0, count, f"searching with {backend}...")
+                    downloads, failures = manager.run(
+                        query,
+                        count=count,
+                        known_urls=known_urls,
+                        progress=progress,
+                        cancel_event=cancel_event,
+                    )
+                    search_error = manager.last_search_error
+                finally:
+                    if wireguard_proxy is not None:
+                        wireguard_proxy.close()
 
                 added_records = 0
                 for result in downloads:
