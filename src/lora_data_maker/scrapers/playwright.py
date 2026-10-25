@@ -155,7 +155,7 @@ class PlaywrightImagesScraper(Scraper):
     PROVIDERS = ("bing", "google")
     BING_URL = "https://www.bing.com/images/search"
     GOOGLE_URL = "https://www.google.com/search"
-    GOOGLE_IMAGES_URL = "https://www.google.com/search?tbm=isch"
+    GOOGLE_IMAGES_URL = "https://www.google.com/search?udm=2"
 
     def __init__(
         self,
