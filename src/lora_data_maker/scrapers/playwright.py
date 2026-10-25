@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import html
+import os
 import re
+import socket
 import time
 from datetime import date
+from pathlib import Path
 from html.parser import HTMLParser
 from typing import Iterator
 from urllib.parse import parse_qs, urlencode, urlparse
@@ -163,6 +166,7 @@ class PlaywrightImagesScraper(Scraper):
         max_scrolls: int = 30,
         date_from: str | None = None,
         date_to: str | None = None,
+        proxy_url: str | None = None,
     ) -> None:
         if provider not in self.PROVIDERS:
             raise ValueError(
@@ -179,6 +183,7 @@ class PlaywrightImagesScraper(Scraper):
             raise ValueError("max_scrolls must be greater than zero")
 
         self.provider = provider
+        self.proxy_url = proxy_url
         self.timeout = timeout
         self.retries = retries
         self.delay = delay
@@ -223,6 +228,38 @@ class PlaywrightImagesScraper(Scraper):
         ) from last_error
 
     def _create_browser(self, initial_url: str | None = None):
+        if self.proxy_url:
+            # A dedicated Chromium profile and dynamic CDP port make this a
+            # proxy-bound browser owned by this scrape, never an existing
+            # user's unproxied Chromium process.
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as server:
+                server.bind(("127.0.0.1", 0))
+                port = int(server.getsockname()[1])
+            data_home = os.environ.get("XDG_DATA_HOME", "").strip()
+            base_dir = (
+                Path(data_home).expanduser()
+                if data_home
+                else Path.home() / ".local" / "share"
+            )
+            profile = (
+                base_dir / "lora-data-maker"
+                / f"playwright-{self.provider}-wireguard-profile"
+            )
+            try:
+                return ExistingChromium(
+                    user_data_dir=profile,
+                    port=port,
+                    timeout=min(max(self.timeout, 0.5), 5.0),
+                    auto_launch=True,
+                    executable=os.environ.get("CHROME_EXECUTABLE", "").strip() or None,
+                    initial_url=initial_url or self.GOOGLE_IMAGES_URL,
+                    proxy_server=self.proxy_url,
+                    headless=self.provider == "bing",
+                    shutdown_on_close=True,
+                )
+            except ValueError as exc:
+                raise ScraperError(str(exc)) from exc
+
         if self.provider == "google":
             try:
                 return ExistingChromium.from_environment(
