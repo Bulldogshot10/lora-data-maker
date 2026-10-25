@@ -167,7 +167,7 @@ class PlaywrightImagesScraper(Scraper):
         date_from: str | None = None,
         date_to: str | None = None,
         proxy_url: str | None = None,
-        safe_search: bool = True,
+        safe_search: bool = False,
     ) -> None:
         if provider not in self.PROVIDERS:
             raise ValueError(
