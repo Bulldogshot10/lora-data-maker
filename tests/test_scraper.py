@@ -1557,10 +1557,12 @@ def test_playwright_google_uses_existing_profile_when_configured(monkeypatch, tm
         max_scrolls=1,
     )
 
-    browser = scraper._create_browser()
+    search_url = scraper._build_url("julia russian woman")
+    browser = scraper._create_browser(search_url)
 
     assert isinstance(browser, ExistingChromium)
     assert browser.user_data_dir == profile.resolve()
+    assert browser.initial_url == search_url
     browser.close()
 
 
@@ -1822,11 +1824,13 @@ def test_existing_chromium_launches_visible_browser_with_local_cdp(
         return FakeProcess()
 
     monkeypatch.setattr(module.subprocess, "Popen", fake_popen)
+    search_url = "https://www.google.com/search?tbm=isch&q=julia+russian+woman"
     browser = ExistingChromium(
         user_data_dir=profile,
         port=9222,
         auto_launch=True,
         executable="/mock/chromium-browser",
+        initial_url=search_url,
     )
 
     browser._launch_browser()
@@ -1837,7 +1841,7 @@ def test_existing_chromium_launches_visible_browser_with_local_cdp(
     assert "--remote-debugging-port=9222" in args
     assert "--remote-debugging-address=127.0.0.1" in args
     assert "--remote-allow-origins=http://127.0.0.1:9222" in args
-    assert "https://www.google.com/" in args
+    assert search_url in args
     assert calls["kwargs"]["stdout"] is module.subprocess.DEVNULL
     assert calls["kwargs"]["stderr"] is module.subprocess.DEVNULL
     assert profile.is_dir()
