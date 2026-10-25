@@ -1251,6 +1251,7 @@ def test_playwright_google_extracts_thumbnails_from_rendered_img_markup():
     body = """
     <html><body>
       <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn%3Afirst">
+      <img src="https://encrypted-tbn0.gstatic.com/images?q=tbn%3Afirst">
       <img data-src="https://lh3.googleusercontent.com/second-thumb">
       <picture>
         <source srcset="
