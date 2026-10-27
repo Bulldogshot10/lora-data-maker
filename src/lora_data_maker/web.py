@@ -3486,14 +3486,12 @@ def create_app(
             caption_chat_format = "smolvlm"
         elif caption_chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5", "smolvlm"}:
             raise HTTPException(400, "unsupported VLM chat format")
-        # API credentials and a model are only required for API-backed VLM
-        # captioning. Scraping and deterministic tag captions must work without
-        # configuring an unrelated caption provider.
+        # An API key can be added later in the WebUI. Scraping and settings
+        # persistence must not be blocked by credentials that captioning needs
+        # only when a VLM caption job actually runs.
         if caption_backend == "vlm" and caption_runtime in {"gemini", "openai_compatible"}:
             if not caption_api_key_env:
                 raise HTTPException(400, "API key environment variable is required")
-            if not os.environ.get(caption_api_key_env, "").strip():
-                raise HTTPException(400, "save the API key before enabling API VLM captions")
             if not caption_api_model:
                 raise HTTPException(400, "API model is required")
         if caption_backend == "vlm" and caption_runtime == "llama_cpp" and not caption_model_path:

@@ -375,20 +375,20 @@ Update README to match current features; refresh `docs/ROADMAP.md`, `docs/ARCHIT
 - `README.md`: refreshed the feature inventory and WebUI description; added a Playwright WireGuard guide with Termux `wireproxy` setup, client `.conf` guidance, WebUI controls, separate proxied browser profiles, troubleshooting, and CLI limitation.
 - `docs/ROADMAP.md`: aligned the roadmap with current v2.x features; separated implemented-in-source status from target-device verification.
 - `docs/ARCHITECTURE.md`: documented stage/configuration boundaries, deterministic-vs-API VLM validation requirements, explicit checkbox/radio sizing, and the narrow WebUI WireGuard proxy boundary.
-- `src/lora_data_maker/web.py`: explicit checkbox/radio sizing; API-backed VLM captioning requires a saved API key and selected model, while deterministic captions and scraping remain independent of API credentials.
+- `src/lora_data_maker/web.py`: explicit checkbox/radio sizing; VLM API model selection remains validated when API captioning is selected, but credential entry can happen later and deterministic captions/scraping remain independent of API credentials. A first CI run caught and corrected an overly strict saved-key check at settings-save time.
 - `tests/test_web_scrape.py`: regression tests cover saving scraper settings without a VLM API key/model when deterministic captions are selected, and rejecting API-backed VLM mode without a saved key.
 - `tests/test_web.py`: asserts that the embedded UI includes explicit checkbox/radio sizing.
 - `goal.md`: added this checkpoint while preserving earlier project history.
 
 ### Feature status
-**Implemented in source; tests pending:** checkbox/radio intrinsic sizing; API key/model validation scoped to API VLM captioning; README WireGuard guide and roadmap/architecture synchronization.
+**Implemented in source; tests pending:** checkbox/radio intrinsic sizing; API model validation scoped to API VLM captioning while allowing credentials to be added later; README WireGuard guide and roadmap/architecture synchronization.
 
 **Needs verification:** compile check; focused WebUI tests and the core test suite; current GitHub Actions status; live Termux/X11 Google/Bing scraping with WireGuard enabled, including proxy startup/shutdown, routing, and the separate browser profile.
 
 **Known boundaries:** WireGuard proxy is wired to WebUI Playwright Google/Bing jobs only; the current CLI has no WireGuard config argument. The private key in the stored config is plaintext protected by OS file permissions, not encrypted. No live-device validation is claimed.
 
 ### Next steps
-1. Run `python -m compileall -q src tests`.
+1. Run `python -m compileall -q src tests` and rerun `tests/test_web.py::test_webui_state_handles_missing_api_key_for_api_runtime` after the settings-validation correction.
 2. Run `pytest -q tests/test_web_scrape.py tests/test_web.py`.
 3. Run `pytest -q -m "not real_caption_runtime"` and record the exact counts.
 4. Test WireGuard-enabled Playwright scraping on Termux; verify `wireproxy --version`, proxy start/stop, and actual route without exposing credentials.
