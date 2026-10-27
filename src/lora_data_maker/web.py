@@ -242,7 +242,7 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .field{display:flex;flex-direction:column;gap:6px;min-width:0}.field label{color:#555;font-size:8px;font-weight:600;letter-spacing:.1em;text-transform:uppercase}.field-note{color:#888;font-size:8px;line-height:1.6}
 .field input,.field select,.field textarea,input,select,textarea{min-width:0;max-width:100%;color:var(--ink);background:#fff;border:1px solid #aaa;font-size:10px}.field input,.field select,.field textarea{width:100%;min-height:36px;padding:8px}
 .field input:focus,.field select:focus,.field textarea:focus,input:focus,select:focus,textarea:focus{border-color:var(--safety);outline:1px solid var(--safety);outline-offset:0;box-shadow:none}
-input[type=checkbox],input[type=radio]{accent-color:var(--safety)}.field input[type=range]{padding:0;min-height:24px;border:0;background:transparent;box-shadow:none}.field input[type=file]{padding:6px}
+input[type=checkbox],input[type=radio]{width:16px;height:16px;min-width:16px;max-width:16px;min-height:16px;padding:0;border:0;background:transparent;box-shadow:none;accent-color:var(--safety);flex:0 0 16px;vertical-align:middle}.field input[type=range]{padding:0;min-height:24px;border:0;background:transparent;box-shadow:none}.field input[type=file]{padding:6px}
 .check{display:flex;align-items:flex-start;gap:8px;padding:10px;border:1px solid #bbb;background:var(--surface);color:#555;font-size:9px}.check input{margin:3px 0 0;flex:0 0 auto}
 .range{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:10px}.range-value{color:var(--safety);font-size:9px}
 .save-bar{position:sticky;bottom:8px;z-index:12;display:flex;align-items:center;justify-content:flex-end;gap:7px;margin-top:17px;padding:9px 10px;border:2px solid var(--ink);background:rgba(255,255,255,.96);box-shadow:4px 4px 0 var(--safety)}.save-note{margin-right:auto;color:#777;font-size:8px}
@@ -3486,9 +3486,14 @@ def create_app(
             caption_chat_format = "smolvlm"
         elif caption_chat_format not in {"mtmd", "qwen2.5-vl", "gemma4", "qwen3.5", "smolvlm"}:
             raise HTTPException(400, "unsupported VLM chat format")
+        # API credentials and a model are only required for API-backed VLM
+        # captioning. Scraping and deterministic tag captions must work without
+        # configuring an unrelated caption provider.
         if caption_backend == "vlm" and caption_runtime in {"gemini", "openai_compatible"}:
             if not caption_api_key_env:
                 raise HTTPException(400, "API key environment variable is required")
+            if not os.environ.get(caption_api_key_env, "").strip():
+                raise HTTPException(400, "save the API key before enabling API VLM captions")
             if not caption_api_model:
                 raise HTTPException(400, "API model is required")
         if caption_backend == "vlm" and caption_runtime == "llama_cpp" and not caption_model_path:

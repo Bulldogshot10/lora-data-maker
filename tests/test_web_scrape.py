@@ -287,3 +287,66 @@ def test_web_settings_allow_google_custom_date_range(tmp_path: Path) -> None:
     assert saved["scraper"]["backend"] == "playwright-google"
     assert saved["scraper"]["date_from"] == "2019-04-01"
     assert saved["scraper"]["date_to"] == "2019-09-30"
+
+
+def test_scrape_settings_do_not_require_vlm_api_key(tmp_path: Path, monkeypatch) -> None:
+    """Scraping with deterministic captions must not depend on API VLM credentials."""
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+    response = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "trigger": "person",
+            "preset": "sweetspot",
+            "scraper_backend": "duckduckgo",
+            "scrape_query": "person portrait",
+            "scrape_count": 4,
+            "caption_backend": "deterministic",
+            "caption_runtime": "gemini",
+            "caption_api_model": "",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert response.status_code == 200, response.text
+    saved = client.get("/api/state").json()
+    assert saved["scraper"]["query"] == "person portrait"
+    assert saved["caption"]["backend"] == "deterministic"
+
+
+def test_vlm_api_captions_require_saved_key_and_model(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.delenv("GEMINI_API_KEY", raising=False)
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    root = make_project(tmp_path)
+    client = TestClient(create_app(root))
+    response = client.post(
+        "/api/settings",
+        json={
+            "name": "test",
+            "subject": "person",
+            "trigger": "person",
+            "preset": "sweetspot",
+            "scraper_backend": "duckduckgo",
+            "scrape_query": "person portrait",
+            "scrape_count": 4,
+            "caption_backend": "vlm",
+            "caption_runtime": "gemini",
+            "caption_api_model": "gemini-test-model",
+            "mode": "cover",
+            "width": 512,
+            "height": 512,
+            "quality": 95,
+            "face_crop": False,
+            "face_padding": 1.75,
+        },
+    )
+    assert response.status_code == 400
+    assert "save the API key" in response.json()["detail"]

@@ -12,7 +12,7 @@ Model training and image generation are outside the scope of this project.
 
 ## Current state
 
-v2.5.1 includes the full dataset-preparation pipeline, local and API VLM captioning, authenticated Google Images scraping through local Chromium/CDP, date filtering for Playwright Bing and Google, and the WebUI, alongside mobile-friendly tagger presets:
+The current `main` branch includes the full dataset-preparation pipeline, the CLI and local WebUI, deterministic tag-based captions, local GGUF and API-backed VLM captioning (Gemini and OpenAI-compatible providers), authenticated Playwright browser scraping, Playwright Google/Bing date filtering, optional per-scrape WireGuard proxying, and mobile-friendly tagger presets. The older `v2.5.1` label below is a historical version marker; check the commit history for the exact revision.
 
 - **sweetspot**: SmilingWolf WD ViT Tagger v3, a compact general-purpose WD14-compatible ONNX tagger.
 - **potato**: QUINT8 mobile SwinV2 tagger for the smallest built-in footprint.
@@ -144,6 +144,8 @@ Tagger models are cached under:
 ~~~
 
 ## Quick start
+
+For the complete Termux setup, including optional Chromium, Playwright, quality-filter and WireGuard dependencies, see [Termux installation](docs/INSTALL_TERMUX.md). The short path below installs the core toolkit and quality filters; browser backends have their own optional extras.
 
 Install from the repository:
 
@@ -312,6 +314,50 @@ lora-data-maker scrape playwright-google "julia portrait" --date-from 2019-04-01
 
 Bing and Playwright Google date filters are also available in the WebUI as **any date**, **specific year**, or **custom range**. The date filter controls appear when either Playwright backend is selected. Google uses `after:`/`before:` query operators, which filter indexed page dates and do not guarantee the date the original photo was taken. The scraper is add-only and uses the manifest to avoid re-downloading known source URLs. A running WebUI scrape can be cancelled, and downloads completed before cancellation are preserved.
 
+## Optional Playwright WireGuard proxy
+
+WireGuard support is an **optional per-scrape proxy** for the Playwright Bing and Google backends. It does not switch Android's global VPN, route all Termux traffic, or affect other scraper backends. The WebUI starts a local proxy for the scrape and stops it when the job finishes or fails.
+
+### 1. Install the proxy on Termux
+
+Install Go and build the pinned `wireproxy` version:
+
+~~~bash
+pkg install golang
+go install github.com/windtf/wireproxy/cmd/wireproxy@v1.1.2
+export PATH="$HOME/go/bin:$PATH"
+wireproxy --version
+~~~
+
+Add `export PATH="$HOME/go/bin:$PATH"` to your shell profile if you want the binary found in future Termux sessions. Follow [Termux installation notes](docs/INSTALL_TERMUX.md) for native Chromium and Playwright prerequisites too.
+
+### 2. Get a WireGuard client config
+
+Get a client `.conf` from your VPN provider or your own WireGuard server. It should be a normal client configuration with an `[Interface]` section (including its private key and assigned address) and a `[Peer]` section. Keep the file private. Do not paste its private key into chat, commit the file to Git, or put it inside a public dataset repository.
+
+### 3. Configure it in the WebUI
+
+Start the WebUI from your datasets workspace:
+
+~~~bash
+lora-data-maker web --path ~/datasets
+~~~
+
+Open `http://127.0.0.1:8787`, create or open a dataset, then go to **Collect images**. Select **Playwright Google** or **Playwright Bing**, upload your WireGuard client `.conf`, and enable **use WireGuard for Playwright scraping**. Save settings, then press **scrape images**.
+
+The uploaded configuration is stored outside dataset folders in the local per-user configuration area with owner-only file permissions. The key is not written into `config.toml`, the manifest, captions, or repository. It is stored as plaintext protected by filesystem permissions, not encrypted. Clear the saved WireGuard configuration from the WebUI when you no longer need it.
+
+### 4. Complete the first proxied browser login
+
+WireGuard runs use a separate persistent Chromium profile from normal Playwright runs. If Google or Bing needs authentication, consent, or verification, complete it in the visible browser window once for the **WireGuard-enabled profile**. A login made in the non-proxied profile may not exist in that separate profile.
+
+Keep browser CDP endpoints on loopback (`127.0.0.1`) and keep the WebUI bound to localhost too. Do not expose the WebUI or CDP ports through a tunnel, LAN, or reverse proxy. See [SECURITY.md](SECURITY.md).
+
+### Troubleshooting
+
+If the UI says the proxy cannot start, check that `wireproxy --version` works in the same Termux environment that starts the WebUI and that `$HOME/go/bin` is on `PATH`. If scraping appears to use the normal browser profile, verify that the selected backend is Playwright Bing/Google and that the WireGuard toggle is enabled and saved. This option is only wired to those Playwright search backends; ordinary DuckDuckGo, direct URL, Selenium Chromium, and Playwright website capture do not use this per-scrape proxy.
+
+The current CLI scrape command does not accept a WireGuard configuration path. Use the WebUI controls above when you need WireGuard-backed Playwright scraping.
 ## Authenticated website capture with Playwright
 
 You can launch Playwright-Termux without starting a scrape, sign in to a site manually, then capture image elements from a page using that persistent session:
@@ -392,7 +438,7 @@ Start the WebUI from a dataset workspace:
 
 Then open http://127.0.0.1:8787 in the browser. The WebUI can create a new dataset project from the workspace, open existing projects, and switch between them without using the CLI init command.
 
-The WebUI supports image upload, project identity/trigger settings, resize settings, WD14 or JoyTag selection for deterministic captions, local VLM model/mmproj paths and chat format, the final caption token budget, validation, staging, caption generation, Kohya export, ZIP packaging, gallery preview, manual image removal for cherry-picking, scraper cancellation, and ZIP download. VLM mode skips WD14/JoyTag and generates trigger-prefixed, comma-separated captions from visible framing, pose/action, clothing/accessories, expression/gaze, and background/lighting.
+The WebUI supports image upload, dataset creation and project switching, project identity/trigger settings, resize/crop controls, scraper backends and date filters, optional SafeSearch, optional WireGuard proxying for Playwright Google/Bing, WD14/JoyTag selection for deterministic captions, local VLM model/mmproj paths and chat format, Gemini/OpenAI-compatible model discovery and per-user API-key storage, validation, deduplication/quality cleaning, processing, caption generation, Kohya export, ZIP packaging, gallery preview, manual image removal for cherry-picking, scraper cancellation, and ZIP download. VLM mode skips WD14/JoyTag and generates trigger-prefixed, comma-separated captions from visible framing, pose/action, clothing/accessories, expression/gaze, and background/lighting.
 
 The one-click Prepare Dataset flow runs:
 

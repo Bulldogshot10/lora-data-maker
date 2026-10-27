@@ -594,6 +594,7 @@ def test_webui_shell_has_production_navigation_and_safe_interactions(tmp_path: P
     assert 'rel="icon" href="/favicon.ico"' in html
     assert 'sizes="32x32"' in html
     assert "onclick=" not in html
+    assert "input[type=checkbox],input[type=radio]{width:16px;height:16px;min-width:16px;max-width:16px;min-height:16px" in html
 
     for path in (
         "/favicon.ico",

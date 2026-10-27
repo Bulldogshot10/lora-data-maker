@@ -1,5 +1,7 @@
 # Roadmap
 
+Status review: 2026-10-27. This roadmap describes the current `main` implementation rather than the original v1 phase boundary. Implemented means present in source and covered where noted; live browser/network behavior still requires target-device verification.
+
 Phase 0 — architecture and dependency lock
 - Define scope and non-goals.
 - Lock the raw → work → output lifecycle.
@@ -93,3 +95,14 @@ Phase 17 — v1.3 tagger presets ✓ implemented
 - Sweetspot and potato WD14-compatible presets.
 - Pinned model artifacts with SHA-256 verification.
 - Mobile-friendly tagging path for constrained devices.
+
+## Current implementation follow-up (v2.x)
+
+- **WebUI configuration and project workflow: implemented in source.** Local workspace project creation/switching, upload and curation, settings persistence, asynchronous stage jobs, progress, scrape cancellation, gallery preview, ZIP download, and loopback-only request checks.
+- **Caption runtime selection: implemented in source.** Deterministic tag captions; local VLM runtimes; Gemini and OpenAI-compatible API model discovery; API-key persistence separate from dataset config; VLM mode bypasses taggers.
+- **Authenticated browser scraping: implemented in source.** Persistent Google/Bing Playwright browser profiles, original-source-first URL recovery with marked thumbnail fallback, date filters, and generic authenticated page image capture using a separate profile. Live provider markup can change; target Termux/X11 verification remains a separate task.
+- **Optional WireGuard proxy: implemented in source.** The WebUI can store a WireGuard client config and route Playwright Google/Bing scraping through a temporary local `wireproxy` instance. Other scraper backends do not use this option. Provider access, routing behavior, and live stability need device verification.
+- **Tagging presets: implemented in source.** `sweetspot`, `potato`, and `joytag`, with pinned artifacts/checksum checks and optional runtime dependencies.
+- **Quality gates: implemented in source.** Exact/perceptual deduplication, image quality heuristics, optional person detection, and PP-OCRv3 text filtering. The text detector is English-focused.
+- **Validation and benchmark: needs device verification.** Execute core/WebUI tests against the current commit and exercise Playwright browser scraping, optional WireGuard routing, local VLM, and mobile tagger runtime on the supported Termux device.
+- **Open maintenance work.** Keep README, architecture, roadmap, config/CLI/install/troubleshooting docs and `goal.md` synchronized whenever WebUI settings, scraper capability, or caption runtime behavior changes. Add regression coverage for browser-side CSS and configuration-validation issues.

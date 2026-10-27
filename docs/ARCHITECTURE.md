@@ -1,6 +1,6 @@
 # Architecture Contract
 
-Status: current v1.3 architecture
+Status: current v2.x architecture, reviewed 2026-10-27
 
 ## Purpose
 
@@ -180,3 +180,17 @@ Primary target: current Termux Python on aarch64 Android.
 Secondary target: regular Linux environments.
 
 Platform-specific packages must be validated on-device before being treated as required dependencies.
+
+## WebUI configuration and stage boundaries
+
+The WebUI keeps scraper settings, processing/quality settings, tagger selection, and caption runtime configuration in separate configuration sections. Starting the **scrape** stage reads only `[scraper]` settings and starts the scraper manager; it must not instantiate a captioner or require an API model or API credential. Caption-provider requirements apply when the user selects `caption.backend = "vlm"` with a runtime that needs those inputs. Deterministic captions use tags and do not require an API key.
+
+A WebUI settings-save action can persist settings for more than one stage. Validation of optional caption settings must therefore be scoped to the selected caption mode: API key and model requirements are enforced for API-backed VLM captioning, not merely because the runtime selector currently points at an API provider while deterministic captioning is active. The UI must not make unrelated scraper controls unusable because a caption provider is unconfigured.
+
+Checkbox/radio controls are exceptions to the global form-control sizing rule. They must use explicit intrinsic dimensions and must not inherit `width: 100%`, large text-field minimum heights, or text-field padding. Keep regression coverage for rendered CSS because the WebUI is delivered as embedded HTML/CSS/JavaScript from `web.py`.
+
+## Optional WireGuard scrape proxy
+
+The WireGuard integration is a narrow transport option for Playwright Google/Bing scraping in the WebUI. A private WireGuard config is persisted outside dataset folders using the per-user local configuration area. When enabled for a supported backend, the scrape job starts a local `wireproxy` instance, passes its loopback proxy URL to `ScraperManager`, and closes the proxy in a `finally` path. It does not install system-level routes or modify Android's default route. The proxied browser uses a separate persistent profile so cookies/session state are not silently shared with non-proxied browsing. The feature does not apply to DuckDuckGo, direct URLs, Selenium Chromium, or `playwright-site`.
+
+The proxy configuration is plaintext at rest protected by filesystem permissions, not encrypted. Keep the WebUI and CDP listeners on loopback, treat both the configuration and persistent browser profiles as sensitive, and validate live behavior on Termux rather than treating unit tests as proof of provider routing.

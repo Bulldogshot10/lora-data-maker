@@ -1,6 +1,6 @@
 # Project Goal and Handoff
 
-Last reviewed: 2026-10-25. The current README describes v2.5.1; `docs/ROADMAP.md` has older phase/version framing, so reconcile both when updating status.
+Last reviewed: 2026-10-27. README and `docs/ROADMAP.md` now describe the current v2.x feature surface, including WebUI workflows and the optional Playwright WireGuard proxy.
 
 ## Goal
 Deliver a Termux-first and Linux-compatible dataset preparation toolkit for LoRA training: scrape, validate, deduplicate, quality-filter, crop/resize, tag or caption, export, and package datasets. Model training and image generation are outside this project's scope.
@@ -365,3 +365,31 @@ Not implemented: automatic interactive natural-language agent actions on arbitra
 - Updated the README backend list and configuration guide to include playwright-site, clarified the CLI positional argument help for website URLs, and exported PlaywrightSiteScraper from the scraper package API.
 - Added a parser regression test covering the standalone login-browser command and the site backend with CSS selector options.
 - Test execution remains blocked in this environment by the failed GitHub DNS lookup noted above; the automatic core-smoke workflow is expected to run on push, but its result must be checked before claiming CI validation.
+
+## Session checkpoint / handoff (2026-10-27, docs and WebUI minor fixes)
+
+### Requested scope
+Update README to match current features; refresh `docs/ROADMAP.md`, `docs/ARCHITECTURE.md`, and other stale docs; fix WebUI checkbox sizing; allow scraping without requiring VLM API credentials; include a practical WireGuard setup guide in README. Target branch: existing `main`; do not create or switch branches.
+
+### Changes in this update
+- `README.md`: refreshed the feature inventory and WebUI description; added a Playwright WireGuard guide with Termux `wireproxy` setup, client `.conf` guidance, WebUI controls, separate proxied browser profiles, troubleshooting, and CLI limitation.
+- `docs/ROADMAP.md`: aligned the roadmap with current v2.x features; separated implemented-in-source status from target-device verification.
+- `docs/ARCHITECTURE.md`: documented stage/configuration boundaries, deterministic-vs-API VLM validation requirements, explicit checkbox/radio sizing, and the narrow WebUI WireGuard proxy boundary.
+- `src/lora_data_maker/web.py`: explicit checkbox/radio sizing; API-backed VLM captioning requires a saved API key and selected model, while deterministic captions and scraping remain independent of API credentials.
+- `tests/test_web_scrape.py`: regression tests cover saving scraper settings without a VLM API key/model when deterministic captions are selected, and rejecting API-backed VLM mode without a saved key.
+- `tests/test_web.py`: asserts that the embedded UI includes explicit checkbox/radio sizing.
+- `goal.md`: added this checkpoint while preserving earlier project history.
+
+### Feature status
+**Implemented in source; tests pending:** checkbox/radio intrinsic sizing; API key/model validation scoped to API VLM captioning; README WireGuard guide and roadmap/architecture synchronization.
+
+**Needs verification:** compile check; focused WebUI tests and the core test suite; current GitHub Actions status; live Termux/X11 Google/Bing scraping with WireGuard enabled, including proxy startup/shutdown, routing, and the separate browser profile.
+
+**Known boundaries:** WireGuard proxy is wired to WebUI Playwright Google/Bing jobs only; the current CLI has no WireGuard config argument. The private key in the stored config is plaintext protected by OS file permissions, not encrypted. No live-device validation is claimed.
+
+### Next steps
+1. Run `python -m compileall -q src tests`.
+2. Run `pytest -q tests/test_web_scrape.py tests/test_web.py`.
+3. Run `pytest -q -m "not real_caption_runtime"` and record the exact counts.
+4. Test WireGuard-enabled Playwright scraping on Termux; verify `wireproxy --version`, proxy start/stop, and actual route without exposing credentials.
+5. Check Actions status for the exact commit before claiming CI success.
