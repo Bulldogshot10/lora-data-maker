@@ -322,7 +322,8 @@ def test_scrape_settings_do_not_require_vlm_api_key(tmp_path: Path, monkeypatch)
     assert saved["caption"]["backend"] == "deterministic"
 
 
-def test_vlm_api_captions_require_saved_key_and_model(tmp_path: Path, monkeypatch) -> None:
+def test_vlm_api_settings_can_be_saved_before_key_entry(tmp_path: Path, monkeypatch) -> None:
+    """Provider settings can be prepared first; credentials are managed separately."""
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     root = make_project(tmp_path)
@@ -348,5 +349,7 @@ def test_vlm_api_captions_require_saved_key_and_model(tmp_path: Path, monkeypatc
             "face_padding": 1.75,
         },
     )
-    assert response.status_code == 400
-    assert "save the API key" in response.json()["detail"]
+    assert response.status_code == 200, response.text
+    state = client.get("/api/state").json()
+    assert state["caption"]["backend"] == "vlm"
+    assert state["caption"]["api_keys_set"]["gemini"] is False
