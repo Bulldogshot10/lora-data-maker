@@ -171,6 +171,7 @@ backend = "deterministic"
 separator = ", "
 subject_position = "first"
 trigger_from_subject = true
+class_token = "" # optional class noun, e.g. "woman" or "person"
 max_tokens = 77
 
 [caption.vlm]
@@ -198,9 +199,9 @@ For API runtimes, api_key_env names the environment variable holding the API key
 
 The WebUI caches provider model discovery for ten minutes. The model selector shows known Gemini choices immediately while refreshing the provider's model list in the background.
 
-Local and API VLM runtimes share one SD 1.5-focused caption prompt. The VLM returns one concise, single-line caption with comma-separated tags or short visual phrases, covering framing, pose/action, clothing/accessories, expression/gaze, subject count when clear, and background/lighting. It aims for roughly 25-45 words and fewer than 70 CLIP tokens to leave room within SD 1.5's 77-token text-encoder window. The prompt avoids stable identity traits such as hair/eye color, hairstyle, facial identity, age, and gender so a character/person LoRA can learn those through its dataset trigger. The pipeline prepends the resolved trigger and accepts both this flat caption format and legacy five-field VLM output.
+Local and API VLM runtimes share one SD 1.5-focused caption prompt. The VLM returns one concise, single-line caption with comma-separated tags or short visual phrases, covering framing, pose/action, clothing/accessories, expression/gaze, subject count when clear, and background/lighting. It aims for roughly 25-45 words and fewer than 70 CLIP tokens to leave room within SD 1.5's 77-token text-encoder window. The prompt avoids stable identity traits such as hair/eye color, hairstyle, facial identity, age, and gender so a character/person LoRA can learn those through its dataset trigger. The pipeline prepends the resolved trigger and optional `caption.class_token` (for example, `woman`) before the visual details. The class noun is configured explicitly and is never inferred by the VLM. The parser accepts both flat captions and legacy five-field VLM output.
 
-API requests use the shared built-in prompt and do not expose local sampling/runtime settings such as temperature, top-p, top-k, seed, context size, or chat format. The API adapter sends the image, the fixed prompt, and the selected API model.
+Set `caption.vlm.prompt` to override the built-in prompt; the same configured prompt is used by local, Gemini, and OpenAI-compatible VLM runtimes. API requests do not expose local sampling/runtime settings such as temperature, top-p, top-k, seed, context size, or chat format.
 
 Install the local runtime with:
 
