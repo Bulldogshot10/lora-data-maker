@@ -13,17 +13,40 @@ from .exceptions import LoraDataMakerError
 from .security import MAX_IMAGE_PIXELS, MAX_IMAGE_UPLOAD_BYTES
 
 DEFAULT_VLM_PROMPT = (
-    "Write concise captions for images used to train character/person LoRAs on Stable Diffusion 1.5 (SD 1.5).\n"
-    "Inspect only what is visibly present. Return ONE single-line caption made of comma-separated tags or short visual phrases, using familiar vocabulary that SD 1.5's CLIP text encoder can understand. Prefer concise labels over long prose.\n\n"
-    "Prioritize useful, image-specific details in this order: framing/composition and camera view (close-up portrait, upper body, cowboy shot, full body, front view, side view, from above); visible pose/action (standing, sitting, arms raised, holding an object, walking, crossed legs); visible clothing and accessories, including garment types and colors; expression and gaze when clear (smiling, neutral expression, looking at viewer, looking away); subject count/composition (solo, two people, group) when clear; background/setting and lighting (bedroom, street, plain background, window light, soft lighting, backlighting). Mention the medium only when obvious and useful, such as photograph, anime illustration, or digital illustration.\n\n"
-    "For a character/person LoRA, leave stable identity-defining traits for the dataset trigger to learn: do not describe hair color or hairstyle, eye color, facial identity, age, or gender. Do not guess hidden, occluded, or ambiguous details.\n"
-    "Do not include the subject's name or trigger token; the dataset pipeline adds it automatically.\n"
-    "Use about 6-12 useful items and keep the whole caption compact (ideally 25-45 words and below roughly 70 CLIP tokens). Avoid duplicate synonyms, redundant restatements, long narrative sentences, generic praise, quality-rating tags, subjective opinions, negative prompts, and explanations. Do not caption watermarks or incidental text.\n"
-    "Output only the comma-separated caption on one line. No labels, field names, bullets, numbering, quotes, markdown, or introductory text.\n\n"
-    "Example: upper body portrait, standing, both arms raised, front view, white halter top, black mini skirt, slight smile, looking at viewer, indoor studio, soft lighting\n"
-    "Example: full body, seated on a chair, three-quarter view, red coat, black boots, neutral expression, city street, overcast daylight\n"
-    "Example: close-up portrait, side profile, looking away, open mouth, dramatic side lighting, dark background"
-)
+    "Create concise, accurate training captions for human character LoRAs on Stable Diffusion 1.5 (SD 1.5).\n"
+    "Describe the visible, image-specific attributes that should remain independently controllable during generation. Inspect the whole image and report only details supported by visible evidence.\n"
+    "\n"
+    "CAPTION PRIORITY — describe the most useful details first:\n"
+    "1. Framing and composition: extreme close-up, close-up portrait, head-and-shoulders, bust shot, upper body, cowboy shot, full body, wide shot, subject placement, foreground and visible cropping.\n"
+    "2. Camera viewpoint: front view, side profile, three-quarter view, eye-level, low angle, high angle, overhead view, camera perspective and shot distance.\n"
+    "3. Pose and physical positioning: standing, sitting, kneeling, leaning, walking, torso orientation, weight distribution, arm position, hand gestures, leg position, crossed legs, and visible actions.\n"
+    "4. Clothing and accessories: garment type, visible colors, patterns, material when clear, layers, fit, jewelry, eyewear, bags, and other visible accessories.\n"
+    "5. Expression and gaze: smiling, neutral expression, frowning, eyes closed, looking at viewer, looking away, and gaze direction when clearly visible.\n"
+    "6. Objects and interaction: visible props, handheld objects, furniture, and how the subject interacts with nearby objects.\n"
+    "7. Environment: indoor or outdoor setting, identifiable location, background objects, foreground objects, and relevant environmental context.\n"
+    "8. Lighting and photographic appearance: natural window light, direct flash, soft light, hard shadows, backlighting, overcast daylight, artificial lighting, depth of field, and visible photographic or illustration medium when clear.\n"
+    "\n"
+    "CHARACTER IDENTITY POLICY:\n"
+    "The dataset trigger represents the character's stable identity. Leave stable facial identity, facial structure, eye color, permanent hair color, stable skin tone, body proportions, and other defining identity traits for the trigger to learn.\n"
+    "Do not infer age, ethnicity, personality, relationships, intentions, or personal history.\n"
+    "Describe hair styling, makeup, clothing, and accessories when they are visibly varied and intended to remain independently controllable. Omit signature traits that appear to be permanent identity features.\n"
+    "Do not output the character name, dataset trigger, or subject class noun such as person, woman, or man. The dataset pipeline injects the configured trigger and optional class noun.\n"
+    "Do not guess hidden, occluded, ambiguous, or off-frame details.\n"
+    "\n"
+    "CAPTION QUALITY:\n"
+    "Use concrete visual vocabulary and familiar short tags or phrases that Stable Diffusion 1.5's CLIP text encoder can understand.\n"
+    "Prefer approximately 6-12 informative items and 25-45 words total, ideally below roughly 70 CLIP tokens.\n"
+    "Prioritize details that distinguish this image from other images of the same character. Avoid redundant synonyms, repeated descriptions, generic praise, subjective judgments, quality-rating tags, negative prompts, unsupported camera specifications, and long narrative sentences.\n"
+    "Do not caption watermarks, signatures, logos, or incidental text.\n"
+    "\n"
+    "OUTPUT FORMAT:\n"
+    "Return exactly one concise, single-line caption using comma-separated tags or short visual phrases.\n"
+    "Output only the caption. No explanations, headings, field labels, bullets, numbering, quotations, markdown, or introductory text.\n"
+    "\n"
+    "Example: upper body portrait, three-quarter view, leaning against a wall, right hand on hip, left arm raised, white halter top, black mini skirt, slight smile, looking away, indoor studio, soft side lighting\n"
+    "Example: full body, seated on a chair, side profile, legs crossed, red wool coat, black boots, holding a handbag, city street, overcast daylight\n"
+    "Example: close-up portrait, eye-level, looking at viewer, subtle smile, dark jacket, shallow depth of field, warm window light\n")
+
 
 
 class Captioner(Protocol):
