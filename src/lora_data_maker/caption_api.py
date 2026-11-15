@@ -345,7 +345,7 @@ class GeminiVlmCaptioner(_ApiVlmCaptioner):
                 )
             return text
 
-        return request_caption(API_VLM_PROMPT)
+        return request_caption(self.config.prompt)
 
 
 class OpenAICompatibleVlmCaptioner(_ApiVlmCaptioner):
@@ -411,4 +411,4 @@ class OpenAICompatibleVlmCaptioner(_ApiVlmCaptioner):
                 )
             return text
 
-        return request_caption(API_VLM_PROMPT)
+        return request_caption(self.config.prompt)
