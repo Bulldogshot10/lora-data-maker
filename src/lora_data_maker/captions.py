@@ -37,6 +37,7 @@ class CaptionConfig:
     separator: str = ", "
     subject_position: str = "first"
     trigger_from_subject: bool = True
+    class_token: str = ""
     backend: str = "deterministic"
     max_tokens: int = 77
     vlm: VlmConfig = field(default_factory=VlmConfig)
@@ -68,6 +69,10 @@ class CaptionConfig:
                     raise ValueError(
                         "caption.vlm.api_model must not be empty for API runtimes"
                     )
+        if not isinstance(self.class_token, str):
+            raise ValueError("caption.class_token must be a string")
+        if len(self.class_token.strip()) > 64 or any(char in self.class_token for char in ",\r\n"):
+            raise ValueError("caption.class_token must be at most 64 characters and contain no commas or line breaks")
         if not isinstance(self.separator, str):
             raise ValueError("caption.separator must be a string")
         if not isinstance(self.trigger_from_subject, bool):
@@ -87,6 +92,9 @@ def caption_config_from_dict(
     trigger_from_subject = data.get("trigger_from_subject", True)
     backend = str(data.get("backend", "deterministic")).strip().lower()
     max_tokens = data.get("max_tokens", 77)
+    class_token = data.get("class_token", "")
+    if not isinstance(class_token, str):
+        raise ValueError("config field caption.class_token must be a string")
     if isinstance(max_tokens, bool) or not isinstance(max_tokens, int):
         raise ValueError("config field caption.max_tokens must be an integer")
 
@@ -206,6 +214,7 @@ def caption_config_from_dict(
         separator=separator,
         subject_position=subject_position,
         trigger_from_subject=trigger_from_subject,
+        class_token=class_token.strip(),
         backend=backend,
         max_tokens=max_tokens,
         vlm=vlm,
@@ -233,8 +242,18 @@ def build_caption(
     """Build one deterministic caption with an idempotent leading trigger."""
     settings = config or CaptionConfig()
 
+    resolved_trigger = resolve_trigger(
+        subject=subject,
+        trigger=trigger,
+        trigger_from_subject=settings.trigger_from_subject,
+    )
+    resolved_class_token = normalize_tag(settings.class_token)
+    identity_tokens = list(dict.fromkeys(
+        token for token in (resolved_trigger, resolved_class_token) if token
+    ))
+
     normalized_tags: list[str] = []
-    seen: set[str] = set()
+    seen: set[str] = set(identity_tokens)
     for raw_tag in tags:
         tag = normalize_tag(raw_tag)
         if not tag or tag in seen:
@@ -242,17 +261,7 @@ def build_caption(
         seen.add(tag)
         normalized_tags.append(tag)
 
-    resolved_trigger = resolve_trigger(
-        subject=subject,
-        trigger=trigger,
-        trigger_from_subject=settings.trigger_from_subject,
-    )
-
-    if resolved_trigger:
-        normalized_tags = [
-            tag for tag in normalized_tags if tag != resolved_trigger
-        ]
-        normalized_tags.insert(0, resolved_trigger)
+    normalized_tags = identity_tokens + normalized_tags
 
     return truncate_caption(
         settings.separator.join(normalized_tags),
@@ -524,8 +533,14 @@ def _build_vlm_caption(
         trigger_from_subject=config.trigger_from_subject,
     )
 
+    resolved_class_token = normalize_tag(config.class_token)
+    identity_tokens = list(dict.fromkeys(
+        token for token in (resolved_trigger, resolved_class_token) if token
+    ))
+    identity_keys = {token.casefold() for token in identity_tokens}
+
     cleaned_items: list[str] = []
-    seen: set[str] = set()
+    seen: set[str] = set(identity_keys)
     trigger_pattern = (
         re.compile(
             rf"(?<![A-Za-z0-9_]){re.escape(resolved_trigger)}(?![A-Za-z0-9_])",
@@ -544,10 +559,7 @@ def _build_vlm_caption(
             cleaned_items.append(value)
             seen.add(key)
 
-    parts: list[str] = []
-    if resolved_trigger:
-        parts.append(resolved_trigger)
-    parts.extend(cleaned_items)
+    parts = identity_tokens + cleaned_items
     return config.separator.join(parts)
 
 
