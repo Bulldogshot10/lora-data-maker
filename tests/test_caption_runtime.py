@@ -486,3 +486,20 @@ def test_onnx_caption_end_to_end_uses_prefill_and_kv_cache(tmp_path):
         runtime._decoder.calls[1]["position_ids"],
         np.array([[4]], dtype=np.int64),
     )
+
+
+
+def test_caption_config_reads_class_token_and_custom_prompt():
+    settings = caption_config_from_dict(
+        {
+            "backend": "vlm",
+            "class_token": "woman",
+            "vlm": {
+                "runtime": "openai_compatible",
+                "api_model": "vision-model",
+                "prompt": "Use this custom visual caption policy.",
+            },
+        }
+    )
+    assert settings.class_token == "woman"
+    assert settings.vlm.prompt == "Use this custom visual caption policy."
