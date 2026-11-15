@@ -89,6 +89,7 @@ backend = "deterministic"
 separator = ", "
 subject_position = "first"
 trigger_from_subject = true
+class_token = ""
 max_tokens = 77
 
 [caption.vlm]
