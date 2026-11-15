@@ -985,6 +985,11 @@ dialog::backdrop{background:rgba(15,20,28,.45);backdrop-filter:blur(4px)}
             </select>
           </div>
           <div class="field">
+            <label for="caption_class_token">class noun · optional</label>
+            <input id="caption_class_token" autocomplete="off" maxlength="64" placeholder="e.g. woman, man, person">
+            <div class="field-note">Injected after the trigger. Leave blank to omit.</div>
+          </div>
+          <div class="field">
             <label for="caption_max_tokens">max caption tokens · deterministic</label>
             <div class="range">
               <input id="caption_max_tokens" type="range" min="1" max="77" step="1">
@@ -1018,7 +1023,7 @@ dialog::backdrop{background:rgba(15,20,28,.45);backdrop-filter:blur(4px)}
             <input id="caption_api_base_url" autocomplete="off" placeholder="https://api.openai.com/v1">
           </div>
         </div>
-        <div class="field-note" style="margin-top:9px">VLM captioning uses five structured fields: pose, camera angle, clothing, expression, and background. API captions combine camera angle with pose and normalize the result into four phrases; the backend injects the resolved trigger first.</div>
+        <div class="field-note" style="margin-top:9px">VLM returns one comma-separated visual caption. The resolved trigger and optional class noun are injected before the image-specific details.</div>
       </section>
 
       <section class="card card-pad" style="margin-top:14px">
@@ -1441,6 +1446,7 @@ function applySettings(s,force=false){
   $("trigger").value=project.trigger||"";
   $("preset").value=s.tagger.preset;
   $("caption_backend").value=s.caption.backend||"deterministic";
+  $("caption_class_token").value=s.caption.class_token||"";
   $("caption_runtime").value=s.caption.runtime||"llama_cpp";
   $("caption_chat_format").value=s.caption.chat_format||"mtmd";
   $("caption_model_path").value=s.caption.model_path||"";
@@ -1711,6 +1717,7 @@ async function saveSettings(){
         height:height,
         quality:quality,
         caption_backend:$("caption_backend").value,
+        caption_class_token:$("caption_class_token").value.trim(),
         caption_runtime:$("caption_runtime").value,
         caption_chat_format:$("caption_chat_format").value,
         caption_model_path:$("caption_model_path").value.trim(),
@@ -2800,6 +2807,7 @@ def create_app(
                         "openai_compatible": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
                     },
                     "max_tokens": 77,
+                    "class_token": "",
                 },
                 "scraper": {
                     "backend": "duckduckgo",
@@ -2910,6 +2918,7 @@ def create_app(
                     "openai_compatible": bool(os.environ.get("OPENAI_API_KEY", "").strip()),
                 },
                 "max_tokens": int(caption.get("max_tokens", 77)),
+                "class_token": str(caption.get("class_token", "")),
             },
             "scraper": {
                 "backend": str(cfg.get("scraper", {}).get("backend", "duckduckgo")),
@@ -3430,6 +3439,13 @@ def create_app(
         current_caption = current_config.get("caption", {})
         if not isinstance(current_caption, dict):
             current_caption = {}
+        raw_caption_class_token = payload.get(
+            "caption_class_token",
+            current_caption.get("class_token", ""),
+        )
+        if not isinstance(raw_caption_class_token, str):
+            raise HTTPException(400, "caption class noun must be a string")
+        caption_class_token = raw_caption_class_token.strip()
         raw_caption_max_tokens = payload.get(
             "caption_max_tokens",
             current_caption.get("max_tokens", 77),
@@ -3511,6 +3527,7 @@ def create_app(
                 {
                     "backend": caption_backend,
                     "max_tokens": caption_max_tokens,
+                    "class_token": caption_class_token,
                     "vlm": {
                         "model_path": caption_model_path,
                         "mmproj_path": caption_mmproj_path,
@@ -3556,7 +3573,11 @@ def create_app(
         )
         set_config(
             "caption",
-            {"backend": caption_backend, "max_tokens": caption_max_tokens},
+            {
+                "backend": caption_backend,
+                "max_tokens": caption_max_tokens,
+                "class_token": caption_class_token,
+            },
             current_root,
         )
         set_config(
