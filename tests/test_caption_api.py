@@ -93,6 +93,45 @@ def test_gemini_caption_uses_fixed_prompt_and_inline_image(monkeypatch, tmp_path
     assert "topK" not in payload
 
 
+def test_gemini_caption_uses_custom_configured_prompt(monkeypatch, tmp_path):
+    monkeypatch.setattr(requests, "Session", FakeSession)
+    FakeSession.payloads.clear()
+    FakeSession.responses[:] = [
+        FakeResponse(
+            {
+                "candidates": [
+                    {
+                        "content": {
+                            "parts": [{"text": "custom caption"}]
+                        }
+                    }
+                ]
+            }
+        )
+    ]
+    monkeypatch.setenv("TEST_GEMINI_KEY", "secret")
+    image = tmp_path / "image.jpg"
+    Image.new("RGB", (16, 16), "white").save(image)
+    custom_prompt = "Describe camera angle and hand placement only."
+
+    runtime = GeminiVlmCaptioner(
+        VlmConfig(
+            runtime="gemini",
+            api_key_env="TEST_GEMINI_KEY",
+            api_model="gemini-test",
+            api_base_url="https://example.test/v1beta",
+            prompt=custom_prompt,
+        )
+    )
+    try:
+        runtime.caption(image)
+    finally:
+        runtime.close()
+
+    payload = FakeSession.payloads[-1][1]["json"]
+    assert payload["contents"][0]["parts"][1]["text"] == custom_prompt
+
+
 def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
     monkeypatch.setattr(requests, "Session", FakeSession)
     FakeSession.payloads.clear()
@@ -139,6 +178,36 @@ def test_openai_compatible_caption_uses_chat_completions(monkeypatch, tmp_path):
     assert content[1]["type"] == "text"
     assert content[1]["text"] == API_VLM_PROMPT
 
+
+
+def test_openai_compatible_caption_uses_custom_configured_prompt(monkeypatch, tmp_path):
+    monkeypatch.setattr(requests, "Session", FakeSession)
+    FakeSession.payloads.clear()
+    FakeSession.responses[:] = [
+        FakeResponse({"choices": [{"message": {"content": "custom caption"}}]})
+    ]
+    monkeypatch.setenv("TEST_OPENAI_KEY", "secret")
+    image = tmp_path / "image.jpg"
+    Image.new("RGB", (16, 16), "white").save(image)
+    custom_prompt = "Describe lighting and background only."
+
+    runtime = OpenAICompatibleVlmCaptioner(
+        VlmConfig(
+            runtime="openai_compatible",
+            api_key_env="TEST_OPENAI_KEY",
+            api_model="vision-model",
+            api_base_url="https://example.test/v1",
+            prompt=custom_prompt,
+        )
+    )
+    try:
+        runtime.caption(image)
+    finally:
+        runtime.close()
+
+    payload = FakeSession.payloads[-1][1]["json"]
+    content = payload["messages"][0]["content"]
+    assert content[1]["text"] == custom_prompt
 
 
 def test_openai_compatible_returns_unstructured_caption_without_retry(monkeypatch, tmp_path):
