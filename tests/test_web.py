@@ -79,6 +79,7 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
             "height": 512,
             "quality": 92,
             "caption_max_tokens": 64,
+            "caption_class_token": "woman",
             "face_crop": False,
             "face_padding": 1.75,
         },
@@ -86,6 +87,7 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     assert caption_budget.status_code == 200
     budget_state = client.get("/api/state").json()
     assert budget_state["caption"]["max_tokens"] == 64
+    assert budget_state["caption"]["class_token"] == "woman"
 
     invalid_budget = client.post(
         "/api/settings",
