@@ -59,6 +59,16 @@ def test_build_caption_keeps_subject_when_trigger_differs():
     ) == "julia v1, julia, blue eyes, portrait"
 
 
+def test_build_caption_injects_class_token_after_trigger_once():
+    config = CaptionConfig(class_token="Woman")
+    assert build_caption(
+        ["woman", "portrait", "woman"],
+        subject="Julia",
+        trigger="ignored",
+        config=config,
+    ) == "julia, woman, portrait"
+
+
 def test_write_caption_is_deterministic(tmp_path):
     path = tmp_path / "work" / "captions" / "a.txt"
     write_caption(path, "julia, portrait")
@@ -714,6 +724,21 @@ def test_vlm_caption_ignores_tagger_tags_and_max_token_setting():
         config=config,
     )
     assert caption == "julia, standing straight-on, wearing a black dress, smiling expression, indoors with soft lighting"
+
+
+def test_vlm_caption_injects_class_token_after_trigger_once():
+    config = CaptionConfig(
+        backend="vlm",
+        class_token="woman",
+        vlm=VlmConfig(model_path="model.gguf", mmproj_path="mmproj.gguf"),
+    )
+    caption = build_vlm_caption(
+        "standing, woman, upper body portrait, black dress",
+        subject="Julia",
+        trigger="ignored",
+        config=config,
+    )
+    assert caption == "julia, woman, standing, upper body portrait, black dress"
 
 
 def test_vlm_caption_can_use_raw_image_when_processing_is_bypassed(tmp_path):
