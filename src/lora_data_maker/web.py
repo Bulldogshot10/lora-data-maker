@@ -31,6 +31,7 @@ from .credentials import default_api_key_store_path, load_api_keys, save_api_key
 from .dataset import DatasetProject
 from .export import export_manifest, safe_component
 from .manifest import find_image_by_source_url, register_image
+from .images import iter_image_files
 from .pack import pack_dataset
 from .paths import ProjectPaths, manifest_path
 from .processing import ProcessConfig, YOLOXNanoPersonDetector, YuNetFaceDetector, clean_manifest, process_manifest, validate_image
@@ -1147,6 +1148,7 @@ const appState={
   settingsDirty:false,
   activeProjectPath:"",
   currentJob:null,
+  uploadInProgress:false,
   jobId:localStorage.getItem("ldm.jobId")||"",
   pollTimer:null,
   confirmResolve:null,
@@ -1193,7 +1195,10 @@ function updateDirtyUI(){
 function updateBusyUI(){
   const busy=isBusyOnActiveProject();
    document.querySelectorAll("[data-run-stage]").forEach(button=>{button.disabled=busy});
-  $("upload-button").disabled=busy;
+  const uploading=appState.uploadInProgress;
+  $("upload-button").disabled=busy||uploading;
+  $("choose-images").disabled=busy||uploading;
+  $("files").disabled=busy||uploading;
    document.querySelectorAll("[data-image-delete]").forEach(button=>{button.disabled=busy});
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
@@ -2014,6 +2019,7 @@ function finishConfirm(value){
   if(resolve)resolve(value);
 }
 async function upload(){
+  if(appState.uploadInProgress)return;
   if(!appState.activeProjectPath){
     toast("create or open a dataset first.","bad");
     return;
@@ -2030,6 +2036,8 @@ async function upload(){
   }
   const form=new FormData();
   for(const file of files)form.append("files",file);
+  appState.uploadInProgress=true;
+  updateBusyUI();
   try{
     setStatus("uploading "+files.length+" images...","running");
     const d=await api("/api/upload",{method:"POST",body:form});
@@ -2041,6 +2049,9 @@ async function upload(){
   }catch(e){
     setStatus(e.message,"bad");
     toast(e.message,"bad");
+  }finally{
+    appState.uploadInProgress=false;
+    updateBusyUI();
   }
 }
 async function refreshWireGuardState(){
@@ -2276,7 +2287,7 @@ const drop=$("drop");
   drop.classList.remove("drag");
 }));
 drop.addEventListener("drop",event=>{
-  if(isBusyOnActiveProject())return;
+  if(isBusyOnActiveProject()||appState.uploadInProgress)return;
   const files=event.dataTransfer&&event.dataTransfer.files;
   if(files&&files.length){
     const transfer=new DataTransfer();
@@ -3863,37 +3874,73 @@ def create_app(
         ps.raw.mkdir(parents=True, exist_ok=True)
         allowed = {".jpg", ".jpeg", ".png", ".webp", ".bmp"}
         uploaded = skipped = 0
-        existing = {x.path for x in p.manifest.images.values()}
+
+        # Index the bytes already present in raw/, not just manifest paths.
+        # This also catches files left behind by an interrupted earlier upload.
+        existing_hashes: set[str] = set()
+        try:
+            for existing_path in iter_image_files(ps.raw):
+                digest = hashlib.sha256()
+                with existing_path.open("rb") as existing_file:
+                    while chunk := existing_file.read(1024 * 1024):
+                        digest.update(chunk)
+                existing_hashes.add(digest.hexdigest())
+        except OSError as exc:
+            raise HTTPException(500, "could not inspect existing dataset images") from exc
+
         for file in files:
             suffix = Path(file.filename or "").suffix.lower()
             if suffix not in allowed:
                 skipped += 1
+                await file.close()
                 continue
+
             base = safe_component(Path(file.filename or "image").stem) or "image"
+            temp = ps.raw / f".upload-{uuid.uuid4().hex}.part"
+            digest = hashlib.sha256()
+            total = 0
+            try:
+                with temp.open("xb") as out:
+                    while chunk := await file.read(1024 * 1024):
+                        total += len(chunk)
+                        if total > MAX_IMAGE_UPLOAD_BYTES:
+                            raise HTTPException(413, "each uploaded image must be 25 MiB or smaller")
+                        digest.update(chunk)
+                        out.write(chunk)
+                    out.flush()
+                    os.fsync(out.fileno())
+            except HTTPException:
+                temp.unlink(missing_ok=True)
+                raise
+            except OSError as exc:
+                temp.unlink(missing_ok=True)
+                raise HTTPException(500, "could not save uploaded image") from exc
+            finally:
+                await file.close()
+
+            image_hash = digest.hexdigest()
+            if image_hash in existing_hashes:
+                temp.unlink(missing_ok=True)
+                skipped += 1
+                continue
+
             target = ps.raw / (base + suffix)
             counter = 1
             while target.exists():
                 target = ps.raw / (base + "_" + str(counter) + suffix)
                 counter += 1
-            total = 0
+
             try:
-                with target.open("xb") as out:
-                    while chunk := await file.read(1024 * 1024):
-                        total += len(chunk)
-                        if total > MAX_IMAGE_UPLOAD_BYTES:
-                            raise HTTPException(413, "each uploaded image must be 25 MiB or smaller")
-                        out.write(chunk)
-            except HTTPException:
-                target.unlink(missing_ok=True)
-                await file.close()
-                raise
-            finally:
-                await file.close()
+                os.replace(temp, target)
+            except OSError as exc:
+                temp.unlink(missing_ok=True)
+                raise HTTPException(500, "could not finalize uploaded image") from exc
+
             rel = manifest_path(current_root, target)
-            if rel in existing:
-                target.unlink(missing_ok=True); skipped += 1; continue
             register_image(p.manifest, path=rel, status="discovered")
-            existing.add(rel); uploaded += 1
+            existing_hashes.add(image_hash)
+            uploaded += 1
+
         p.save()
         return {"uploaded": uploaded, "skipped": skipped}
 
