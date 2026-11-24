@@ -419,3 +419,9 @@ Fix frequent Playwright image failures where originals are rejected for resoluti
 3. Run focused tests: `pytest -q tests/test_scraper.py -k "thumbnail_after_original_download_failure or syncs_browser_cookies or sends_referer"` and `pytest -q tests/test_web.py -k "web_routes_and_state"`.
 4. Run the full core suite `pytest -q -m "not real_caption_runtime"` and inspect actual CI logs.
 5. On Termux/X11, test both `playwright-google` and `playwright-bing`, including sources that return 403 and Google originals with small dimensions. Confirm cookie values are never logged or persisted.
+
+
+### Follow-up correction (2026-11-24)
+- The first push triggered core smoke run `45331330553`. Dependency installation succeeded, but `python -m compileall -q src tests` failed with `IndentationError: unindent does not match any outer indentation level (manager.py, line 330)`; tests were skipped by the workflow.
+- Root cause: the first candidate-loop replacement left a duplicate portion of the previous manager loop between two outer exception handlers. That stale block has been removed. The intended outer `ScraperCancelledError` / `ScraperError` handlers remain.
+- Follow-up fix is committed separately. Re-run core smoke and inspect results; do not mark implementation validated until compile and tests complete.
