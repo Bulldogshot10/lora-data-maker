@@ -29,7 +29,7 @@ DEFAULT_VLM_PROMPT = (
     "CHARACTER IDENTITY POLICY:\n"
     "The dataset trigger represents the character's stable identity. Leave stable facial identity, facial structure, eye color, permanent hair color, stable skin tone, body proportions, and other defining identity traits for the trigger to learn.\n"
     "Do not infer age, ethnicity, personality, relationships, intentions, or personal history.\n"
-    "Do not describe hair color or hairstyle, eye color, or other stable identity traits; describe hair styling, makeup, clothing, and accessories only when they are visibly varied and intended to remain independently controllable. Omit signature traits that appear to be permanent identity features.\n"
+    "Stable identity policy: do not describe hair color or hairstyle, eye color, or other stable identity traits; describe hair styling, makeup, clothing, and accessories only when they are visibly varied and intended to remain independently controllable. Omit signature traits that appear to be permanent identity features.\n"
     "Do not output the character name, dataset trigger, or subject class noun such as person, woman, or man; the dataset pipeline adds it automatically.\n"
     "Do not guess hidden, occluded, ambiguous, or off-frame details.\n"
     "\n"

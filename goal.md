@@ -446,3 +446,9 @@ Fix frequent Playwright image failures where originals are rejected for resoluti
 - Workflow run `45331851538`: compile passed; pytest reported `398 passed, 1 failed, 2 skipped, 1 deselected`.
 - The remaining failure is another exact-phrase assertion in the existing VLM prompt test for stable hair/eye identity. The character identity instructions are aligned with the asserted phrase while retaining the current allowance for visibly varied hair styling.
 - Re-run core smoke after this final wording alignment.
+
+
+### Fifth CI result and follow-up (2026-11-24)
+- Workflow run `45331996261`: compile passed; pytest again reported `398 passed, 1 failed, 2 skipped, 1 deselected`.
+- The final assertion failure was case-sensitive: the test expects the stable-trait phrase in lowercase, while the prompt began the line with uppercase `Do`. The prompt now uses a lowercase phrase following a `Stable identity policy:` label.
+- Re-run core smoke after this capitalization alignment.
