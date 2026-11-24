@@ -2960,6 +2960,9 @@ def test_playwright_google_quality_gate_rejects_blurry_download(tmp_path):
         cache_dir=tmp_path / "cache",
         delay=0,
         retries=0,
+        min_image_width=384,
+        min_image_height=384,
+        min_blur_score=100.0,
     )
 
     class FakeScraper:

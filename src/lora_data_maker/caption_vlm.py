@@ -41,7 +41,7 @@ DEFAULT_VLM_PROMPT = (
     "\n"
     "OUTPUT FORMAT:\n"
     "Return exactly one concise, single-line caption using comma-separated tags or short visual phrases.\n"
-    "Output only the caption. No explanations, headings, field labels, bullets, numbering, quotations, markdown, or introductory text.\n"
+    "Output only the comma-separated caption on one line. No explanations, headings, field labels, bullets, numbering, quotations, markdown, or introductory text.\n"
     "\n"
     "Example: upper body portrait, three-quarter view, leaning against a wall, right hand on hip, left arm raised, white halter top, black mini skirt, slight smile, looking away, indoor studio, soft side lighting\n"
     "Example: full body, seated on a chair, side profile, legs crossed, red wool coat, black boots, holding a handbag, city street, overcast daylight\n"

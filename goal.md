@@ -425,3 +425,11 @@ Fix frequent Playwright image failures where originals are rejected for resoluti
 - The first push triggered core smoke run `45331330553`. Dependency installation succeeded, but `python -m compileall -q src tests` failed with `IndentationError: unindent does not match any outer indentation level (manager.py, line 330)`; tests were skipped by the workflow.
 - Root cause: the first candidate-loop replacement left a duplicate portion of the previous manager loop between two outer exception handlers. That stale block has been removed. The intended outer `ScraperCancelledError` / `ScraperError` handlers remain.
 - Follow-up fix is committed separately. Re-run core smoke and inspect results; do not mark implementation validated until compile and tests complete.
+
+
+### Second CI result and follow-up (2026-11-24)
+- Follow-up run `45331534705` passed `python -m compileall -q src tests`.
+- Pytest result: `397 passed, 2 failed, 2 skipped, 1 deselected`.
+- One scraper failure was an outdated test that relied on the old default blur threshold of 100. It is updated to explicitly set `min_blur_score=100.0`, so it continues testing the enabled quality-gate path while the product default remains disabled.
+- The other failure was a stale assertion against the VLM prompt's output-format wording. The prompt is adjusted to explicitly say “comma-separated caption on one line”, matching the existing intended output contract.
+- Both follow-up changes are committed in the next commit; rerun core smoke to verify the complete suite.
