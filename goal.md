@@ -393,3 +393,29 @@ Update README to match current features; refresh `docs/ROADMAP.md`, `docs/ARCHIT
 3. Run `pytest -q -m "not real_caption_runtime"` and record the exact counts.
 4. Test WireGuard-enabled Playwright scraping on Termux; verify `wireproxy --version`, proxy start/stop, and actual route without exposing credentials.
 5. Check Actions status for the exact commit before claiming CI success.
+
+
+## Session checkpoint / handoff (2026-11-24, Playwright download recovery)
+
+### User request
+Fix frequent Playwright image failures where originals are rejected for resolution/quality or cannot be downloaded. Target repository: `Bulldogshot10/lora-data-maker`, branch: `main`. Work directly on main; do not create a branch or PR.
+
+### Changes prepared in source
+- `src/lora_data_maker/scrapers/playwright.py`: capture Chromium cookies and browser User-Agent in memory; retain Google result thumbnail URLs alongside original candidates; retain Bing thumbnail URLs alongside original-source candidates.
+- `src/lora_data_maker/scrapers/manager.py`: synchronize the captured browser cookies/User-Agent into the in-memory requests session; send the result-page Referer for Playwright Google and Bing; retry a paired thumbnail after original download failure or Google original quality rejection; use more permissive default scrape-time Google gates (256x256, blur threshold 0).
+- `src/lora_data_maker/scrapers/downloader.py`: add browser-like Sec-Fetch headers to referer-bearing image requests.
+- `src/lora_data_maker/cli.py`, `src/lora_data_maker/web.py`, `src/lora_data_maker/config.py`, `config.example.toml`: expose minimum source width, minimum source height, and blur threshold in scraper config and the WebUI.
+- `tests/test_scraper.py`, `tests/test_web.py`: add regression coverage for original-to-thumbnail download fallback, browser cookie/User-Agent synchronization, image request headers, and WebUI config persistence.
+- `docs/CONFIG.md`, `docs/TROUBLESHOOTING.md`: document the new behavior and configuration.
+
+### Validation status
+- Source changes and test changes were prepared as Git blobs/trees against the observed main head `aeeff2b9a63370dedd501bfa2e2938fa2478fe39`.
+- No local Python test run or Termux device run has been performed in this session.
+- CI must be checked after the commit. Live Google/Bing behavior still needs device verification.
+
+### Next steps
+1. Complete the source/test/docs commit and move `main` only if its head still matches the expected base SHA.
+2. Run `python -m compileall -q src tests`.
+3. Run focused tests: `pytest -q tests/test_scraper.py -k "thumbnail_after_original_download_failure or syncs_browser_cookies or sends_referer"` and `pytest -q tests/test_web.py -k "web_routes_and_state"`.
+4. Run the full core suite `pytest -q -m "not real_caption_runtime"` and inspect actual CI logs.
+5. On Termux/X11, test both `playwright-google` and `playwright-bing`, including sources that return 403 and Google originals with small dimensions. Confirm cookie values are never logged or persisted.

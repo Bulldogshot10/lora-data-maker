@@ -168,6 +168,9 @@ class ImageDownloader:
                             "Referer": referer,
                             "Accept": "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
                             "Accept-Language": "en-US,en;q=0.9",
+                            "Sec-Fetch-Dest": "image",
+                            "Sec-Fetch-Mode": "no-cors",
+                            "Sec-Fetch-Site": "cross-site",
                         }
                     response = self.session.get(safe_url, **request_options)
                     if response.status_code in {301, 302, 303, 307, 308}:

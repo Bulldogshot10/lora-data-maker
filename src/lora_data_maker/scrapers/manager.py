@@ -38,9 +38,9 @@ class ScraperManager:
         date_to: str | None = None,
         proxy_url: str | None = None,
         safe_search: bool = False,
-        min_image_width: int = 384,
-        min_image_height: int = 384,
-        min_blur_score: float = 100.0,
+        min_image_width: int = 256,
+        min_image_height: int = 256,
+        min_blur_score: float = 0.0,
         selector: str | None = None,
     ) -> None:
         if not isinstance(safe_search, bool):
@@ -189,7 +189,9 @@ class ScraperManager:
         try:
             candidates = self.scraper.search(query, limit=search_limit)
             for result in candidates:
-                if self.backend == "playwright-site":
+                if isinstance(self.scraper, PlaywrightImagesScraper):
+                    self._sync_playwright_session()
+                elif self.backend == "playwright-site":
                     self._sync_site_cookies()
                 if cancel_event is not None and cancel_event.is_set():
                     self.cancelled = True
@@ -197,22 +199,132 @@ class ScraperManager:
                 if result.image_url in self.archive or result.image_url in known_url_set:
                     continue
 
-                downloaded = None
-                try:
-                    downloaded = self.downloader.download(
-                        result.image_url,
-                        self.output_dir,
-                        index=next_index,
-                        archive=self.archive,
-                        cancel_event=cancel_event,
-                        **(
-                            {"referer": "https://www.google.com/"}
-                            if self.backend == "playwright-google"
-                            else ({"referer": result.page_url or query}
-                                  if self.backend == "playwright-site" else {})
-                        ),
+                metadata = result.metadata if isinstance(result.metadata, dict) else {}
+                candidate_urls = [result.image_url]
+                if self.backend in {"playwright-google", "playwright-bing"}:
+                    fallback_url = metadata.get("thumbnail_url")
+                    if (
+                        isinstance(fallback_url, str)
+                        and fallback_url.startswith(("http://", "https://"))
+                        and fallback_url != result.image_url
+                    ):
+                        candidate_urls.append(fallback_url)
+
+                referer = None
+                if self.backend in {"playwright-google", "playwright-bing"}:
+                    referer = result.page_url or (
+                        "https://www.google.com/"
+                        if self.backend == "playwright-google"
+                        else "https://www.bing.com/"
                     )
-                except ScraperCancelledError:
+                elif self.backend == "playwright-site":
+                    referer = result.page_url or query
+                download_options = {
+                    "archive": self.archive,
+                    "cancel_event": cancel_event,
+                }
+                if referer:
+                    download_options["referer"] = referer
+
+                downloaded = None
+                candidate_errors: list[str] = []
+                for candidate_index, candidate_url in enumerate(candidate_urls):
+                    if candidate_url in self.archive or candidate_url in known_url_set:
+                        continue
+                    try:
+                        downloaded = self.downloader.download(
+                            candidate_url,
+                            self.output_dir,
+                            index=next_index,
+                            **download_options,
+                        )
+                    except ScraperCancelledError:
+                        self.cancelled = True
+                        break
+                    except ScraperError as exc:
+                        candidate_errors.append(f"{candidate_url}: {exc}")
+                        print(
+                            f"scrape: skipped failed image: {candidate_url} :: {exc}",
+                            flush=True,
+                        )
+                        continue
+                    if downloaded is None:
+                        continue
+
+                    # Only original Google source downloads use this scrape-time
+                    # quality gate. A cached Google/Bing thumbnail is already a
+                    # provider-rendered fallback and must remain available.
+                    is_google_thumbnail = bool(
+                        metadata.get("google_thumbnail_fallback")
+                    ) or candidate_index > 0
+                    if (
+                        self.backend == "playwright-google"
+                        and candidate_index == 0
+                        and not is_google_thumbnail
+                    ):
+                        try:
+                            quality = evaluate_quality(
+                                downloaded.path,
+                                min_width=self.min_image_width,
+                                min_height=self.min_image_height,
+                                blur_threshold=self.min_blur_score,
+                            )
+                            rejection_reason = quality.reason if not quality.valid else None
+                        except Exception as exc:
+                            rejection_reason = f"image quality check failed: {exc}"
+
+                        if rejection_reason:
+                            try:
+                                downloaded.path.unlink(missing_ok=True)
+                            except OSError:
+                                pass
+                            try:
+                                self.archive.discard(candidate_url)
+                            except ScraperError as exc:
+                                print(
+                                    "scrape: warning: could not unarchive "
+                                    f"rejected image URL: {exc}",
+                                    flush=True,
+                                )
+                            candidate_errors.append(
+                                f"{candidate_url}: quality filter rejected image: "
+                                f"{rejection_reason}"
+                            )
+                            print(
+                                "scrape: original Google image rejected by quality "
+                                f"gate ({rejection_reason}); trying thumbnail fallback",
+                                flush=True,
+                            )
+                            downloaded = None
+                            continue
+
+                    if candidate_index > 0:
+                        print(
+                            "scrape: original image was unavailable; accepted "
+                            f"provider thumbnail fallback: {candidate_url}",
+                            flush=True,
+                        )
+                    break
+
+                if self.cancelled:
+                    break
+                if downloaded is None:
+                    error_message = "; ".join(candidate_errors) or (
+                        f"no downloadable candidate remained for {result.image_url}"
+                    )
+                    failures.append((result, error_message))
+                    continue
+
+                downloads.append(downloaded)
+                next_index += 1
+                message = f"downloaded {len(downloads)}/{count}"
+                if progress is not None:
+                    progress(len(downloads), count, message)
+                print(f"scrape: {message}", flush=True)
+
+                if len(downloads) >= count:
+                    break
+        except ScraperCancelledError:
                     self.cancelled = True
                     break
                 except ScraperError as exc:
@@ -316,6 +428,37 @@ class ScraperManager:
                     f"scrape finished: downloaded {len(downloads)}/{count}",
                 )
         return downloads, failures
+
+    def _sync_playwright_session(self) -> None:
+        """Reuse Playwright browser cookies and user-agent for image HTTP requests."""
+        cookies = getattr(self.scraper, "cookies", ())
+        for cookie in cookies:
+            if not isinstance(cookie, dict):
+                continue
+            name, value = cookie.get("name"), cookie.get("value")
+            domain = cookie.get("domain")
+            if (
+                not isinstance(name, str) or not name
+                or not isinstance(value, str)
+                or not isinstance(domain, str) or not domain
+            ):
+                continue
+            options: dict[str, object] = {
+                "domain": domain,
+                "path": cookie.get("path") if isinstance(cookie.get("path"), str) else "/",
+                "secure": bool(cookie.get("secure", False)),
+            }
+            expires = cookie.get("expires")
+            if isinstance(expires, (int, float)) and expires > 0:
+                options["expires"] = int(expires)
+            try:
+                self.downloader.session.cookies.set(name, value, **options)
+            except (TypeError, ValueError):
+                continue
+
+        user_agent = getattr(self.scraper, "browser_user_agent", None)
+        if isinstance(user_agent, str) and user_agent.strip():
+            self.downloader.session.headers["User-Agent"] = user_agent.strip()
 
     def _sync_site_cookies(self) -> None:
         """Copy browser cookies into the per-run HTTP jar without persisting them."""

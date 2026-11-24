@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import math
 import sys
 from pathlib import Path
 from typing import Sequence
@@ -1047,6 +1048,18 @@ def command_scrape(args: argparse.Namespace) -> int:
     safe_search = scraper_config.get("safe_search", False)
     if not isinstance(safe_search, bool):
         raise LoraDataMakerError("scraper.safe_search must be a boolean")
+    try:
+        min_image_width = int(scraper_config.get("min_image_width", 256))
+        min_image_height = int(scraper_config.get("min_image_height", 256))
+        min_blur_score = float(scraper_config.get("min_blur_score", 0.0))
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise LoraDataMakerError("scraper image quality settings must be numeric") from exc
+    if (
+        min_image_width < 1 or min_image_width > 16384
+        or min_image_height < 1 or min_image_height > 16384
+        or not math.isfinite(min_blur_score) or min_blur_score < 0
+    ):
+        raise LoraDataMakerError("invalid scraper image quality settings")
 
     cli_year = getattr(args, "year", None)
     cli_date_from = getattr(args, "date_from", None)
@@ -1083,6 +1096,9 @@ def command_scrape(args: argparse.Namespace) -> int:
         date_from=date_from,
         date_to=date_to,
         safe_search=safe_search,
+        min_image_width=min_image_width,
+        min_image_height=min_image_height,
+        min_blur_score=min_blur_score,
         selector=getattr(args, "selector", None),
     )
     known_urls = {

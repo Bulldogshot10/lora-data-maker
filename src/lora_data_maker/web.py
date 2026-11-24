@@ -869,6 +869,12 @@ dialog::backdrop{background:rgba(15,20,28,.45);backdrop-filter:blur(4px)}
               <div class="field-note">off requests unfiltered results from Google, Playwright Google and Playwright Bing. Turn it on to filter explicit imagery.</div>
             </div>
           </div>
+          <div class="form-grid three" style="margin-top:12px">
+            <div class="field"><label for="scrape_min_width">min source width (px)</label><input id="scrape_min_width" type="number" min="1" max="16384" step="1" inputmode="numeric"></div>
+            <div class="field"><label for="scrape_min_height">min source height (px)</label><input id="scrape_min_height" type="number" min="1" max="16384" step="1" inputmode="numeric"></div>
+            <div class="field"><label for="scrape_min_blur">min sharpness score</label><input id="scrape_min_blur" type="number" min="0" step="1" inputmode="decimal"></div>
+          </div>
+          <div class="field-note" style="margin-top:7px">These gates apply to original Playwright Google sources. Set sharpness to 0 to disable blur rejection. Provider thumbnails are retained as fallbacks.</div>
           <section class="card" id="wireguard-panel" style="margin-top:14px;padding:12px;border:1px solid #aaa;box-shadow:none;background:var(--surface)">
             <div class="card-title-row">
               <div class="card-title">WireGuard VPN</div>
@@ -1192,7 +1198,7 @@ function updateBusyUI(){
   document.querySelectorAll("[data-save]").forEach(button=>{button.disabled=busy||!appState.settingsDirty});
   document.querySelectorAll("[data-setting]").forEach(el=>{el.disabled=busy});
   document.querySelectorAll(".step").forEach(button=>{button.disabled=busy});
-  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#scrape_safe_search,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_models_reload,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file,#wireguard-file,#wireguard-enabled,#wireguard-upload,#wireguard-clear").forEach(el=>{
+  document.querySelectorAll("#scraper_backend,#scrape_query,#scrape_count,#scrape_date_mode,#scrape_year,#scrape_date_from,#scrape_date_to,#scrape_safe_search,#scrape_min_width,#scrape_min_height,#scrape_min_blur,#name,#subject,#trigger,#preset,#mode,#width,#height,#quality,#face_crop,#face_padding,#caption_backend,#caption_runtime,#caption_chat_format,#caption_model_path,#caption_mmproj_path,#caption_api_key,#caption_api_key_set,#caption_api_key_clear,#caption_api_model,#caption_api_models_reload,#caption_api_base_url,#caption_max_tokens,#person_check,#max_persons,#person_threshold,#min_subject_area,#min_subject_visibility,#text_check,#text_confidence,#text_min_area_ratio,#caption_model_upload,#caption_mmproj_upload,#caption_model_file,#caption_mmproj_file,#wireguard-file,#wireguard-enabled,#wireguard-upload,#wireguard-clear").forEach(el=>{
     if(el)el.disabled=busy;
   });
   const vlmOnly=$("caption_backend").value==="vlm";
@@ -1477,6 +1483,9 @@ function applySettings(s,force=false){
   $("scrape_date_from").value=scraper.date_from||"";
   $("scrape_date_to").value=scraper.date_to||"";
   $("scrape_safe_search").checked=scraper.safe_search===true;
+  $("scrape_min_width").value=scraper.min_image_width??256;
+  $("scrape_min_height").value=scraper.min_image_height??256;
+  $("scrape_min_blur").value=scraper.min_blur_score??0;
   syncScrapeDateUI();
   $("face_crop").checked=!!s.processing.face_crop;
   $("face_padding").value=s.processing.face_padding;
@@ -1676,13 +1685,20 @@ async function saveSettings(){
   const textConfidence=Number($("text_confidence").value);
   const textMinArea=Number($("text_min_area_ratio").value);
   const scrapeCount=Number($("scrape_count").value);
+  const scrapeMinWidth=Number($("scrape_min_width").value);
+  const scrapeMinHeight=Number($("scrape_min_height").value);
+  const scrapeMinBlur=Number($("scrape_min_blur").value);
   const scrapeDateMode=$("scrape_date_mode").value;
   const scrapeYearText=$("scrape_year").value.trim();
   const scrapeYear=scrapeYearText?Number(scrapeYearText):0;
   const scrapeDateFrom=$("scrape_date_from").value;
   const scrapeDateTo=$("scrape_date_to").value;
-  if(!Number.isFinite(width)||!Number.isFinite(height)||!Number.isFinite(quality)||!Number.isFinite(captionMaxTokens)||!Number.isFinite(facePadding)||!Number.isFinite(maxPersons)||!Number.isFinite(personThreshold)||!Number.isFinite(minArea)||!Number.isFinite(minVisibility)||!Number.isFinite(textConfidence)||!Number.isFinite(textMinArea)||!Number.isFinite(scrapeCount)){
+  if(!Number.isFinite(width)||!Number.isFinite(height)||!Number.isFinite(quality)||!Number.isFinite(captionMaxTokens)||!Number.isFinite(facePadding)||!Number.isFinite(maxPersons)||!Number.isFinite(personThreshold)||!Number.isFinite(minArea)||!Number.isFinite(minVisibility)||!Number.isFinite(textConfidence)||!Number.isFinite(textMinArea)||!Number.isFinite(scrapeCount)||!Number.isInteger(scrapeMinWidth)||!Number.isInteger(scrapeMinHeight)||!Number.isFinite(scrapeMinBlur)){
     toast("please fill every numeric setting with a valid value.","bad");
+    return false;
+  }
+  if(scrapeMinWidth<1||scrapeMinWidth>16384||scrapeMinHeight<1||scrapeMinHeight>16384||scrapeMinBlur<0){
+    toast("source minimum dimensions must be 1–16384 px and sharpness must be 0 or greater.","bad");
     return false;
   }
   if(scrapeDateMode==="year"&&(!Number.isInteger(scrapeYear)||scrapeYear<1970||scrapeYear>9998)){
@@ -1711,6 +1727,9 @@ async function saveSettings(){
         scrape_date_from:scrapeDateMode==="range"?scrapeDateFrom:(scrapeDateMode==="year"?scrapeYear+"-01-01":""),
         scrape_date_to:scrapeDateMode==="range"?scrapeDateTo:(scrapeDateMode==="year"?scrapeYear+"-12-31":""),
         scrape_safe_search:$("scrape_safe_search").checked,
+        scrape_min_width:scrapeMinWidth,
+        scrape_min_height:scrapeMinHeight,
+        scrape_min_blur:scrapeMinBlur,
         processing_enabled:$("processing_enabled").checked,
         mode:$("mode").value,
         width:width,
@@ -2219,7 +2238,7 @@ $("wireguard-clear").addEventListener("click",removeWireGuardConfig);
 $("scrape_date_mode").addEventListener("change",syncScrapeDateUI);
 syncWireGuardUI();
 [
-  "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count","scrape_safe_search",
+  "name","subject","trigger","preset","scraper_backend","scrape_query","scrape_count","scrape_safe_search","scrape_min_width","scrape_min_height","scrape_min_blur",
   "mode","width","height","quality","caption_backend","caption_runtime","caption_chat_format","caption_model_path","caption_mmproj_path","caption_api_model","caption_api_base_url","caption_max_tokens","face_crop","face_padding","person_check",
   "max_persons","person_threshold","min_subject_area","min_subject_visibility",
   "text_check","text_confidence","text_min_area_ratio"
@@ -2818,6 +2837,9 @@ def create_app(
                     "date_from": "",
                     "date_to": "",
                     "safe_search": False,
+                    "min_image_width": 256,
+                    "min_image_height": 256,
+                    "min_blur_score": 0.0,
                 },
                 "quality": {
                     "person_check": False,
@@ -2929,6 +2951,9 @@ def create_app(
                 "date_from": str(cfg.get("scraper", {}).get("date_from", "") or ""),
                 "date_to": str(cfg.get("scraper", {}).get("date_to", "") or ""),
                 "safe_search": cfg.get("scraper", {}).get("safe_search", False) is True,
+                "min_image_width": int(cfg.get("scraper", {}).get("min_image_width", 256)),
+                "min_image_height": int(cfg.get("scraper", {}).get("min_image_height", 256)),
+                "min_blur_score": float(cfg.get("scraper", {}).get("min_blur_score", 0.0)),
             },
             "quality": {
                 "person_check": bool(cfg.get("quality", {}).get("person_check", False)),
@@ -3328,8 +3353,17 @@ def create_app(
             scrape_count = int(
                 payload.get("scrape_count", current_scraper.get("count", 300))
             )
+            scrape_min_width = int(
+                payload.get("scrape_min_width", current_scraper.get("min_image_width", 256))
+            )
+            scrape_min_height = int(
+                payload.get("scrape_min_height", current_scraper.get("min_image_height", 256))
+            )
+            scrape_min_blur = float(
+                payload.get("scrape_min_blur", current_scraper.get("min_blur_score", 0.0))
+            )
         except (TypeError, ValueError, OverflowError) as exc:
-            raise HTTPException(400, "scrape count must be an integer") from exc
+            raise HTTPException(400, "scraper numeric settings contain an invalid value") from exc
         try:
             current_scrape_year = int(current_scraper.get("year", 0) or 0)
         except (TypeError, ValueError, OverflowError) as exc:
@@ -3419,6 +3453,10 @@ def create_app(
             or len(scrape_query) > 2048
             or scrape_count < 1
             or scrape_count > 10000
+            or not 1 <= scrape_min_width <= 16384
+            or not 1 <= scrape_min_height <= 16384
+            or not math.isfinite(scrape_min_blur)
+            or scrape_min_blur < 0
             or not 1 <= quality <= 100
             or not math.isfinite(face_padding)
             or face_padding <= 0
@@ -3603,6 +3641,9 @@ def create_app(
                 "date_from": scrape_date_from,
                 "date_to": scrape_date_to,
                 "safe_search": scrape_safe_search,
+                "min_image_width": scrape_min_width,
+                "min_image_height": scrape_min_height,
+                "min_blur_score": scrape_min_blur,
             },
             current_root,
         )
@@ -3890,6 +3931,15 @@ def create_app(
                 safe_search = sc.get("safe_search", False)
                 if not isinstance(safe_search, bool):
                     raise RuntimeError("scraper.safe_search must be a boolean")
+                min_image_width = int(sc.get("min_image_width", 256))
+                min_image_height = int(sc.get("min_image_height", 256))
+                min_blur_score = float(sc.get("min_blur_score", 0.0))
+                if (
+                    min_image_width < 1 or min_image_width > 16384
+                    or min_image_height < 1 or min_image_height > 16384
+                    or not math.isfinite(min_blur_score) or min_blur_score < 0
+                ):
+                    raise RuntimeError("invalid scraper image quality settings")
                 wireguard_proxy = None
                 try:
                     proxy_url = None
@@ -3914,6 +3964,9 @@ def create_app(
                         date_to=date_to,
                         proxy_url=proxy_url,
                         safe_search=safe_search,
+                        min_image_width=min_image_width,
+                        min_image_height=min_image_height,
+                        min_blur_score=min_blur_score,
                     )
                     known_urls = {
                         record.source_url

@@ -41,6 +41,9 @@ year = 0
 date_from = ""
 date_to = ""
 safe_search = false
+min_image_width = 256
+min_image_height = 256
+min_blur_score = 0.0
 ~~~
 
 `safe_search = false` disables SafeSearch for the Google and Playwright Google/Bing backends, which allows explicit image results to appear. Set it to `true` to filter them. The WebUI exposes the same option as the **enable SafeSearch filter** checkbox; the default is off.
@@ -48,6 +51,8 @@ safe_search = false
 Built-in backends are google, duckduckgo, chromium, playwright-bing, playwright-google, playwright-site, and direct. The playwright-site backend accepts a page URL as its query; use the dedicated \`lora-data-maker playwright-browser --url URL\` command to sign in first, then scrape the authenticated page. CSS selector scoping is available on the CLI through \`--selector\`.
 
 The existing `chromium` backend uses Selenium, DuckDuckGo first, and Bing Images as its browser fallback. The Playwright backends use Termux-native Chromium through the `playwright-termux` CDP adapter. The optional `year` or `date_from` + `date_to` fields support both `playwright-bing` and `playwright-google`; use `year = 0` and blank date strings for any date. Google appends `after:YYYY-MM-DD before:YYYY-MM-DD` to its query. Google's operators filter indexed/search-result page dates, not the image's original capture date.
+
+For Playwright Google, `min_image_width` and `min_image_height` apply to original source downloads. The defaults are 256 pixels on each axis. `min_blur_score = 0` disables the scrape-time blur gate. Provider thumbnails remain available as a fallback when an original URL fails to download or fails the Google source quality gate. These settings are configurable from the WebUI's collect-images panel and from `config.toml`.
 
 ## validation
 

@@ -39,6 +39,9 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
     state = client.get("/api/state")
     assert state.status_code == 200
     assert state.json()["project"]["subject"] == "person"
+    assert state.json()["scraper"]["min_image_width"] == 256
+    assert state.json()["scraper"]["min_image_height"] == 256
+    assert state.json()["scraper"]["min_blur_score"] == 0.0
 
     settings = client.post(
         "/api/settings",
@@ -54,11 +57,17 @@ def test_web_routes_and_state(tmp_path: Path) -> None:
             "quality": 92,
             "face_crop": False,
             "face_padding": 1.75,
+            "scrape_min_width": 320,
+            "scrape_min_height": 288,
+            "scrape_min_blur": 0,
         },
     )
     assert settings.status_code == 200
 
     updated = client.get("/api/state").json()
+    assert updated["scraper"]["min_image_width"] == 320
+    assert updated["scraper"]["min_image_height"] == 288
+    assert updated["scraper"]["min_blur_score"] == 0.0
     assert updated["project"]["subject"] == "new_person"
     assert updated["processing"]["width"] == 768
     assert updated["processing"]["height"] == 512

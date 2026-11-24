@@ -110,6 +110,9 @@ def test_downloader_sends_referer_for_protected_image_hosts(tmp_path):
     assert options["headers"]["Referer"] == "https://www.google.com/"
     assert "image/*" in options["headers"]["Accept"]
     assert options["headers"]["Accept-Language"] == "en-US,en;q=0.9"
+    assert options["headers"]["Sec-Fetch-Dest"] == "image"
+    assert options["headers"]["Sec-Fetch-Mode"] == "no-cors"
+    assert options["headers"]["Sec-Fetch-Site"] == "cross-site"
 
 
 def test_direct_downloader_writes_stable_filename(tmp_path):
@@ -294,8 +297,11 @@ def test_scraper_manager_skips_failed_downloads_and_continues(tmp_path):
 
 
 
-def test_playwright_google_manager_downloads_original_url_not_thumbnail(tmp_path):
+def test_playwright_google_manager_uses_thumbnail_after_original_download_failure(tmp_path):
+    from pathlib import Path
+
     from lora_data_maker.scrapers.base import ImageResult, ScraperError
+    from lora_data_maker.scrapers.downloader import DownloadResult
     from lora_data_maker.scrapers.manager import ScraperManager
 
     original = "https://cdn.example.com/original.jpg"
@@ -311,11 +317,11 @@ def test_playwright_google_manager_downloads_original_url_not_thumbnail(tmp_path
 
     class FakeScraper:
         def search(self, query, *, limit):
-            # Google source extraction emits the ou source image, never tu cache.
             yield ImageResult(
                 original,
                 query=query,
                 metadata={"thumbnail_url": thumbnail},
+                page_url="https://www.google.com/search?udm=2&q=portrait",
             )
 
     manager.scraper = FakeScraper()
@@ -327,15 +333,108 @@ def test_playwright_google_manager_downloads_original_url_not_thumbnail(tmp_path
             cancel_event=None, referer=None,
         ):
             calls.append((url, referer))
-            raise ScraperError("403 Client Error: Forbidden")
+            if url == original:
+                raise ScraperError("403 Client Error: Forbidden")
+            return DownloadResult(
+                url=url,
+                path=Path(output_dir) / f"{index:06d}.jpg",
+                sha256="0" * 64,
+                file_size=123,
+                content_type="image/jpeg",
+            )
 
     manager.downloader = FakeDownloader()
     downloads, failures = manager.run("portrait", count=1)
 
-    assert downloads == []
-    assert len(failures) == 1
-    assert failures[0][0].image_url == original
-    assert calls == [(original, "https://www.google.com/")]
+    assert [item.url for item in downloads] == [thumbnail]
+    assert failures == []
+    assert calls == [
+        (original, "https://www.google.com/search?udm=2&q=portrait"),
+        (thumbnail, "https://www.google.com/search?udm=2&q=portrait"),
+    ]
+
+
+def test_playwright_google_manager_uses_thumbnail_after_quality_rejection(tmp_path, monkeypatch):
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from lora_data_maker.scrapers.base import ImageResult
+    from lora_data_maker.scrapers.downloader import DownloadResult
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    original = "https://cdn.example.com/soft-original.jpg"
+    thumbnail = "https://encrypted-tbn0.gstatic.com/images?q=tbn%3Asoft"
+    manager = ScraperManager(
+        backend="playwright-google",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        delay=0,
+    )
+
+    class FakeScraper:
+        def search(self, query, *, limit):
+            yield ImageResult(
+                original,
+                query=query,
+                metadata={"thumbnail_url": thumbnail},
+            )
+
+    manager.scraper = FakeScraper()
+    attempts = []
+
+    class FakeDownloader:
+        def download(self, url, output_dir, *, index, archive=None, cancel_event=None, referer=None):
+            attempts.append(url)
+            return DownloadResult(
+                url=url,
+                path=Path(output_dir) / f"{index:06d}.jpg",
+                sha256="0" * 64,
+                file_size=123,
+                content_type="image/jpeg",
+            )
+
+    manager.downloader = FakeDownloader()
+    monkeypatch.setattr(
+        "lora_data_maker.scrapers.manager.evaluate_quality",
+        lambda *args, **kwargs: SimpleNamespace(valid=False, reason="resolution too small"),
+    )
+
+    downloads, failures = manager.run("portrait", count=1)
+
+    assert attempts == [original, thumbnail]
+    assert [item.url for item in downloads] == [thumbnail]
+    assert failures == []
+
+
+def test_playwright_manager_syncs_browser_cookies_and_user_agent(tmp_path):
+    from types import SimpleNamespace
+
+    from lora_data_maker.scrapers.manager import ScraperManager
+
+    manager = ScraperManager(
+        backend="playwright-bing",
+        output_dir=tmp_path / "raw",
+        cache_dir=tmp_path / "cache",
+        delay=0,
+    )
+    manager.scraper = SimpleNamespace(
+        cookies=[{
+            "name": "sessionid",
+            "value": "browser-session",
+            "domain": ".example.com",
+            "path": "/",
+            "secure": True,
+            "expires": 2_000_000_000,
+        }],
+        browser_user_agent="Mozilla/5.0 (X11; Linux x86_64) Chrome/131.0.0.0",
+    )
+
+    manager._sync_playwright_session()
+
+    assert manager.downloader.session.cookies.get(
+        "sessionid", domain=".example.com", path="/"
+    ) == "browser-session"
+    assert manager.downloader.session.headers["User-Agent"].endswith("Chrome/131.0.0.0")
 
 
 def test_scraper_manager_preserves_downloads_when_search_fails(tmp_path):

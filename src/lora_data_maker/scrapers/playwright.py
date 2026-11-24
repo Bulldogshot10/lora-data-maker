@@ -209,6 +209,8 @@ class PlaywrightImagesScraper(Scraper):
         self.delay = delay
         self.max_scrolls = max_scrolls
         self.date_from, self.date_to = self._normalize_date_range(date_from, date_to)
+        self.cookies: list[dict[str, object]] = []
+        self.browser_user_agent: str | None = None
 
     def search(self, query: str, *, limit: int) -> Iterator[ImageResult]:
         if not query.strip():
@@ -350,6 +352,54 @@ class PlaywrightImagesScraper(Scraper):
         except ValueError as exc:
             raise ScraperError(str(exc)) from exc
 
+    @staticmethod
+    def _read_browser_cookies(page) -> list[dict[str, object]]:
+        """Read Chromium cookies into memory for matching HTTP image requests."""
+        try:
+            response = page.session.send("Network.getAllCookies", {})
+        except Exception:
+            return []
+        values = response.get("cookies", []) if isinstance(response, dict) else []
+        cookies: list[dict[str, object]] = []
+        for item in values:
+            if not isinstance(item, dict):
+                continue
+            name, value = item.get("name"), item.get("value")
+            domain = item.get("domain")
+            if (
+                not isinstance(name, str) or not name
+                or not isinstance(value, str)
+                or not isinstance(domain, str) or not domain
+            ):
+                continue
+            cookies.append({
+                "name": name,
+                "value": value,
+                "domain": domain,
+                "path": item.get("path", "/"),
+                "secure": bool(item.get("secure", False)),
+                "expires": item.get("expires"),
+            })
+        return cookies
+
+    def _capture_browser_session(self, page) -> None:
+        """Keep browser session state in memory only; never persist cookies."""
+        self.cookies = self._read_browser_cookies(page)
+        try:
+            user_agent = page.evaluate("navigator.userAgent")
+        except Exception:
+            user_agent = None
+        self.browser_user_agent = (
+            user_agent.strip()
+            if isinstance(user_agent, str) and user_agent.strip()
+            else None
+        )
+        print(
+            "scrape: Playwright browser session captured "
+            f"({len(self.cookies)} cookies; values are not logged)",
+            flush=True,
+        )
+
     def _search_once(self, query: str, limit: int) -> list[ImageResult]:
         search_url = self._build_url(query)
         print(
@@ -410,30 +460,29 @@ class PlaywrightImagesScraper(Scraper):
                                     page,
                                     page_html,
                                 )
+                                # Cache the visible result thumbnails even when original
+                                # URLs are available. The manager can use the matching
+                                # preview if the original host refuses the download.
+                                thumbnail_candidates = self._extract_google_thumbnail_urls_from_page(
+                                    page,
+                                    page_html,
+                                )
+                                print(
+                                    "scrape: Google cached "
+                                    f"{len(thumbnail_candidates)} result thumbnail(s) "
+                                    "for download fallback",
+                                    flush=True,
+                                )
                                 if candidates:
                                     print(
                                         "scrape: Google extracted "
-                                        f"{len(candidates)} original/source candidate(s) "
-                                        "from the result page before thumbnail fallback",
+                                        f"{len(candidates)} original/source candidate(s)",
                                         flush=True,
                                     )
-                                if not candidates:
+                                else:
                                     print(
                                         "scrape: Google original URLs were not parseable; "
-                                        "caching thumbnails before browser automation",
-                                        flush=True,
-                                    )
-                                    thumbnail_candidates = self._extract_google_thumbnail_urls_from_page(
-                                        page,
-                                        page_html,
-                                    )
-                                    print(
-                                        "scrape: cached "
-                                        f"{len(thumbnail_candidates)} pre-click thumbnail candidate(s)",
-                                        flush=True,
-                                    )
-                                    print(
-                                        "scrape: trying browser-assisted Google result clicks",
+                                        "trying browser-assisted result recovery",
                                         flush=True,
                                     )
                                     candidates = self._recover_google_original_urls_with_browser(
@@ -470,6 +519,18 @@ class PlaywrightImagesScraper(Scraper):
                                             "thumbnail(s) as fallback",
                                             flush=True,
                                         )
+                                if candidates and thumbnail_candidates and not (
+                                    candidate_metadata
+                                    and any(
+                                        item.get("google_thumbnail_fallback")
+                                        for item in candidate_metadata.values()
+                                    )
+                                ):
+                                    for candidate_index, image_url in enumerate(candidates):
+                                        if candidate_index < len(thumbnail_candidates):
+                                            candidate_metadata.setdefault(image_url, {})[
+                                                "thumbnail_url"
+                                            ] = thumbnail_candidates[candidate_index]
                             except ScraperError as exc:
                                 if not self._is_google_verification_error(exc):
                                     raise
@@ -500,6 +561,11 @@ class PlaywrightImagesScraper(Scraper):
                                                 "description": candidate_details[image_url].get("description", ""),
                                                 "query_terms_matched": candidate_details[image_url].get("matched_terms", 0),
                                                 "query_terms_total": candidate_details[image_url].get("query_terms_total", 0),
+                                                **(
+                                                    {"thumbnail_url": candidate_details[image_url].get("thumbnail_url")}
+                                                    if isinstance(candidate_details[image_url].get("thumbnail_url"), str)
+                                                    else {}
+                                                ),
                                             }
                                             if image_url in candidate_details
                                             else {}
@@ -571,6 +637,14 @@ class PlaywrightImagesScraper(Scraper):
 
                     return results
                 finally:
+                    try:
+                        self._capture_browser_session(page)
+                    except Exception as exc:
+                        print(
+                            "scrape: could not capture browser session state: "
+                            f"{type(exc).__name__}: {exc}",
+                            flush=True,
+                        )
                     try:
                         cleanup_network()
                     except Exception:
@@ -1238,15 +1312,18 @@ class PlaywrightImagesScraper(Scraper):
                 ):
                     image_url = source_url
 
+            thumbnail_url = (
+                data.get("turl")
+                or data.get("thumbnail")
+                or data.get("thumbnailUrl")
+            )
+            if not isinstance(thumbnail_url, str) or not thumbnail_url.startswith(
+                ("http://", "https://")
+            ):
+                thumbnail_url = None
+
             if image_url is None:
-                thumbnail_url = (
-                    data.get("turl")
-                    or data.get("thumbnail")
-                    or data.get("thumbnailUrl")
-                )
-                if not isinstance(thumbnail_url, str) or not thumbnail_url.startswith(
-                    ("http://", "https://")
-                ):
+                if thumbnail_url is None:
                     continue
                 thumbnail_parsed = urlparse(thumbnail_url)
                 thumbnail_host = (thumbnail_parsed.hostname or "").lower().rstrip(".")
@@ -1299,6 +1376,7 @@ class PlaywrightImagesScraper(Scraper):
                     "matched_terms": len(matched_terms),
                     "query_terms_total": len(query_terms),
                     "thumbnail_fallback": thumbnail_fallback,
+                    "thumbnail_url": thumbnail_url if thumbnail_url != image_url else None,
                 }
             )
 

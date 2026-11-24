@@ -30,6 +30,9 @@ year = 0
 date_from = ""
 date_to = ""
 safe_search = false
+min_image_width = 256
+min_image_height = 256
+min_blur_score = 0.0
 
 [validation]
 min_width = 1
