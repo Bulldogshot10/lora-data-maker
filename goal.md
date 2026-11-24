@@ -440,3 +440,9 @@ Fix frequent Playwright image failures where originals are rejected for resoluti
 - The remaining failure is the final stale VLM prompt assertion for the phrase `dataset pipeline adds it automatically`. The prompt currently says the pipeline injects the configured trigger and class noun; its wording is updated to include the test's explicit phrase without changing the meaning.
 - The Playwright-specific quality-gate test now passes, along with the new original-to-thumbnail recovery and browser-session tests.
 - Re-run core smoke after this prompt wording alignment. Termux live-scrape verification remains outstanding.
+
+
+### Fourth CI result and follow-up (2026-11-24)
+- Workflow run `45331851538`: compile passed; pytest reported `398 passed, 1 failed, 2 skipped, 1 deselected`.
+- The remaining failure is another exact-phrase assertion in the existing VLM prompt test for stable hair/eye identity. The character identity instructions are aligned with the asserted phrase while retaining the current allowance for visibly varied hair styling.
+- Re-run core smoke after this final wording alignment.
